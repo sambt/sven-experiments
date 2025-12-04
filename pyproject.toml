@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sv3"
+version = "0.1.0"
+description = "SV3 package"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    # Add your dependencies here
+    # e.g., "torch>=1.9.0",
+    # "jax>=0.3.0",
+]
+
+[tool.setuptools]
+packages = ["sv3"]
