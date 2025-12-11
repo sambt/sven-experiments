@@ -10,7 +10,6 @@ setup(
         # e.g., "torch>=1.9.0",
         # "jax>=0.3.0",
     ],
-    author="Your Name",
     description="SV3 package",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
