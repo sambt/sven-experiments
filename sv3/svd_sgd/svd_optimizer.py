@@ -114,7 +114,7 @@ class SVDOptimizer:
         # log svd info
         if self.track_svd_info:
             self.svd_info["svs"].append(1.0 / S_inv[S_inv > 0].cpu().numpy())
-            self.svd_info["num_nonzero_svd"].append(torch.count_nonzero(S_inv).item())
+            self.svd_info["num_nonzero_svs"].append(torch.count_nonzero(S_inv).item())
         
         # Aggressive memory cleanup
         del VhT, S_inv, U_T
