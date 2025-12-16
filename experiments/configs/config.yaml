@@ -1,0 +1,8 @@
+defaults:
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
+  - experiment: toy_1d_scan
+  - _self_
+
+device: cuda
+print_config: true

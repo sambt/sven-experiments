@@ -4,74 +4,9 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from torch.func import vmap, grad, functional_call
 from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
-
-def make_functional_model(model):
-    param_shapes = [(name, param.shape, param.numel()) for name, param in model.named_parameters()]
-    
-    def functional_model(params,x):
-        param_dict = {}
-        start_idx = 0
-        for name,shape,size in param_shapes:
-            param_dict[name] = params[start_idx:start_idx+size].view(shape)
-            start_idx += size
-        return torch.func.functional_call(model, param_dict, x)
-    
-    return functional_model
-
-class FunctionalModel:
-    def __init__(self, model, loss_lambda):
-        """
-        model: nn.Module
-        loss_lambda: function taking (pred, *args) and returning a scalar loss
-        """
-        self.model = model
-        for p in self.model.parameters():
-            p.requires_grad = False
-        
-        self.loss_lambda = loss_lambda
-        
-        self.params = parameters_to_vector(model.parameters()).detach()
-        self.param_shapes = [(name, param.shape, param.numel()) for name, param in model.named_parameters()]
-        self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
-
-        self.num_loss_args = len(inspect.signature(loss_lambda).parameters) - 1  # subtract 'pred'
-        self.create_batch_gradient()
-
-    def func_call(self, params, x):
-        param_dict = {}
-        start_idx = 0
-        for name,shape,size in self.param_shapes:
-            param_dict[name] = params[start_idx:start_idx+size].view(shape)
-            start_idx += size
-        # Fetch fresh buffers on every call (includes updated BatchNorm stats)
-        for name, buffer in self.model.named_buffers():
-            param_dict[name] = buffer
-            
-        return functional_call(self.model, param_dict, x)
-
-    @torch.compile
-    @torch.no_grad()
-    def evaluate(self, x):
-        return self.func_call(self.params, x)
-    
-    def single_loss(self, params, x, *args):
-        pred = self.func_call(params, x)
-        loss = self.loss_lambda(pred,*args)
-        return loss, loss
-
-    def create_batch_gradient(self):
-        grad_fn = grad(self.single_loss,argnums=0,has_aux=True)
-        self.batched_grad_fn = torch.compile(
-            vmap(grad_fn, in_dims=(None, 0, *(0 for _ in range(self.num_loss_args))), out_dims=(0,0))
-        )
-
-    def batch_gradient(self,params,batch):
-        x, *args = batch
-        grads, losses = self.batched_grad_fn(params, x, *args)
-        return grads, losses
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, param_fraction=None, sub_batch_size=None):
+    def __init__(self, model, loss_fn, device, param_fraction=None, sub_batch_size=None):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
@@ -79,14 +14,15 @@ class FunctionalModelJac:
         sub_batch_size: if not None, aggregate loss over sub-batches to reduce size of Jacobian matrix
         """
         self.model = model
-        for p in self.model.parameters():
-            p.requires_grad = False
+        self.model = self.model.to(device)
+        self.device = device
+        self.params = self.tie_parameters_to_flat(requires_grad=False) # disable grads for the model
+        self.params.requires_grad_(True) # enable grad for functional calls
         self.loss_fn = loss_fn
 
         self.param_fraction = param_fraction # fraction of parameters to compute Jacobian w.r.t.
         self.param_mask = None # will be randomized each training step if param_fraction is not None
         self.sub_batch_size = sub_batch_size
-        self.params = parameters_to_vector(model.parameters()).detach()
         self.n_params = self.params.shape[0]
         self.param_shapes = [(name, param.shape, param.numel()) for name, param in model.named_parameters()]
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
@@ -95,8 +31,8 @@ class FunctionalModelJac:
         self.compiled_batch_gradient = self.get_compiled_batch_gradient()
 
         # variables to track gradients/losses for optimizer
-        self.grads = torch.empty(0)
-        self.losses = torch.empty(0)
+        self.grads = torch.empty(0).to(device)
+        self.losses = torch.empty(0).to(device)
 
     @torch.compile
     def func_call(self, params, x):
@@ -145,7 +81,6 @@ class FunctionalModelJac:
         
         Args:
             batch: Input batch (x, y, ...)
-            track_memory: If True, return memory stats in extras dict
         """
         if self.param_fraction is not None:
             self.param_mask = (torch.rand(self.n_params) < self.param_fraction).to(self.params.device)
@@ -161,3 +96,24 @@ class FunctionalModelJac:
         self.losses = losses
 
         return losses
+    
+    def tie_parameters_to_flat(self, requires_grad=False):
+        flat = parameters_to_vector(self.model.parameters()).detach()
+        flat = flat.requires_grad_(requires_grad)
+
+        # 2) rebind each parameter to a view into `flat`
+        start = 0
+        for name, p in self.model.named_parameters():
+            n = p.numel()
+            view = flat[start:start+n].view_as(p)
+            start += n
+
+            # walk to owning module and replace the parameter storage
+            mod = self.model
+            *prefix, leaf = name.split(".")
+            for part in prefix:
+                mod = getattr(mod, part)
+            # assign the view as the new parameter (shares storage with flat)
+            mod._parameters[leaf] = torch.nn.Parameter(view, requires_grad=requires_grad)
+
+        return flat

@@ -12,58 +12,6 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 from .pinv import pinv
 from sv3.nn.torch_func import FunctionalModelJac
 
-class FunctionalModel:
-    def __init__(self, model, loss_lambda):
-        """
-        model: nn.Module
-        loss_lambda: function taking (pred, *args) and returning a scalar loss
-        """
-        self.model = model
-        for p in self.model.parameters():
-            p.requires_grad = False
-        
-        self.loss_lambda = loss_lambda
-        
-        self.params = parameters_to_vector(model.parameters()).detach()
-        self.param_shapes = [(name, param.shape, param.numel()) for name, param in model.named_parameters()]
-        self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
-
-        self.num_loss_args = len(inspect.signature(loss_lambda).parameters) - 1  # subtract 'pred'
-        self.create_batch_gradient()
-
-    def func_call(self, params, x):
-        param_dict = {}
-        start_idx = 0
-        for name,shape,size in self.param_shapes:
-            param_dict[name] = params[start_idx:start_idx+size].view(shape)
-            start_idx += size
-        # Fetch fresh buffers on every call (includes updated BatchNorm stats)
-        for name, buffer in self.model.named_buffers():
-            param_dict[name] = buffer
-            
-        return functional_call(self.model, param_dict, x)
-
-    @torch.compile
-    @torch.no_grad()
-    def evaluate(self, x):
-        return self.func_call(self.params, x)
-    
-    def single_loss(self, params, x, *args):
-        pred = self.func_call(params, x)
-        loss = self.loss_lambda(pred,*args)
-        return loss, loss
-
-    def create_batch_gradient(self):
-        grad_fn = grad(self.single_loss,argnums=0,has_aux=True)
-        self.batched_grad_fn = torch.compile(
-            vmap(grad_fn, in_dims=(None, 0, *(0 for _ in range(self.num_loss_args))), out_dims=(0,0))
-        )
-
-    def batch_gradient(self,params,batch):
-        x, *args = batch
-        grads, losses = self.batched_grad_fn(params, x, *args)
-        return grads, losses
-
 class SVDOptimizer:
     def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False):
         self.model = model 

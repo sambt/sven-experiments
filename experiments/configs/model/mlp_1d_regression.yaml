@@ -1,0 +1,5 @@
+_target_: sv3.nn.MLP
+input_dim: 1
+hidden_dims: [16, 16, 16]
+output_dim: 1
+activation: gelu

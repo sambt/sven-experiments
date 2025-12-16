@@ -1,0 +1,8 @@
+name: toy_1d_scan
+num_epochs: 10
+batch_sizes: [32,64,128,256,512]
+k_fractions: [0.1,0.25,0.5,0.75,1.0]
+lrs: [0.01,0.1,0.5,1.0]
+rtol: 1e-3
+loader_seed: 51159
+output_file: toy_1d_scan_results.pkl
