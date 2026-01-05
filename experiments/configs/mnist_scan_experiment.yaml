@@ -1,0 +1,8 @@
+defaults:
+  - dataset: mnist
+  - model: mlp_mnist
+  - exp: mnist_scan
+  - _self_
+
+device: cuda
+print_config: true

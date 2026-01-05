@@ -6,12 +6,12 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, device, param_fraction=None, sub_batch_size=None):
+    def __init__(self, model, loss_fn, device, param_fraction=None, microbatch_size=None):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
         param_fraction: fraction of parameters to compute Jacobian w.r.t.
-        sub_batch_size: if not None, aggregate loss over sub-batches to reduce size of Jacobian matrix
+        microbatch_size: if not None, aggregate loss over sub-batches to reduce size of Jacobian matrix
         """
         self.model = model
         self.model = self.model.to(device)
@@ -22,7 +22,7 @@ class FunctionalModelJac:
 
         self.param_fraction = param_fraction # fraction of parameters to compute Jacobian w.r.t.
         self.param_mask = None # will be randomized each training step if param_fraction is not None
-        self.sub_batch_size = sub_batch_size
+        self.microbatch_size = microbatch_size
         self.n_params = self.params.shape[0]
         self.param_shapes = [(name, param.shape, param.numel()) for name, param in model.named_parameters()]
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
@@ -51,7 +51,7 @@ class FunctionalModelJac:
     def evaluate(self, x):
         return self.func_call(self.params, x)
     
-    def loss(self, params, x, *args) -> tuple[torch.Tensor,torch.Tensor]:
+    def loss(self, params, x, *args) -> tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
         if self.param_mask is not None:
             input_params = self.params.clone()
             input_params[self.param_mask] = params
@@ -60,16 +60,16 @@ class FunctionalModelJac:
 
         pred = self.func_call(input_params, x)
         loss = self.loss_fn(pred,*args)
-        if self.sub_batch_size is not None:
+        if self.microbatch_size is not None:
             # assuming loss has shape (B,)
-            loss = loss.view(-1, self.sub_batch_size).mean(dim=1)
-        return loss, loss
+            loss = loss.view(-1, self.microbatch_size).mean(dim=1)
+        return loss, (loss, pred)
 
-    def batch_gradient(self,batch) -> tuple[torch.Tensor,torch.Tensor]:
+    def batch_gradient(self,batch) -> tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
         x, *args = batch
         params = self.params[self.param_mask] if self.param_mask is not None else self.params
-        grads, losses = torch.func.jacrev(self.loss, argnums=0, has_aux=True)(params, x, *args)
-        return grads, losses
+        grads, (losses, preds) = torch.func.jacrev(self.loss, argnums=0, has_aux=True)(params, x, *args)
+        return grads, losses, preds
     
     def get_compiled_batch_gradient(self):
         """Returns a compiled version of batch_gradient for faster execution."""
@@ -86,7 +86,7 @@ class FunctionalModelJac:
             self.param_mask = (torch.rand(self.n_params) < self.param_fraction).to(self.params.device)
         
         #grads, losses = self.batch_gradient(batch)
-        grads, losses = self.compiled_batch_gradient(batch)
+        grads, losses, preds = self.compiled_batch_gradient(batch)
         
         # Detach immediately to free graph
         grads = grads.detach()
@@ -95,7 +95,7 @@ class FunctionalModelJac:
         self.grads = grads
         self.losses = losses
 
-        return losses
+        return losses, preds
     
     def tie_parameters_to_flat(self, requires_grad=False):
         flat = parameters_to_vector(self.model.parameters()).detach()

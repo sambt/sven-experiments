@@ -5,8 +5,9 @@ from typing import Dict, Tuple
 import torch
 from torch.utils.data import DataLoader
 from hydra.utils import instantiate
+import pandas as pd
 
-from .experiment_utils import train_loop_svd_mse
+from .experiment_utils import train_loop_svd, train_loop_standard
 from sv3.svd_sgd import SVDOptimizer
 from sv3.nn import FunctionalModelJac
 
@@ -40,17 +41,29 @@ def toy_1d_scan(cfg):
     else:
         lrs = exp_cfg["lrs"]
 
+    if "lrs_standard" not in exp_cfg:
+        lrs_standard = [1e-4,1e-3,1e-2,1e-1]
+        print("No learning rates for standard optimizers specified; defaulting to", lrs_standard)
+    else:
+        lrs_standard = exp_cfg["lrs_standard"]
+
+    if "optimizers_standard" not in exp_cfg:
+        optimizers_standard = ['Adam','AdamW','SGD','RMSprop','Muon']
+        print("No standard optimizers specified; defaulting to", optimizers_standard)
+    else:
+        optimizers_standard = exp_cfg["optimizers_standard"]
+
     dataset = instantiate(cfg.dataset)
     base_model = instantiate(cfg.model)
     init_state = copy.deepcopy(base_model.state_dict())
     del base_model # free memory
 
-    def loss_fn(pred, y):
-        loss = (pred - y) ** 2
-        loss = loss.sum(dim=-1)  # shape (B,)
+    def loss_fn(pred,y):
+        loss = (pred-y)**2
+        loss = loss.sum(dim=-1) # shape (B,)
         return loss
 
-    results = {}
+    results = []
     print(f"Starting toy_1d_scan with\n batch_sizes={batch_sizes}\n k_fractions={k_fractions}\n lrs={lrs}")
 
     for batch_size in batch_sizes:
@@ -63,20 +76,59 @@ def toy_1d_scan(cfg):
                 model.load_state_dict(init_state)
                 
                 train_model = FunctionalModelJac(model, loss_fn, device)
-                optimizer = SVDOptimizer(train_model,lr=lr,k=k,rtol=exp_cfg["rtol"])
+                optimizer = SVDOptimizer(train_model,lr=lr,k=k,rtol=exp_cfg["rtol"],track_svd_info=True)
 
                 train_loader = DataLoader(dataset.train_dataset, batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
                 val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-                train_model, losses, optimizer = train_loop_svd_mse(train_model, optimizer, train_loader, val_loader, exp_cfg["num_epochs"], device)
+                train_model, losses, optimizer = train_loop_svd(train_model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device)
 
-                results[(batch_size, k_fraction, lr)] = {
+                results.append({
+                    "batch_size": batch_size,
+                    "k_fraction": k_fraction,
+                    "k": k,
+                    "lr": lr,
                     "losses": losses,
                     "svd_info": getattr(optimizer, "svd_info", {}),
-                }
+                    "optimizer":"SVD"
+                })
+                
+                torch.compiler.reset()
 
+    # run MLP trainings with other optimizers for comparison
+    print("="*80)
+    print("Running MLP trainings with standard optimizers")
+    loss_fn = torch.nn.MSELoss()
+    results_standard = []
+    for bs in batch_sizes:
+        for lr in lrs_standard:
+            for optim_name in optimizers_standard:
+                print(f"\nRunning MLP with batch_size={bs}, lr={lr}, optimizer={optim_name}")
+                model = instantiate(cfg.model)
+                model.load_state_dict(init_state)
+                model = model.to(device)
+                optimizer = getattr(torch.optim, optim_name)(model.parameters(), lr=lr)
+                train_loader = DataLoader(dataset.train_dataset, batch_size=bs, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
+                val_loader = DataLoader(dataset.val_dataset, batch_size=bs, shuffle=False)
+
+                train_model, losses = train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device)
+
+                results_standard.append({
+                    "batch_size": bs,
+                    "k_fraction": None,
+                    "k": None,
+                    "lr": lr,
+                    "losses": losses,
+                    "optimizer": optim_name,
+                    "svd_info": None
+                })
+    
+    df = pd.DataFrame(results + results_standard)
+    
     output_file = exp_cfg['output_file']
     os.makedirs(f"experiment_results/{exp_cfg['name']}", exist_ok=True)
-    with open(f"experiment_results/{exp_cfg['name']}/{output_file}", "wb") as f:
-        pickle.dump(results, f)
-    return results
+    
+    # Save as both pickle (for full data including lists) and parquet
+    df.to_pickle(f"experiment_results/{exp_cfg['name']}/{output_file}_df.pkl")
+    
+    return df
