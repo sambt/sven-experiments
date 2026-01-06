@@ -1,12 +1,15 @@
 name: toy_1d_scan
-num_epochs: 10
-batch_sizes: [32,64,128,256,512]
-k_fractions: [0.1,0.25,0.5,0.75,1.0]
-lrs: [0.01,0.1,0.5,1.0]
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
+k_fractions: [0.25,0.5,0.75,1.0]
+lrs: [0.1,0.5,1.0]
 rtol: 1e-3
 
-lrs_standard: [1e-4,1e-3,1e-2,1e-1]
+lrs_standard: [1e-4,1e-3,1e-2]
 optimizers_standard: [Adam,AdamW,SGD,RMSprop]
 
 loader_seed: 51159
+model_seed: 20149
+data_seed: 54631
 output_file: toy_1d_scan_results

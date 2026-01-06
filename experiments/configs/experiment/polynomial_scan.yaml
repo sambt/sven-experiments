@@ -1,4 +1,5 @@
 name: polynomial_scan
+
 input_dim: 6
 data_seed: 57728
 degree: 4
@@ -13,5 +14,6 @@ rtol: 1e-3
 lrs_standard: [1e-4,1e-3,1e-2]
 optimizers_standard: [Adam,AdamW,SGD,RMSprop]
 
-loader_seed: 51159
-output_file: polynomial_scan_results
+loader_seed: 82464
+model_seed: 89929
+output_file: polynomial_scan_results_dim${experiment.input_dim}_deg${experiment.degree}

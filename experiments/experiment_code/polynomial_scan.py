@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from hydra.utils import instantiate
 import pandas as pd
 
-from .experiment_utils import train_loop_svd, train_loop_standard, listify, add_row
+from .experiment_utils import train_loop_svd, train_loop_standard, set_seed
 from sv3.svd_sgd import SVDOptimizer
 from sv3.nn import FunctionalModelJac
 import copy
@@ -75,9 +75,9 @@ def polynomial_scan(cfg):
     print(f"Starting polynomial scan with SVD optimizer")  
     
     # instantiate base model to get initial weights for all models
+    set_seed(exp_cfg["model_seed"])
     base_model = instantiate(cfg.model)
     print("Model instantiated with config:\n", cfg.model)
-    print(base_model)
     init_state = copy.deepcopy(base_model.state_dict())
     del base_model # free memory
 
@@ -95,7 +95,7 @@ def polynomial_scan(cfg):
             train_loader = DataLoader(dataset.train_dataset, batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
             val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-            train_model, losses, optimizer = train_loop_svd(train_model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=True)
+            train_model, losses, optimizer = train_loop_svd(train_model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=False)
 
             results.append({
                 "batch_size": batch_size,
@@ -114,7 +114,7 @@ def polynomial_scan(cfg):
     print("="*80)
     print("Running MLP trainings with standard optimizers")
     
-    loss_fn = torch.nn.CrossEntropyLoss()
+    loss_fn = torch.nn.MSELoss()
     results_standard = []
     
     for lr in lrs_standard:
@@ -127,7 +127,7 @@ def polynomial_scan(cfg):
             train_loader = DataLoader(dataset.train_dataset, batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
             val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-            train_model, losses = train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=True)
+            train_model, losses = train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=False)
 
             results_standard.append({
                 "batch_size": batch_size,

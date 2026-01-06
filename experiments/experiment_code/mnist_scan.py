@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from hydra.utils import instantiate
 import pandas as pd
 
-from .experiment_utils import train_loop_svd, train_loop_standard
+from .experiment_utils import train_loop_svd, train_loop_standard, set_seed
 from sv3.svd_sgd import SVDOptimizer
 from sv3.nn import FunctionalModelJac
 import copy
@@ -67,6 +67,7 @@ def mnist_scan(cfg):
     print(f"Starting MNIST scan with SVD optimizer")  
     
     # instantiate base model to get initial weights for all models
+    set_seed(exp_cfg["model_seed"])
     base_model = instantiate(cfg.model)
     print("Model instantiated with config:\n", cfg.model)
     init_state = copy.deepcopy(base_model.state_dict())

@@ -1,7 +1,7 @@
 defaults:
   - dataset: mnist
   - model: mlp_mnist
-  - exp: mnist_scan
+  - experiment: mnist_scan
   - _self_
 
 device: cuda

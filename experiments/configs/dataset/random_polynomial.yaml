@@ -1,0 +1,4 @@
+_target_: experiments.datasets.RandomPolynomialDataset
+degree: ${experiment.degree}
+num_vars: ${experiment.input_dim}
+seed: ${experiment.data_seed}
