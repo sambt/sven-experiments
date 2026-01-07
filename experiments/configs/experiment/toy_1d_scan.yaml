@@ -10,6 +10,6 @@ lrs_standard: [1e-4,1e-3,1e-2]
 optimizers_standard: [Adam,AdamW,SGD,RMSprop]
 
 loader_seed: 51159
-model_seed: 20149
+model_seed: 4372892
 data_seed: 54631
 output_file: toy_1d_scan_results
