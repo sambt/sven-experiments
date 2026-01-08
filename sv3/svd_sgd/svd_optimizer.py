@@ -13,7 +13,7 @@ from .pinv import pinv
 from sv3.nn.torch_func import FunctionalModelJac
 
 class SVDOptimizer:
-    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False):
+    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized'):
         self.model = model 
         self.lr = lr
         self.k = k
@@ -24,6 +24,7 @@ class SVDOptimizer:
             "num_nonzero_svs":[]
         }
         self.track_svd_info = track_svd_info
+        self.svd_mode = svd_mode
 
     @staticmethod
     def _compute_delta(U_T, S_inv, VhT, losses, lr):
@@ -42,7 +43,14 @@ class SVDOptimizer:
         jacobian = self.model.grads
         losses = self.model.losses
         # Get SVD components (memory efficient - returns views/slices)
-        VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, randomized=True)
+        if self.svd_mode == 'randomized':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False)
+        elif self.svd_mode == 'scipy':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=True)
+        elif self.svd_mode == 'full':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=True, randomized=False, scipy=False)
+        else:
+            raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
         # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
         
         # clean up

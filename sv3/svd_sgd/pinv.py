@@ -1,7 +1,8 @@
 import torch
+from scipy.sparse.linalg import svds
 
 @torch.no_grad()
-def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute pseudo-inverse via truncated SVD. Memory-optimized version.
     Returns VhT, S_inv, U_T to avoid storing full pseudo-inverse matrix.
@@ -12,6 +13,8 @@ def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, ful
             U, S, Vh = truncated_svd_full(M,k=k,rtol=rtol)
         elif randomized:
             U, S, Vh = randomized_SVD(M, k=k, rtol=rtol)
+        elif scipy:
+            U, S, Vh = truncated_svd_scipy(M,k=k,rtol=rtol)
         else:
             U, S, Vh = truncated_svd(M, k=k, rtol=rtol)
         S_inv = torch.where(S > tol, 1.0 / S, torch.zeros_like(S))
@@ -110,4 +113,26 @@ def randomized_SVD(A, k, p=5, q=1, rtol:float=1e-3) -> tuple[torch.Tensor, torch
     S = S[:kmax]
     Vh = Vh[:kmax,:]
     
+    return U, S, Vh
+
+def truncated_svd_scipy(A, k, rtol=1e-3):
+    M = A.cpu().numpy()
+    U, S, Vh = svds(M, k=k)
+    
+    # Sort in descending order (not guaranteed by svds)
+    idx = S.argsort()[::-1]
+    S = S[idx]
+    U = U[:,idx]
+    Vh = Vh[idx,:]
+
+    # convert to torch and truncate
+    U = torch.from_numpy(U).to(A.device, A.dtype)
+    S = torch.from_numpy(S).to(A.device, A.dtype)
+    Vh = torch.from_numpy(Vh).to(A.device, A.dtype)
+
+    kmax = (S > rtol * S[0]).nonzero(as_tuple=True)[0].max()
+    U = U[:,:kmax]
+    S = S[:kmax]
+    Vh = Vh[:kmax,:]
+
     return U, S, Vh
