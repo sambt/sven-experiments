@@ -2,7 +2,7 @@ import torch
 from scipy.sparse.linalg import svds
 
 @torch.no_grad()
-def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute pseudo-inverse via truncated SVD. Memory-optimized version.
     Returns VhT, S_inv, U_T to avoid storing full pseudo-inverse matrix.
@@ -12,7 +12,7 @@ def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, ful
         if full:
             U, S, Vh = truncated_svd_full(M,k=k,rtol=rtol)
         elif randomized:
-            U, S, Vh = randomized_SVD(M, k=k, rtol=rtol)
+            U, S, Vh = randomized_SVD(M, k=k, rtol=rtol, q=power_iter)
         elif scipy:
             U, S, Vh = truncated_svd_scipy(M,k=k,rtol=rtol)
         else:
@@ -51,8 +51,6 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
             s = evals.clamp_min(0).sqrt()
             U = evecs
             Vh = ((U.T @ A) / s.clamp_min(torch.finfo(A.dtype).eps).reshape(-1,1)).conj()
-
-            #s = torch.where(s > rtol * s[0], s, torch.zeros_like(s))
 
             # truncate with rtol
             kmax = (s > rtol * s[0]).nonzero(as_tuple=True)[0].max()
@@ -117,7 +115,8 @@ def randomized_SVD(A, k, p=5, q=1, rtol:float=1e-3) -> tuple[torch.Tensor, torch
 
 def truncated_svd_scipy(A, k, rtol=1e-3):
     M = A.cpu().numpy()
-    U, S, Vh = svds(M, k=k)
+    k = min(k, min(M.shape)-1)
+    U, S, Vh = svds(M, k=int(k))
     
     # Sort in descending order (not guaranteed by svds)
     idx = S.argsort()[::-1]

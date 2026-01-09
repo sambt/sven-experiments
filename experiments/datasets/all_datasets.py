@@ -35,13 +35,12 @@ class Toy1DRegressionDataset:
         self.test_dataset = TensorDataset(xtest, ytest)
 
 class MNISTDataset:
-    def __init__(self):
+    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/"):
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,)),
             transforms.Lambda(lambda x: x.view(-1))
         ])
-        ROOT = "/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/"
         train_dataset = MNIST(root=ROOT, train=True, download=True, transform=transform)
         val_dataset = MNIST(root=ROOT, train=False, download=True, transform=transform)
 

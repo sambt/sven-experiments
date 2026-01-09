@@ -13,11 +13,13 @@ from .pinv import pinv
 from sv3.nn.torch_func import FunctionalModelJac
 
 class SVDOptimizer:
-    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized'):
+    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized',
+                 power_iterations=1):
         self.model = model 
         self.lr = lr
         self.k = k
         self.rtol = rtol
+        self.power_iterations = power_iterations # number of power iterations for randomized SVD
         self._compute_delta_compiled = torch.compile(self._compute_delta, mode='max-autotune')
         self.svd_info = {
             "svs":[],
@@ -44,11 +46,13 @@ class SVDOptimizer:
         losses = self.model.losses
         # Get SVD components (memory efficient - returns views/slices)
         if self.svd_mode == 'randomized':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False)
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False, power_iter=self.power_iterations)
         elif self.svd_mode == 'scipy':
             VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=True)
         elif self.svd_mode == 'full':
             VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=True, randomized=False, scipy=False)
+        elif self.svd_mode == 'lobpcg':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=False)
         else:
             raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
         # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
