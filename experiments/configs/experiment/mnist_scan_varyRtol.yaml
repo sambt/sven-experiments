@@ -1,0 +1,14 @@
+name: mnist_scan_varyRtol
+num_epochs: 20
+batch_size: 64
+mlp_width: 32
+k_values: [4,8,16,32]
+lrs: [0.1,0.5,1.0]
+rtol: [1e-3,1e-2,1e-1]
+
+lrs_standard: [1e-4,1e-3,1e-2]
+optimizers_standard: [Adam,AdamW,SGD,RMSprop]
+
+loader_seed: 51159
+model_seed: 47612
+output_file: mnist_scan_results_varyRtol

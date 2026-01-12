@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any
 import os
 import pandas as pd
@@ -35,11 +36,61 @@ def set_seed(seed: int, deterministic: bool = False):
         torch.backends.cudnn.benchmark = False
         torch.use_deterministic_algorithms(True)
 
-def listify(settings) -> list[Any]:
-    if isinstance(settings, list):
+def listify(settings):
+    if type(settings) is list or type(settings) is tuple:
         return settings
     else:
         return [settings]
+    
+def process_hparam_config(cfg) -> dict[str,Iterable]:
+    output = {}
+    if "batch_size" not in cfg:
+        output['batch_size'] = listify(32)
+        print("No batch size specified; defaulting to", output['batch_size'])
+    else:
+        output['batch_size'] = listify(cfg["batch_size"])
+
+    if "k_fractions" not in cfg and "k_values" not in cfg:
+        output['k_fractions'] = [0.1, 0.25, 0.5, 0.75, 1.0]
+        print("No k_values or k_fractions specified; defaulting to fractions = ", output['k_fractions'])
+    else:
+        assert "k_values" in cfg ^ "k_fractions" in cfg, "Specify either k_values or k_fractions, not both."
+        if "k_fractions" in cfg:
+            output['k_fractions'] = listify(cfg["k_fractions"])
+        else:
+            output['k_values'] = listify(cfg["k_values"])
+
+    if "lrs" not in cfg:
+        output['lrs'] = [0.01, 0.1, 0.5, 1.0]
+        print("No learning rates specified; defaulting to", output['lrs'])
+    else:
+        output['lrs'] = listify(cfg["lrs"])
+
+    if "rtol" not in cfg:
+        output['rtol'] = listify(1e-3)
+        print("No rtol specified; defaulting to", output['rtol'])
+    else:
+        output['rtol'] = listify(cfg["rtol"])
+
+    if "svd_mode" not in cfg:
+        output['svd_mode'] = listify('randomized')
+        print("No SVD mode specified; defaulting to 'randomized'")
+    else:
+        output['svd_mode'] = listify(cfg["svd_mode"])
+
+    if "lrs_standard" not in cfg:
+        output['lrs_standard'] = [1e-4,1e-3,1e-2,1e-1]
+        print("No learning rates for standard optimizers specified; defaulting to", output['lrs_standard'])
+    else:
+        output['lrs_standard'] = listify(cfg["lrs_standard"])
+
+    if "optimizers_standard" not in cfg:
+        output['optimizers_standard'] = ['Adam','AdamW','SGD','RMSprop','Muon']
+        print("No standard optimizers specified; defaulting to", output['optimizers_standard'])
+    else:
+        output['optimizers_standard'] = listify(cfg["optimizers_standard"])
+
+    return output
 
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
