@@ -54,7 +54,7 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
         output['k_fractions'] = [0.1, 0.25, 0.5, 0.75, 1.0]
         print("No k_values or k_fractions specified; defaulting to fractions = ", output['k_fractions'])
     else:
-        assert "k_values" in cfg ^ "k_fractions" in cfg, "Specify either k_values or k_fractions, not both."
+        assert ("k_values" in cfg) ^ ("k_fractions" in cfg), "Specify either k_values or k_fractions, not both."
         if "k_fractions" in cfg:
             output['k_fractions'] = listify(cfg["k_fractions"])
         else:

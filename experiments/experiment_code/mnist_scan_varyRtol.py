@@ -29,7 +29,7 @@ def mnist_scan_varyRtol(cfg):
     # create output directory
     os.makedirs(f"experiment_results/{exp_cfg['name']}", exist_ok=True) 
 
-    hparams = process_hparam_config(exp_cfg)
+    hparams = process_hparam_config(OmegaConf.to_container(exp_cfg, resolve=True))
     k_scan_values = hparams['k_fractions'] if 'k_fractions' in hparams else hparams['k_values']
     use_k_values = 'k_values' in hparams
     hparam_scan = product(
@@ -57,7 +57,7 @@ def mnist_scan_varyRtol(cfg):
 
     for batch_size, k_item, lr, rtol, svd_mode in hparam_scan:
         k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
-        print(f"\nRunning SVD optimization with batch_size={batch_size}, k={k}), lr={lr}, rtol={rtol}, svd_mode={svd_mode}")
+        print(f"\nRunning SVD optimization with batch_size={batch_size}, k={k}, lr={lr}, rtol={rtol}, svd_mode={svd_mode}")
 
         OUTPUT_FILE = f"{exp_cfg['output_file']}_bs{batch_size}_width{cfg.experiment.mlp_width}_k{k}_lr{lr}_rtol{rtol}_svd{svd_mode}"
         OUTPUT_PATH = f"experiment_results/{exp_cfg['name']}/{OUTPUT_FILE}_df.pkl"
