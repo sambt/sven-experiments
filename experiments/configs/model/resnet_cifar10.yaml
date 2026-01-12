@@ -1,0 +1,3 @@
+_target_: sv3.nn.SmallResNet
+num_classes: 10
+width: ${experiment.resnet_width}

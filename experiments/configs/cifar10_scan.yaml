@@ -1,0 +1,8 @@
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - experiment: cifar10_scan
+  - _self_
+
+device: cuda
+print_config: true
