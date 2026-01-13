@@ -63,13 +63,12 @@ class MNISTDataset:
         self.val_dataset = TensorDataset(val_data, val_labels)
 
 class CIFAR10Dataset:
-    def __init__(self,for_mlp=False):
+    def __init__(self,for_mlp=False,ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/"):
         transformations = [transforms.ToTensor(),
                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.262))]
         if for_mlp:
             transformations.append(transforms.Lambda(lambda x: x.view(-1)))
         transform = transforms.Compose(transformations)
-        ROOT = "/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/"
         train_dataset = CIFAR10(root=ROOT, train=True, download=True, transform=transform)
         val_dataset = CIFAR10(root=ROOT, train=False, download=True, transform=transform)
 

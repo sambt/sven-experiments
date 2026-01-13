@@ -57,9 +57,16 @@ def mnist_scan_varyRtol(cfg):
 
     for batch_size, k_item, lr, rtol, svd_mode in hparam_scan:
         k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
+        use_rmsprop = exp_cfg["use_rmsprop"]
+        alpha_rmsProp = exp_cfg["alpha_rmsProp"]
+
         print(f"\nRunning SVD optimization with batch_size={batch_size}, k={k}, lr={lr}, rtol={rtol}, svd_mode={svd_mode}")
+        if use_rmsprop:
+            print(f"  Using RMSprop with alpha={alpha_rmsProp}")
 
         OUTPUT_FILE = f"{exp_cfg['output_file']}_bs{batch_size}_width{cfg.experiment.mlp_width}_k{k}_lr{lr}_rtol{rtol}_svd{svd_mode}"
+        if use_rmsprop:
+            OUTPUT_FILE += f"_RMSpropAlpha{alpha_rmsProp}"
         OUTPUT_PATH = f"experiment_results/{exp_cfg['name']}/{OUTPUT_FILE}_df.pkl"
         if os.path.exists(OUTPUT_PATH):
             print(f"Output file {OUTPUT_PATH} already exists; skipping this run.")
@@ -69,7 +76,7 @@ def mnist_scan_varyRtol(cfg):
         model.load_state_dict(init_state)
         
         train_model = FunctionalModelJac(model, loss_fn, device)
-        optimizer = SVDOptimizer(train_model,lr=lr,k=k,rtol=rtol,track_svd_info=True,svd_mode=svd_mode)
+        optimizer = SVDOptimizer(train_model,lr=lr,k=k,rtol=rtol,track_svd_info=True,svd_mode=svd_mode,use_rmsprop=use_rmsprop, alpha_rmsprop=alpha_rmsProp)
 
         train_loader = DataLoader(dataset.train_dataset, batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
         val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
@@ -86,6 +93,8 @@ def mnist_scan_varyRtol(cfg):
             "losses": losses,
             "svd_info": getattr(optimizer, "svd_info", {}),
             "svd_mode": svd_mode,
+            "rmsProp": use_rmsprop,
+            "alpha_rmsProp": alpha_rmsProp,
             "optimizer":"SVD"
         }]
 
