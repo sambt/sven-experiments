@@ -69,7 +69,7 @@ class SVDOptimizer:
             VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=False, power_iter=self.power_iterations)
         else:
             raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
-        # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
+            # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
         
         # clean up
         del jacobian
@@ -95,69 +95,3 @@ class SVDOptimizer:
         del self.model.losses, self.model.grads
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
-
-class SVDOptimizerRMSprop:
-    def __init__(self, lr, k, rtol, alpha=0.99, eps=1e-8):
-        """
-        SVD optimizer with RMSprop-style adaptive learning rates.
-        
-        Args:
-            lr: Base learning rate
-            k: Number of singular values to keep in truncated SVD
-            rtol: Relative tolerance for singular value truncation
-            alpha: Smoothing constant for squared gradient averaging (default: 0.99)
-            eps: Small constant for numerical stability (default: 1e-8)
-        """
-        self.lr = lr
-        self.k = k
-        self.rtol = rtol
-        self.alpha = alpha
-        self.eps = eps
-        self.v = None  # Running average of squared updates
-        self._compute_delta_compiled = torch.compile(self._compute_delta, mode='max-autotune')
-
-    @staticmethod
-    def _compute_delta(U_T, S_inv, VhT, losses, lr):
-        """Compiled helper for computing parameter update. Fused matmul operations."""
-        delta_p = U_T @ losses  # (k x B) @ (B,) -> (k,)
-        delta_p = S_inv * delta_p  # element-wise multiply instead of diag
-        delta_p = VhT @ delta_p  # (P x k) @ (k,) -> (P,)
-        return -lr * delta_p
-
-    @torch.no_grad()
-    def compute_update(self, jacobian, losses):
-        """
-        Compute parameter update with RMSprop preconditioning.
-        Scales Jacobian rows by adaptive learning rates before SVD.
-        """
-        # Compute mean gradient across batch
-        mean_grad = torch.mean(jacobian, dim=0)
-        
-        # Initialize v on first call
-        if self.v is None:
-            self.v = torch.zeros_like(mean_grad)
-        
-        # Update running average of squared gradients (in-place)
-        self.v.mul_(self.alpha).addcmul_(mean_grad, mean_grad, value=1 - self.alpha)
-
-        # Scale jacobian by RMSprop preconditioner (broadcast over batch dimension)
-        jacobian = jacobian / (torch.sqrt(self.v) + self.eps)
-
-        # Compute SVD of preconditioned Jacobian
-        VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, randomized=True)
-        # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
-        
-        # Use compiled version for matmul operations (fused kernel)
-        update = self._compute_delta_compiled(U_T, S_inv, VhT, losses, self.lr)
-
-        extras = {
-            "singular_values": 1.0 / S_inv[S_inv > 0].cpu().numpy(),
-            "num_svs": torch.count_nonzero(S_inv).item()
-        }
-        
-        # Aggressive memory cleanup
-        del jacobian, VhT, S_inv, U_T, mean_grad
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        return update, extras

@@ -80,26 +80,28 @@ def cifar10_scan(cfg):
 
         train_loader = DataLoader(dataset.train_dataset, batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(exp_cfg["loader_seed"]))
         val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+        try:
+            train_model, losses, optimizer = train_loop_svd(train_model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=True)
 
-        train_model, losses, optimizer = train_loop_svd(train_model, optimizer, loss_fn, train_loader, val_loader, exp_cfg["num_epochs"], device, track_acc=True)
+            results = [{
+                "batch_size": batch_size,
+                "k_fraction": k / batch_size,
+                "k": k,
+                "lr": lr,
+                "rtol": rtol,
+                "resnet_width": cfg.experiment.resnet_width,
+                "losses": losses,
+                "svd_info": getattr(optimizer, "svd_info", {}),
+                "svd_mode": svd_mode,
+                "rmsProp": use_rmsprop,
+                "alpha_rmsProp": alpha_rmsProp,
+                "optimizer":"SVD"
+            }]
 
-        results = [{
-            "batch_size": batch_size,
-            "k_fraction": k / batch_size,
-            "k": k,
-            "lr": lr,
-            "rtol": rtol,
-            "resnet_width": cfg.experiment.resnet_width,
-            "losses": losses,
-            "svd_info": getattr(optimizer, "svd_info", {}),
-            "svd_mode": svd_mode,
-            "rmsProp": use_rmsprop,
-            "alpha_rmsProp": alpha_rmsProp,
-            "optimizer":"SVD"
-        }]
-
-        df = pd.DataFrame(results)
-        df.to_pickle(OUTPUT_PATH)
+            df = pd.DataFrame(results)
+            df.to_pickle(OUTPUT_PATH)
+        except Exception as e:
+            print(f"Training failed for batch_size={batch_size}, k={k}, lr={lr}, rtol={rtol}, svd_mode={svd_mode}, continuing to next run. Error: {e}")
 
         torch.compiler.reset()
 
