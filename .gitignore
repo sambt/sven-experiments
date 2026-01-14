@@ -4,3 +4,4 @@
 slurm_logs/
 outputs/
 **/.DS_STORE
+experiment_results/
