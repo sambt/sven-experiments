@@ -6,7 +6,7 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, device, param_fraction=None, microbatch_size=None, compile=True):
+    def __init__(self, model, loss_fn, device, param_fraction=None, mask_by_block=False, microbatch_size=None, compile=True):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
@@ -16,11 +16,13 @@ class FunctionalModelJac:
         self.model = model
         self.model = self.model.to(device)
         self.device = device
+        self.param_names_counts_startIdx = [] # to be filled in tie_parameters_to_flat
         self.params = self.tie_parameters_to_flat(requires_grad=False) # disable grads for the model
         self.params.requires_grad_(True) # enable grad for functional calls
         self.loss_fn = loss_fn
 
         self.param_fraction = param_fraction # fraction of parameters to compute Jacobian w.r.t.
+        self.mask_by_block = mask_by_block # if True, mask entire parameter blocks (i.e. layers) instead of individual params when param_fraction is set
         self.param_mask = None # will be randomized each training step if param_fraction is not None
         self.microbatch_size = microbatch_size
         self.n_params = self.params.shape[0]
@@ -28,7 +30,7 @@ class FunctionalModelJac:
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
 
         self.num_loss_args = len(inspect.signature(loss_fn).parameters) - 1  # subtract 'pred'
-        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if compile else self.batch_gradient
+        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if (compile and not self.param_fraction) else self.batch_gradient
 
         # variables to track gradients/losses for optimizer
         self.grads = torch.empty(0).to(device)
@@ -83,7 +85,10 @@ class FunctionalModelJac:
             batch: Input batch (x, y, ...)
         """
         if self.param_fraction is not None:
-            self.param_mask = (torch.rand(self.n_params) < self.param_fraction).to(self.params.device)
+            if not self.mask_by_block:
+                self.param_mask = (torch.rand(self.n_params) < self.param_fraction).to(self.params.device)
+            else:
+                self.param_mask = self.make_param_mask_byBlock(self.param_fraction).to(self.params.device)
         
         #grads, losses = self.batch_gradient(batch)
         grads, losses, preds = self.compiled_batch_gradient(batch)
@@ -106,6 +111,7 @@ class FunctionalModelJac:
         for name, p in self.model.named_parameters():
             n = p.numel()
             view = flat[start:start+n].view_as(p)
+            self.param_names_counts_startIdx.append((name, n, start))
             start += n
 
             # walk to owning module and replace the parameter storage
@@ -117,3 +123,23 @@ class FunctionalModelJac:
             mod._parameters[leaf] = torch.nn.Parameter(view, requires_grad=requires_grad)
 
         return flat
+    
+    def make_param_mask_byBlock(self, fraction: float) -> torch.Tensor:
+        """Create a parameter mask that selects entire parameter blocks (layers) randomly until we hit the desired fraction."""
+        n_blocks = len(self.param_names_counts_startIdx)
+        random_order = torch.randperm(n_blocks)
+        
+        running_param_count = 0
+        param_mask = torch.zeros(self.n_params)
+        for i in random_order:
+            name, nparam, start_idx = self.param_names_counts_startIdx[i]
+            if running_param_count + nparam >= fraction * self.n_params:
+                n_to_use = int(fraction * self.n_params) - running_param_count
+                param_mask[start_idx:start_idx + n_to_use] = 1
+                running_param_count += n_to_use
+                break
+            else:
+                param_mask[start_idx:start_idx + nparam] = 1
+                running_param_count += nparam
+        
+        return param_mask.to(torch.bool)

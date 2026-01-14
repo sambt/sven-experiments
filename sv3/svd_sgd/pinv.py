@@ -39,7 +39,7 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
             #s = torch.where(s > rtol * s[0], s, torch.zeros_like(s))
 
             # truncate with rtol
-            kmax = (s > rtol * s[0]).nonzero(as_tuple=True)[0].max()
+            kmax = 1 + (s > rtol * s[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
             U = U[:,:kmax]
             s = s[:kmax]
             Vh = Vh[:kmax,:]
@@ -53,7 +53,7 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
             Vh = ((U.T @ A) / s.clamp_min(torch.finfo(A.dtype).eps).reshape(-1,1)).conj()
 
             # truncate with rtol
-            kmax = (s > rtol * s[0]).nonzero(as_tuple=True)[0].max()
+            kmax = 1 + (s > rtol * s[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
             U = U[:,:kmax]
             s = s[:kmax]
             Vh = Vh[:kmax,:]
@@ -69,6 +69,10 @@ def truncated_svd_full(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[to
         S = S[:k]
         Vh = Vh[:k,:]
         S = torch.where(S > rtol * S[0], S, torch.zeros_like(S))
+        #kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
+        #U = U[:,:kmax]
+        #S = S[:kmax]
+        #Vh = Vh[:kmax,:]
         return U.detach(), S.detach(), Vh.detach()
 
 @torch.compile
@@ -106,7 +110,7 @@ def randomized_SVD(A, k, p=5, q=1, rtol:float=1e-3) -> tuple[torch.Tensor, torch
     Vh = Vh[:k,:].contiguous()
     
     # Threshold small singular values
-    kmax = (S > rtol * S[0]).nonzero(as_tuple=True)[0].max()
+    kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
     U = U[:,:kmax]
     S = S[:kmax]
     Vh = Vh[:kmax,:]
@@ -129,7 +133,7 @@ def truncated_svd_scipy(A, k, rtol=1e-3):
     S = torch.from_numpy(S).to(A.device, A.dtype)
     Vh = torch.from_numpy(Vh).to(A.device, A.dtype)
 
-    kmax = (S > rtol * S[0]).nonzero(as_tuple=True)[0].max()
+    kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
     U = U[:,:kmax]
     S = S[:kmax]
     Vh = Vh[:kmax,:]
