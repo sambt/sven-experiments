@@ -6,7 +6,7 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, device, param_fraction=None, microbatch_size=None):
+    def __init__(self, model, loss_fn, device, param_fraction=None, microbatch_size=None, compile=True):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
@@ -28,13 +28,13 @@ class FunctionalModelJac:
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
 
         self.num_loss_args = len(inspect.signature(loss_fn).parameters) - 1  # subtract 'pred'
-        self.compiled_batch_gradient = self.get_compiled_batch_gradient()
+        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if compile else self.batch_gradient
 
         # variables to track gradients/losses for optimizer
         self.grads = torch.empty(0).to(device)
         self.losses = torch.empty(0).to(device)
 
-    @torch.compile
+    #@torch.compile
     def func_call(self, params, x):
         param_dict = {}
         start_idx = 0
