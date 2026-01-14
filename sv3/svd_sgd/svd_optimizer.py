@@ -14,7 +14,7 @@ from sv3.nn.torch_func import FunctionalModelJac
 
 class SVDOptimizer:
     def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized',
-                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8, compile=True):
+                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,compile=True):
         self.model = model 
         self.lr = lr
         self.k = k
