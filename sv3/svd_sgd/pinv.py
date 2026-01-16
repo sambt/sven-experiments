@@ -2,7 +2,7 @@ import torch
 from scipy.sparse.linalg import svds
 
 @torch.no_grad()
-def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1, use_k_fix=True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute pseudo-inverse via truncated SVD. Memory-optimized version.
     Returns VhT, S_inv, U_T to avoid storing full pseudo-inverse matrix.
@@ -17,7 +17,19 @@ def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, ful
             U, S, Vh = truncated_svd_scipy(M,k=k,rtol=rtol)
         else:
             U, S, Vh = truncated_svd(M, k=k, rtol=rtol)
+        
+        # threshold SVs to be above rtol * max SV
+        kmax = (S > rtol * S[0]).nonzero(as_tuple=True)[0].max()
+        if use_k_fix:
+            kmax = kmax + 1 # add 1 since answer is zero-indexed
+        U = U[:,:kmax]
+        S = S[:kmax]
+        Vh = Vh[:kmax,:]
+        #S = torch.where(S > rtol * S[0], S, torch.zeros_like(S))
+
+        # compute S_inv with tol threshold
         S_inv = torch.where(S > tol, 1.0 / S, torch.zeros_like(S))
+    
     return Vh.T.detach(), S_inv.detach(), U.T.detach()
 
 @torch.no_grad()
@@ -36,14 +48,6 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
             # Left sing vecs: U = A V / s
             U = (A @ V) / s.clamp_min(torch.finfo(A.dtype).eps)
             Vh = V.T
-            #s = torch.where(s > rtol * s[0], s, torch.zeros_like(s))
-
-            # truncate with rtol
-            kmax = 1 + (s > rtol * s[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
-            U = U[:,:kmax]
-            s = s[:kmax]
-            Vh = Vh[:kmax,:]
-            return U.detach(), s.detach(), Vh.detach()
         else:
             C = A @ A.T       # (m x m)
             #X = torch.randn(m, k, device=A.device, dtype=A.dtype)
@@ -51,13 +55,8 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
             s = evals.clamp_min(0).sqrt()
             U = evecs
             Vh = ((U.T @ A) / s.clamp_min(torch.finfo(A.dtype).eps).reshape(-1,1)).conj()
-
-            # truncate with rtol
-            kmax = 1 + (s > rtol * s[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
-            U = U[:,:kmax]
-            s = s[:kmax]
-            Vh = Vh[:kmax,:]
-            return U.detach(), s.detach(), Vh.detach()
+        
+        return U.detach(), s.detach(), Vh.detach()
 
 @torch.compile
 @torch.no_grad()     
@@ -68,11 +67,6 @@ def truncated_svd_full(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[to
         U = U[:,:k]
         S = S[:k]
         Vh = Vh[:k,:]
-        S = torch.where(S > rtol * S[0], S, torch.zeros_like(S))
-        #kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
-        #U = U[:,:kmax]
-        #S = S[:kmax]
-        #Vh = Vh[:kmax,:]
         return U.detach(), S.detach(), Vh.detach()
 
 @torch.compile
@@ -109,12 +103,6 @@ def randomized_SVD(A, k, p=5, q=1, rtol:float=1e-3) -> tuple[torch.Tensor, torch
     S = S[:k].contiguous()
     Vh = Vh[:k,:].contiguous()
     
-    # Threshold small singular values
-    kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
-    U = U[:,:kmax]
-    S = S[:kmax]
-    Vh = Vh[:kmax,:]
-    
     return U, S, Vh
 
 def truncated_svd_scipy(A, k, rtol=1e-3):
@@ -132,10 +120,5 @@ def truncated_svd_scipy(A, k, rtol=1e-3):
     U = torch.from_numpy(U).to(A.device, A.dtype)
     S = torch.from_numpy(S).to(A.device, A.dtype)
     Vh = torch.from_numpy(Vh).to(A.device, A.dtype)
-
-    kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
-    U = U[:,:kmax]
-    S = S[:kmax]
-    Vh = Vh[:kmax,:]
 
     return U, S, Vh
