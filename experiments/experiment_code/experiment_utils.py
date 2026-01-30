@@ -196,7 +196,7 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                 xb, yb = xb.to(device), yb.to(device)
                 batch = (xb, yb)
                 batch_losses, ypred = model.loss_and_grad(batch)
-                optimizer.step()
+                optimizer.step(batch)
                 batch_end_time = time.perf_counter()
                 losses['batch_times_train'].append(batch_end_time - batch_start_time)
                 epoch_losses['train'].append(batch_losses.mean().item())

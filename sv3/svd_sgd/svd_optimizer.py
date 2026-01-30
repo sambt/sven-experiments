@@ -15,21 +15,24 @@ from sv3.nn.torch_func import FunctionalModelJac
 class SVDOptimizer:
     def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized',
                  power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,compile=True,
-                 use_k_fix=True):
+                 use_k_fix=True,variable_k=False):
         self.model = model 
         self.lr = lr
         self.k = k
         self.rtol = rtol
         self.power_iterations = power_iterations # number of power iterations for randomized SVD
         self._compute_delta_compiled = torch.compile(self._compute_delta) if compile else self._compute_delta
+        self._compute_delta_k_compiled = torch.compile(self._compute_delta_k) if compile else self._compute_delta_k
         self.svd_info = {
             "svs":[],
-            "num_nonzero_svs":[]
+            "num_nonzero_svs":[],
+            "k_used":[]
         }
         self.track_svd_info = track_svd_info
         self.svd_mode = svd_mode
         self.use_k_fix = use_k_fix
         self.use_rmsprop = use_rmsprop
+        self.variable_k = variable_k
         if use_rmsprop:
             self.alpha_rmsprop = alpha_rmsprop
             self.eps_rmsprop = eps_rmsprop
@@ -42,9 +45,74 @@ class SVDOptimizer:
         delta_p = S_inv * delta_p  # element-wise multiply instead of diag
         delta_p = VhT @ delta_p  # (P x k) @ (k,) -> (P,)
         return -lr * delta_p
+    
+    @staticmethod
+    def _compute_delta_k(k, U_T, S_inv, VhT, losses, lr):
+        delta_p = U_T[k:k+1, :] @ losses  # (1 x B) @ (B,) -> (1,)
+        delta_p = S_inv[k] * delta_p  # multiply in 1/s_i
+        delta_p = VhT[:, k:k+1] @ delta_p  # (P x 1) @ (1,) -> (P,)
+        return -lr * delta_p.squeeze()
+
+    
+    def _get_pinv(self, jacobian):
+        # Get SVD components (memory efficient - returns views/slices)
+        if self.svd_mode == 'randomized':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False, power_iter=self.power_iterations, use_k_fix=self.use_k_fix)
+        elif self.svd_mode == 'scipy':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=True, use_k_fix=self.use_k_fix)
+        elif self.svd_mode == 'full':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=True, randomized=False, scipy=False, use_k_fix=self.use_k_fix)
+        elif self.svd_mode == 'lobpcg':
+            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=False, power_iter=self.power_iterations, use_k_fix=self.use_k_fix)
+        else:
+            raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
+            # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
+        
+        return VhT, S_inv, U_T
+    
+    def _apply_update(self, update):
+        if self.model.param_mask is not None:
+            self.model.params[self.model.param_mask] += update
+        else:
+            self.model.params += update
+    
+    def _update_params(self, U_T, S_inv, VhT, losses, lr):
+        # Use compiled version for matmul operations (fused kernel)
+        update = self._compute_delta_compiled(U_T, S_inv, VhT, losses, self.lr)
+
+        # apply the update
+        self._apply_update(update)
 
     @torch.no_grad()
-    def step(self):
+    def _update_params_variable_k(self, batch, U_T, S_inv, VhT, losses, lr):
+        if batch is None:
+            raise ValueError("Batch must be provided when using variable_k=True")
+        
+        original_loss = losses.mean()
+        kmax = len(S_inv)
+        kcurr = 0
+        x, *args = batch
+        
+        while kcurr < kmax:
+            update = self._compute_delta_k_compiled(kcurr, U_T, S_inv, VhT, losses, self.lr)
+            self._apply_update(update)
+
+            # evaluate new train loss after update
+            new_loss = self.model.evaluate_and_loss(x, *args).mean()
+
+            if new_loss > original_loss:
+                # if loss increased, revert update and stop
+                self._apply_update(-update)
+                break
+            #else:
+                # else, keep update and continue
+            #    original_loss = new_loss
+
+            kcurr += 1
+        return kcurr
+
+    @torch.no_grad()
+    def step(self, batch=None):
         """
         Compute parameter update using SVD pseudo-inverse.
         Memory-optimized: never materializes full pseudo-inverse matrix.
@@ -60,37 +128,25 @@ class SVDOptimizer:
             self.v.mul_(self.alpha_rmsprop).addcmul_(mean_grad, mean_grad, value=1 - self.alpha_rmsprop)
             jacobian = jacobian / (torch.sqrt(self.v) + self.eps_rmsprop)
 
-        # Get SVD components (memory efficient - returns views/slices)
-        if self.svd_mode == 'randomized':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False, power_iter=self.power_iterations, use_k_fix=self.use_k_fix)
-        elif self.svd_mode == 'scipy':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=True, use_k_fix=self.use_k_fix)
-        elif self.svd_mode == 'full':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=True, randomized=False, scipy=False, use_k_fix=self.use_k_fix)
-        elif self.svd_mode == 'lobpcg':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=False, power_iter=self.power_iterations, use_k_fix=self.use_k_fix)
-        else:
-            raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
-            # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
+        VhT, S_inv, U_T = self._get_pinv(jacobian)
         
         # clean up
         del jacobian
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
-        # Use compiled version for matmul operations (fused kernel)
-        update = self._compute_delta_compiled(U_T, S_inv, VhT, losses, self.lr)
 
-        # apply the update
-        if self.model.param_mask is not None:
-            self.model.params[self.model.param_mask] += update
+        # update parameters
+        if self.variable_k:
+            k_used = self._update_params_variable_k(batch, U_T, S_inv, VhT, losses, self.lr)
         else:
-            self.model.params += update
+            self._update_params(U_T, S_inv, VhT, losses, self.lr)
         
         # log svd info
         if self.track_svd_info:
             self.svd_info["svs"].append(1.0 / S_inv[S_inv > 0].cpu().numpy())
             self.svd_info["num_nonzero_svs"].append(torch.count_nonzero(S_inv).item())
+            if self.variable_k:
+                self.svd_info["k_used"].append(k_used)
         
         # Aggressive memory cleanup
         del VhT, S_inv, U_T

@@ -54,6 +54,12 @@ class FunctionalModelJac:
     def evaluate(self, x):
         return self.func_call(self.params, x)
     
+    @torch.no_grad()
+    def evaluate_and_loss(self, x, *args):
+        pred = self.evaluate(x)
+        loss = self.loss_fn(pred,*args)
+        return loss
+    
     def loss(self, params, x, *args) -> tuple[torch.Tensor,tuple[torch.Tensor,torch.Tensor]]:
         if self.param_mask is not None:
             input_params = self.params.clone()
