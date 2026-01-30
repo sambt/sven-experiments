@@ -6,7 +6,7 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, device, param_fraction=None, mask_by_block=False, microbatch_size=None, compile=True):
+    def __init__(self, model, loss_fn, device, param_fraction=1.0, mask_by_block=False, microbatch_size=1, compile=True):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
@@ -30,7 +30,8 @@ class FunctionalModelJac:
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
 
         self.num_loss_args = len(inspect.signature(loss_fn).parameters) - 1  # subtract 'pred'
-        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if (compile and not self.param_fraction) else self.batch_gradient
+        self.compiled_batch_gradient = self.get_compiled_batch_gradient()
+        #if (compile and not self.param_fraction) else self.batch_gradient
 
         # variables to track gradients/losses for optimizer
         self.grads = torch.empty(0).to(device)
@@ -53,7 +54,7 @@ class FunctionalModelJac:
     def evaluate(self, x):
         return self.func_call(self.params, x)
     
-    def loss(self, params, x, *args) -> tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
+    def loss(self, params, x, *args) -> tuple[torch.Tensor,tuple[torch.Tensor,torch.Tensor]]:
         if self.param_mask is not None:
             input_params = self.params.clone()
             input_params[self.param_mask] = params
@@ -62,7 +63,7 @@ class FunctionalModelJac:
 
         pred = self.func_call(input_params, x)
         loss = self.loss_fn(pred,*args)
-        if self.microbatch_size is not None:
+        if self.microbatch_size > 1:
             # assuming loss has shape (B,)
             loss = loss.view(-1, self.microbatch_size).mean(dim=1)
         return loss, (loss, pred)
@@ -84,9 +85,9 @@ class FunctionalModelJac:
         Args:
             batch: Input batch (x, y, ...)
         """
-        if self.param_fraction is not None:
+        if self.param_fraction < 1.0:
             if not self.mask_by_block:
-                self.param_mask = (torch.rand(self.n_params) < self.param_fraction).to(self.params.device)
+                self.param_mask = self.make_param_mask().to(self.params.device)
             else:
                 self.param_mask = self.make_param_mask_byBlock(self.param_fraction).to(self.params.device)
         
@@ -123,6 +124,13 @@ class FunctionalModelJac:
             mod._parameters[leaf] = torch.nn.Parameter(view, requires_grad=requires_grad)
 
         return flat
+
+    def make_param_mask(self) -> torch.Tensor:
+        """Create a random parameter mask selecting a fraction of parameters."""
+        n_active = int(self.param_fraction * self.n_params)
+        param_mask = torch.zeros(self.n_params)
+        param_mask[torch.randperm(self.n_params)[:n_active]] = 1
+        return param_mask.to(torch.bool)
     
     def make_param_mask_byBlock(self, fraction: float) -> torch.Tensor:
         """Create a parameter mask that selects entire parameter blocks (layers) randomly until we hit the desired fraction."""

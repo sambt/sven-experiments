@@ -1,0 +1,18 @@
+name: mnist_microbatch_scan
+num_epochs: 20
+batch_size: 128
+mlp_width: 32
+k_values: [128]
+lrs: [100.0]
+rtol: [1e-2]
+use_rmsprop: true
+alpha_rmsProp: 0.99
+microbatch_sizes: [1,2,4,16,32,64,128]
+param_fractions: [1]
+
+lrs_standard: [1e-3]
+optimizers_standard: [Adam,SGD,RMSprop]
+
+loader_seed: 51159
+model_seed: 47612
+output_file: mnist_microbatch_scan_results

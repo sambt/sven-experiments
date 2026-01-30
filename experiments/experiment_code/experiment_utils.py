@@ -90,6 +90,16 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     else:
         output['optimizers_standard'] = listify(cfg["optimizers_standard"])
 
+    if "microbatch_sizes" in cfg:
+        output['microbatch_sizes'] = listify(cfg["microbatch_sizes"])
+    else:
+        output['microbatch_sizes'] = [None]
+
+    if "param_fractions" in cfg:
+        output['param_fractions'] = listify(cfg["param_fractions"])
+    else:
+        output['param_fractions'] = [None]
+
     return output
 
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any]]:
