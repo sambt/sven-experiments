@@ -20,6 +20,7 @@ rtol: [1e-3, 1e-2, 1e-1]
 svd_mode: [randomized]
 use_rmsprop: true
 alpha_rmsProp: 0.99
+variable_k: false
 
 lrs_standard: [1e-4,1e-3,1e-2]
 optimizers_standard: [Adam, SGD, RMSprop]
