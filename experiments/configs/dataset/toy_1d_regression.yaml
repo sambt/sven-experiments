@@ -2,4 +2,4 @@ _target_: experiments.datasets.Toy1DRegressionDataset
 n_train: 10000
 n_val: 10000
 n_test: 10000
-seed: ${experiment.data_seed}
+seed: ${data_seed}

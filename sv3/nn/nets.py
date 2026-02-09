@@ -1,7 +1,75 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .batchnorm import BatchNorm2d as customBatchNorm2D
+
+
+class MultiLinear(nn.Module):
+    """Batched linear layer: num_models independent linear transforms in parallel.
+
+    Parameters have shape (num_models, out_features, in_features) for weight
+    and (num_models, out_features) for bias, so that all models are computed
+    via a single bmm.
+
+    Input:  (num_models, batch, in_features)
+    Output: (num_models, batch, out_features)
+    """
+    def __init__(self, num_models, in_features, out_features, bias=True):
+        super().__init__()
+        self.num_models = num_models
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.empty(num_models, out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(num_models, out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # Match nn.Linear init: kaiming_uniform per model slice
+        for i in range(self.num_models):
+            nn.init.kaiming_uniform_(self.weight[i], a=math.sqrt(5))
+            if self.bias is not None:
+                fan_in = self.in_features
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.bias[i], -bound, bound)
+
+    def forward(self, x):
+        # x: (num_models, batch, in_features)
+        out = torch.bmm(x, self.weight.transpose(1, 2))
+        if self.bias is not None:
+            out = out + self.bias.unsqueeze(1)
+        return out
+
+
+class MultiMLP(nn.Module):
+    """Ensemble of num_models independent MLPs, batched into a single forward pass.
+
+    Input:  (batch, input_dim)
+    Output: (num_models, batch, output_dim)
+    """
+    def __init__(self, num_models, input_dim, hidden_dims, output_dim, activation=nn.GELU):
+        super().__init__()
+        self.num_models = num_models
+        if isinstance(activation, str):
+            activation = getattr(nn, activation.upper())
+        layers = [MultiLinear(num_models, input_dim, hidden_dims[0]), activation()]
+        for i in range(1, len(hidden_dims)):
+            layers.append(MultiLinear(num_models, hidden_dims[i-1], hidden_dims[i]))
+            layers.append(activation())
+        layers.append(MultiLinear(num_models, hidden_dims[-1], output_dim))
+        self.layers = nn.ModuleList(layers)
+
+    def forward(self, x):
+        # x: (batch, input_dim) -> (num_models, batch, input_dim)
+        x = x.unsqueeze(0).expand(self.num_models, -1, -1)
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dims, output_dim, activation=nn.GELU):

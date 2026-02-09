@@ -17,4 +17,4 @@ config_path=`dirname $config`
 config_name=`basename $config`
 shift
 
-python -m experiments.run_experiment --config-name $config_name "$@"
+python run.py --config-name $config_name "$@"

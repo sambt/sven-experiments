@@ -1,8 +1,0 @@
-defaults:
-  - experiment: polynomial_scan
-  - dataset: random_polynomial
-  - model: mlp_polynomial
-  - _self_
-
-device: cuda
-print_config: true

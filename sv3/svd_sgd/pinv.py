@@ -2,7 +2,7 @@ import torch
 from scipy.sparse.linalg import svds
 
 @torch.no_grad()
-def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1, use_k_fix=True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute pseudo-inverse via truncated SVD. Memory-optimized version.
     Returns VhT, S_inv, U_T to avoid storing full pseudo-inverse matrix.
@@ -19,13 +19,10 @@ def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, ful
             U, S, Vh = truncated_svd(M, k=k, rtol=rtol)
         
         # threshold SVs to be above rtol * max SV
-        kmax = (S > rtol * S[0]).nonzero(as_tuple=True)[0].max()
-        if use_k_fix:
-            kmax = kmax + 1 # add 1 since answer is zero-indexed
+        kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
         U = U[:,:kmax]
         S = S[:kmax]
         Vh = Vh[:kmax,:]
-        #S = torch.where(S > rtol * S[0], S, torch.zeros_like(S))
 
         # compute S_inv with tol threshold
         S_inv = torch.where(S > tol, 1.0 / S, torch.zeros_like(S))

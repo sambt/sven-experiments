@@ -1,6 +1,6 @@
 defaults:
-  - dataset: toy_1d_regression
-  - model: mlp_1d_regression
+  - dataset: random_polynomial
+  - model: mlp_polynomial
   - _self_
 
 name: scan
@@ -11,6 +11,8 @@ print_config: true
 num_epochs: 20
 batch_size: 32
 mlp_width: 16
+input_dim: 6
+degree: 4
 result_id_fields: [mlp_width]
 loss: mse
 
@@ -25,6 +27,6 @@ variable_k: false
 lrs_standard: [1e-4, 1e-3, 1e-2]
 optimizers_standard: [Adam, SGD, RMSprop]
 
-loader_seed: 51159
-model_seed: 4372892
-data_seed: 54631
+loader_seed: 82464
+model_seed: 89929
+data_seed: 57728

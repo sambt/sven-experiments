@@ -1,6 +1,6 @@
 defaults:
-  - dataset: cifar10
-  - model: resnet_cifar10
+  - dataset: mnist
+  - model: mlp_mnist
   - _self_
 
 name: scan
@@ -9,9 +9,9 @@ device: cuda
 print_config: true
 
 num_epochs: 20
-batch_size: 32
-resnet_width: 6
-result_id_fields: [resnet_width]
+batch_size: 64
+mlp_width: 32
+result_id_fields: [mlp_width]
 loss: ce
 
 k_values: [4, 8, 16, 32]
@@ -21,7 +21,7 @@ svd_mode: [randomized]
 use_rmsprop: true
 alpha_rmsProp: 0.99
 
-lrs_standard: [1e-3, 1e-2]
+lrs_standard: [1e-4,1e-3,1e-2]
 optimizers_standard: [Adam, SGD, RMSprop]
 
 loader_seed: 51159

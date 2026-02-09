@@ -1,8 +1,30 @@
 defaults:
   - dataset: mnist
   - model: mlp_mnist
-  - experiment: mnist_microbatch_scan
   - _self_
 
+name: scan
+mode: both
 device: cuda
 print_config: true
+
+num_epochs: 20
+batch_size: 128
+mlp_width: 32
+result_id_fields: [mlp_width]
+loss: ce
+
+k_values: [128]
+lrs: [100.0]
+rtol: [1e-2]
+svd_mode: [randomized]
+use_rmsprop: true
+alpha_rmsProp: 0.99
+microbatch_sizes: [1, 2, 4, 16, 32, 64, 128]
+param_fractions: [1]
+
+lrs_standard: [1e-3]
+optimizers_standard: [Adam, SGD, RMSprop]
+
+loader_seed: 51159
+model_seed: 47612
