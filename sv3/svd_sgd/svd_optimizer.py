@@ -14,7 +14,7 @@ from sv3.nn.torch_func import FunctionalModelJac
 
 class SVDOptimizer:
     def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized',
-                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,compile=True,variable_k=False):
+                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,compile=True,variable_k=False):
         self.model = model 
         self.lr = lr
         self.k = k
@@ -31,6 +31,7 @@ class SVDOptimizer:
         self.svd_mode = svd_mode
         self.variable_k = variable_k
         self.use_rmsprop = use_rmsprop
+        self.rmsprop_post = rmsprop_post
         if use_rmsprop:
             self.alpha_rmsprop = alpha_rmsprop
             self.eps_rmsprop = eps_rmsprop
@@ -45,7 +46,6 @@ class SVDOptimizer:
         delta_p = U_T @ losses  # (k x B) @ (B,) -> (k,)
         delta_p = S_inv * delta_p  # element-wise multiply instead of diag
         delta_p = VhT @ delta_p  # (P x k) @ (k,) -> (P,)
-        #return -lr * delta_p
         return delta_p
     
     @staticmethod
@@ -53,7 +53,6 @@ class SVDOptimizer:
         delta_p = U_T[k:k+1, :] @ losses  # (1 x B) @ (B,) -> (1,)
         delta_p = S_inv[k] * delta_p  # multiply in 1/s_i
         delta_p = VhT[:, k:k+1] @ delta_p  # (P x 1) @ (1,) -> (P,)
-        #return -lr * delta_p.squeeze()
         return delta_p.squeeze()
 
     
@@ -87,7 +86,7 @@ class SVDOptimizer:
         # Use compiled version for matmul operations (fused kernel)
         update = self._compute_delta_compiled(U_T, S_inv, VhT, losses)
 
-        if self.use_rmsprop:
+        if self.use_rmsprop and self.rmsprop_post:
             # update rms estimate
             if self.v is None:
                 self.v = torch.zeros_like(update)
@@ -142,13 +141,13 @@ class SVDOptimizer:
         jacobian = self.model.grads
         losses = self.model.losses
 
-        # If doing rmsprop
-        #if self.use_rmsprop:
-        #    mean_grad = torch.mean(jacobian, dim=0)
-        #    if self.v is None:
-        #        self.v = torch.zeros_like(mean_grad)
-        #    self.v.mul_(self.alpha_rmsprop).addcmul_(mean_grad, mean_grad, value=1 - self.alpha_rmsprop)
-        #    jacobian = jacobian / (torch.sqrt(self.v) + self.eps_rmsprop)
+        # If doing rmsprop and applying it to the *gradients*, rather than the *updates*, then do it before the pinv
+        if self.use_rmsprop and not self.rmsprop_post:
+            mean_grad = torch.mean(jacobian, dim=0)
+            if self.v is None:
+                self.v = torch.zeros_like(mean_grad)
+            self.v.mul_(self.alpha_rmsprop).addcmul_(mean_grad, mean_grad, value=1 - self.alpha_rmsprop)
+            jacobian = jacobian / (torch.sqrt(self.v) + self.eps_rmsprop)
 
         VhT, S_inv, U_T = self._get_pinv(jacobian)
         
