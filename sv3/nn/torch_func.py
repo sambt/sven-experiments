@@ -6,7 +6,7 @@ from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
 class FunctionalModelJac:
-    def __init__(self, model, loss_fn, device, param_fraction=1.0, mask_by_block=False, microbatch_size=1, compile=True):
+    def __init__(self, model, loss_fn, device, param_fraction=1.0, mask_by_block=False, microbatch_size=1):
         """
         model: nn.Module
         loss_fn: function taking (pred, *args) and returning a scalar loss
@@ -30,13 +30,11 @@ class FunctionalModelJac:
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
 
         self.num_loss_args = len(inspect.signature(loss_fn).parameters) - 1  # subtract 'pred'
-        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if compile else self.batch_gradient
 
         # variables to track gradients/losses for optimizer
         self.grads = torch.empty(0).to(device)
         self.losses = torch.empty(0).to(device)
 
-    #@torch.compile
     def func_call(self, params, x):
         param_dict = {}
         start_idx = 0
@@ -78,10 +76,6 @@ class FunctionalModelJac:
         params = self.params[self.param_mask] if self.param_mask is not None else self.params
         grads, (losses, preds) = torch.func.jacrev(self.loss, argnums=0, has_aux=True)(params, x, *args)
         return grads, losses, preds
-    
-    def get_compiled_batch_gradient(self):
-        """Returns a compiled version of batch_gradient for faster execution."""
-        return torch.compile(self.batch_gradient)
 
     def loss_and_grad(self, batch):
         """
@@ -97,7 +91,7 @@ class FunctionalModelJac:
                 self.param_mask = self.make_param_mask_byBlock(self.param_fraction).to(self.params.device)
         
         #grads, losses = self.batch_gradient(batch)
-        grads, losses, preds = self.compiled_batch_gradient(batch)
+        grads, losses, preds = self.batch_gradient(batch)
         
         # Detach immediately to free graph
         grads = grads.detach()
