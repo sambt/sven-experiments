@@ -27,12 +27,14 @@ from sv3.nn import FunctionalModelJac
 SVD_LOSS_FNS = {
     "ce": lambda pred, y: F.cross_entropy(pred, y, reduction='none'),
     "mse": lambda pred, y: ((pred - y) ** 2).sum(dim=-1),
+    "label_regression_10class": lambda pred, y: (pred - F.one_hot(y,num_classes=10).to(pred)).pow(2).sum(dim=1)
 }
 
 # Standard loss returns a scalar
 STANDARD_LOSS_FNS = {
     "ce": lambda: nn.CrossEntropyLoss(),
     "mse": lambda: nn.MSELoss(),
+    "label_regression_10class": lambda pred, y: (pred - F.one_hot(y,num_classes=10).to(pred)).pow(2).sum(dim=1).mean()
 }
 
 
@@ -112,7 +114,7 @@ def scan(cfg):
     assert mode in ("svd", "standard", "both"), f"Unknown mode: {mode}"
 
     loss_key = rcfg.get("loss", "ce")
-    track_acc = loss_key == "ce"  # only track accuracy for classification
+    track_acc = loss_key == "ce" or ("label_regression" in loss_key) # only track accuracy for classification
 
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
     scan_name = HydraConfig.get().job.config_name
