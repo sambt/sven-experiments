@@ -30,8 +30,7 @@ class FunctionalModelJac:
         self.buffers = {name: buffer.detach() for name, buffer in model.named_buffers()}
 
         self.num_loss_args = len(inspect.signature(loss_fn).parameters) - 1  # subtract 'pred'
-        self.compiled_batch_gradient = self.get_compiled_batch_gradient()
-        #if (compile and not self.param_fraction) else self.batch_gradient
+        self.compiled_batch_gradient = self.get_compiled_batch_gradient() if compile else self.batch_gradient
 
         # variables to track gradients/losses for optimizer
         self.grads = torch.empty(0).to(device)

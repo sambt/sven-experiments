@@ -130,6 +130,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
             ypred = model(xb)
             loss = loss_fn(ypred, yb)
             losses['val_init'].append(loss.item())
+            if track_acc:
+                    losses['val_init_acc'].append(_compute_acc(ypred, yb))
             if is_multi is None:
                 is_multi = ypred.dim() == 3
                 if is_multi:
@@ -137,6 +139,9 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                     losses['num_models'] = num_models
     losses['val'].append(np.mean(losses['val_init']))
     del losses['val_init']
+    if track_acc:
+        losses['val_acc'].append(np.mean(losses['val_init_acc']))
+        del losses['val_init_acc']
 
     total_start_time = time.perf_counter()
 
@@ -215,6 +220,8 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
             ypred = model.evaluate(xb)
             loss = loss_fn(ypred, yb).mean()
             losses['val_init'].append(loss.item())
+            if track_acc:
+                    losses['val_init_acc'].append(_compute_acc(ypred, yb))
             if is_multi is None:
                 is_multi = ypred.dim() == 3
                 if is_multi:
@@ -222,6 +229,9 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                     losses['num_models'] = num_models
     losses['val'].append(np.mean(losses['val_init']))
     del losses['val_init']
+    if track_acc:
+        losses['val_acc'].append(np.mean(losses['val_init_acc']))
+        del losses['val_init_acc']
 
     total_start_time = time.perf_counter()
 
