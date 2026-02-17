@@ -32,8 +32,8 @@ SVD_LOSS_FNS = {
 
 # Standard loss returns a scalar
 STANDARD_LOSS_FNS = {
-    "ce": lambda: nn.CrossEntropyLoss(),
-    "mse": lambda: nn.MSELoss(),
+    "ce": nn.CrossEntropyLoss(),
+    "mse": nn.MSELoss(),
     "label_regression_10class": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=10).to(pred)).pow(2).sum(dim=1).mean()
 }
 
