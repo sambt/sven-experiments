@@ -282,7 +282,7 @@ def scan(cfg):
                 hparams['optimizers_standard'],
             )
 
-            loss_fn_standard = STANDARD_LOSS_FNS[loss_key]()
+            loss_fn_standard = STANDARD_LOSS_FNS[loss_key]
 
             for batch_size, lr, optim_name in standard_grid:
                 run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}{seed_str}"
