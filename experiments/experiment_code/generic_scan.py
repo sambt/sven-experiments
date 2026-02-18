@@ -255,7 +255,7 @@ def scan(cfg):
                         "param_fraction": param_fraction,
                         "variable_k": variable_k,
                         "losses": losses,
-                        "svd_info": getattr(optimizer, "svd_info", {}),
+                        "svd_info": getattr(optimizer, "svd_info", {})
                     }
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]

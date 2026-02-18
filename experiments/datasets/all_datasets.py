@@ -35,7 +35,7 @@ class Toy1DRegressionDataset:
         self.test_dataset = TensorDataset(xtest, ytest)
 
 class MNISTDataset:
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/"):
+    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None):
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,)),
@@ -58,6 +58,23 @@ class MNISTDataset:
         train_labels = torch.cat(train_labels, dim=0)
         val_data = torch.cat(val_data, dim=0)
         val_labels = torch.cat(val_labels, dim=0)
+
+        if digits is not None:
+            mask_train = torch.zeros_like(train_labels, dtype=torch.bool)
+            for d in digits:
+                mask_train |= (train_labels == d)
+            train_data = train_data[mask_train]
+            train_labels = train_labels[mask_train]
+
+            mask_val = torch.zeros_like(val_labels, dtype=torch.bool)
+            for d in digits:
+                mask_val |= (val_labels == d)
+            val_data = val_data[mask_val]
+            val_labels = val_labels[mask_val]
+
+            for d,i in zip(digits, range(len(digits))):
+                train_labels[train_labels == d] = i
+                val_labels[val_labels == d] = i
 
         self.train_dataset = TensorDataset(train_data, train_labels)
         self.val_dataset = TensorDataset(val_data, val_labels)

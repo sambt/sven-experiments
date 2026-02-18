@@ -25,7 +25,8 @@ class SVDOptimizer:
         self.svd_info = {
             "svs":[],
             "num_nonzero_svs":[],
-            "k_used":[]
+            "k_used":[],
+            "variable_k_substep_losses":[]
         }
         self.track_svd_info = track_svd_info
         self.svd_mode = svd_mode
@@ -115,6 +116,7 @@ class SVDOptimizer:
         kcurr = 0
         x, *args = batch
         
+        substep_losses = [original_loss]
         while kcurr < kmax:
             update = self._compute_delta_k_compiled(kcurr, U_T, S_inv, VhT, losses)
             self._apply_update(update)
@@ -126,12 +128,10 @@ class SVDOptimizer:
                 # if loss increased, revert update and stop
                 self._apply_update(-update)
                 break
-            #else:
-                # else, keep update and continue
-            #    original_loss = new_loss
-
+                
+            substep_losses.append(new_loss)
             kcurr += 1
-        return kcurr
+        return kcurr, substep_losses
 
     @torch.no_grad()
     def step(self, batch=None):
@@ -158,7 +158,7 @@ class SVDOptimizer:
 
         # update parameters
         if self.variable_k:
-            k_used = self._update_params_variable_k(batch, U_T, S_inv, VhT, losses)
+            k_used, substep_losses = self._update_params_variable_k(batch, U_T, S_inv, VhT, losses)
         else:
             self._update_params(U_T, S_inv, VhT, losses)
         
@@ -168,7 +168,7 @@ class SVDOptimizer:
             self.svd_info["num_nonzero_svs"].append(torch.count_nonzero(S_inv).item())
             if self.variable_k:
                 self.svd_info["k_used"].append(k_used)
-        
+                self.svd_info["variable_k_substep_losses"].append(substep_losses)
         # Aggressive memory cleanup
         del VhT, S_inv, U_T
         del self.model.losses, self.model.grads
