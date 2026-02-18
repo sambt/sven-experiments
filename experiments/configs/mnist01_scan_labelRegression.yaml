@@ -1,6 +1,8 @@
 defaults:
   - dataset: mnist01
   - model: mlp_mnist
+  - override dataset/digits: [0,1]
+  - override model/output_dim: 2
   - _self_
 
 name: scan
