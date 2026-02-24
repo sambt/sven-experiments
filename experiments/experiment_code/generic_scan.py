@@ -276,59 +276,134 @@ def scan(cfg):
             print("Running standard optimizer scan")
             print(f"{'='*80}")
 
-            standard_grid = product(
-                hparams['batch_size'],
-                hparams['lrs_standard'],
-                hparams['optimizers_standard'],
-            )
+            # Build the grid — for LBFGS we also sweep over its specific params
+            has_lbfgs = "LBFGS" in hparams['optimizers_standard']
+            non_lbfgs_optimizers = [o for o in hparams['optimizers_standard'] if o != "LBFGS"]
 
             loss_fn_standard = STANDARD_LOSS_FNS[loss_key]
 
-            for batch_size, lr, optim_name in standard_grid:
-                run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}{seed_str}"
-
-                if run_id in existing_run_ids:
-                    print(f"  [skip] {run_id}")
-                    continue
-
-                print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}")
-
-                model = instantiate(cfg.model)
-                model.load_state_dict(init_state)
-                model = model.to(device)
-
-                optimizer = build_standard_optimizer(model, optim_name, lr)
-
-                train_loader = DataLoader(
-                    dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                    generator=torch.Generator().manual_seed(loader_seed),
-                )
-                val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-
-                model, losses = train_loop_standard(
-                    model, optimizer, loss_fn_standard,
-                    train_loader, val_loader,
-                    rcfg["num_epochs"], device, track_acc=track_acc,
+            # --- Non-LBFGS optimizers (original grid) ---
+            if non_lbfgs_optimizers:
+                standard_grid = product(
+                    hparams['batch_size'],
+                    hparams['lrs_standard'],
+                    non_lbfgs_optimizers,
                 )
 
-                result = {
-                    "run_id": run_id,
-                    "optimizer": optim_name,
-                    "batch_size": batch_size,
-                    "k_fraction": None,
-                    "k": None,
-                    "lr": lr,
-                    "rtol": None,
-                    "model_seed": model_seed,
-                    "loader_seed": loader_seed,
-                    "svd_mode": None,
-                    "svd_info": None,
-                    "losses": losses,
-                }
-                for f in rcfg.get("result_id_fields", []):
-                    result[f] = rcfg[f]
+                for batch_size, lr, optim_name in standard_grid:
+                    run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}{seed_str}"
 
-                _append_result(jsonl_path, result)
-                existing_run_ids.add(run_id)
+                    if run_id in existing_run_ids:
+                        print(f"  [skip] {run_id}")
+                        continue
+
+                    print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}")
+
+                    model = instantiate(cfg.model)
+                    model.load_state_dict(init_state)
+                    model = model.to(device)
+
+                    optimizer = build_standard_optimizer(model, optim_name, lr)
+
+                    train_loader = DataLoader(
+                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                        generator=torch.Generator().manual_seed(loader_seed),
+                    )
+                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+
+                    model, losses = train_loop_standard(
+                        model, optimizer, loss_fn_standard,
+                        train_loader, val_loader,
+                        rcfg["num_epochs"], device, track_acc=track_acc,
+                    )
+
+                    result = {
+                        "run_id": run_id,
+                        "optimizer": optim_name,
+                        "batch_size": batch_size,
+                        "k_fraction": None,
+                        "k": None,
+                        "lr": lr,
+                        "rtol": None,
+                        "model_seed": model_seed,
+                        "loader_seed": loader_seed,
+                        "svd_mode": None,
+                        "svd_info": None,
+                        "losses": losses,
+                    }
+                    for f in rcfg.get("result_id_fields", []):
+                        result[f] = rcfg[f]
+
+                    _append_result(jsonl_path, result)
+                    existing_run_ids.add(run_id)
+
+            # --- LBFGS optimizer (separate grid with LBFGS-specific params) ---
+            if has_lbfgs:
+                lbfgs_grid = product(
+                    hparams['batch_size'],
+                    hparams['lrs_lbfgs'],
+                    hparams['lbfgs_max_iter'],
+                    hparams['lbfgs_history_size'],
+                    hparams['lbfgs_line_search_fn'],
+                )
+
+                for batch_size, lr, max_iter, history_size, line_search_fn in lbfgs_grid:
+                    run_id = (
+                        f"std_bs{batch_size}{id_str}_lr{lr}_optimLBFGS"
+                        f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
+                    )
+
+                    if run_id in existing_run_ids:
+                        print(f"  [skip] {run_id}")
+                        continue
+
+                    print(f"\nLBFGS: bs={batch_size}, lr={lr}, max_iter={max_iter}, "
+                          f"history_size={history_size}, line_search={line_search_fn}")
+
+                    model = instantiate(cfg.model)
+                    model.load_state_dict(init_state)
+                    model = model.to(device)
+
+                    lbfgs_kwargs = {
+                        "max_iter": max_iter,
+                        "history_size": history_size,
+                        "line_search_fn": line_search_fn if line_search_fn != "none" else None,
+                    }
+                    optimizer = build_standard_optimizer(model, "LBFGS", lr, **lbfgs_kwargs)
+
+                    train_loader = DataLoader(
+                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                        generator=torch.Generator().manual_seed(loader_seed),
+                    )
+                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+
+                    model, losses = train_loop_standard(
+                        model, optimizer, loss_fn_standard,
+                        train_loader, val_loader,
+                        rcfg["num_epochs"], device, track_acc=track_acc,
+                    )
+
+                    result = {
+                        "run_id": run_id,
+                        "optimizer": "LBFGS",
+                        "batch_size": batch_size,
+                        "k_fraction": None,
+                        "k": None,
+                        "lr": lr,
+                        "rtol": None,
+                        "model_seed": model_seed,
+                        "loader_seed": loader_seed,
+                        "svd_mode": None,
+                        "svd_info": None,
+                        "lbfgs_max_iter": max_iter,
+                        "lbfgs_history_size": history_size,
+                        "lbfgs_line_search_fn": line_search_fn,
+                        "losses": losses,
+                    }
+                    for f in rcfg.get("result_id_fields", []):
+                        result[f] = rcfg[f]
+
+                    _append_result(jsonl_path, result)
+                    existing_run_ids.add(run_id)
 
     print(f"\nScan complete. Results in {jsonl_path}")

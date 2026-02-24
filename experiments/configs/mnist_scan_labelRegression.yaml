@@ -23,7 +23,8 @@ alpha_rmsProp: 0.99
 variable_k: false
 
 lrs_standard: [1e-4,1e-3,1e-2]
-optimizers_standard: [Adam, SGD, RMSprop]
+optimizers_standard: [Adam, SGD, RMSprop, LBFGS]
+lrs_lbfgs: [0.1, 0.5, 1.0]
 
 loader_seed: 51159
 model_seed: 47612

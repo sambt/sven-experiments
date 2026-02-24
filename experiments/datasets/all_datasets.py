@@ -4,6 +4,7 @@ from torchvision.datasets import MNIST, CIFAR10
 from torchvision import transforms
 import numpy as np
 from itertools import combinations_with_replacement, product
+import os
 
 class Toy1DRegressionDataset:
     def __init__(self, n_train=10_000, n_val=10_000, n_test=10_000, seed=0):
@@ -36,6 +37,8 @@ class Toy1DRegressionDataset:
 
 class MNISTDataset:
     def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None):
+        if not os.path.isdir(ROOT):
+            ROOT = "./torch_datasets/"
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,)),

@@ -100,6 +100,13 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     else:
         output['param_fractions'] = [None]
 
+    # LBFGS-specific hyperparameters (only used when "LBFGS" is in optimizers_standard)
+    # Separate LR list for LBFGS since it typically needs much larger LRs than Adam/SGD
+    output['lrs_lbfgs'] = listify(cfg.get("lrs_lbfgs", output['lrs_standard']))
+    output['lbfgs_max_iter'] = listify(cfg.get("lbfgs_max_iter", 20))
+    output['lbfgs_history_size'] = listify(cfg.get("lbfgs_history_size", 100))
+    output['lbfgs_line_search_fn'] = listify(cfg.get("lbfgs_line_search_fn", "strong_wolfe"))
+
     return output
 
 def _compute_acc(ypred, yb):
@@ -117,9 +124,15 @@ def _compute_per_model_acc(ypred, yb):
     preds = torch.argmax(ypred, dim=2)  # (M, B)
     return (preds == yb.unsqueeze(0)).float().mean(dim=1).tolist()
 
+def _is_closure_optimizer(optimizer):
+    """Check if an optimizer requires a closure (e.g. LBFGS)."""
+    return isinstance(optimizer, torch.optim.LBFGS)
+
+
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
+    uses_closure = _is_closure_optimizer(optimizer)
 
     print("Using device {}".format(device))
 
@@ -153,11 +166,29 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
         for xb, yb in train_loader:
             batch_start_time = time.perf_counter()
             xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            ypred = model(xb)
-            loss = loss_fn(ypred, yb)
-            loss.backward()
-            optimizer.step()
+
+            if uses_closure:
+                # LBFGS requires a closure that re-evaluates the model
+                closure_loss = [None]
+                closure_ypred = [None]
+                def closure():
+                    optimizer.zero_grad()
+                    ypred = model(xb)
+                    loss = loss_fn(ypred, yb)
+                    loss.backward()
+                    closure_loss[0] = loss
+                    closure_ypred[0] = ypred
+                    return loss
+                optimizer.step(closure)
+                loss = closure_loss[0]
+                ypred = closure_ypred[0]
+            else:
+                optimizer.zero_grad()
+                ypred = model(xb)
+                loss = loss_fn(ypred, yb)
+                loss.backward()
+                optimizer.step()
+
             batch_end_time = time.perf_counter()
             losses['batch_times_train'].append(batch_end_time - batch_start_time)
             epoch_losses['train'].append(loss.item())
@@ -301,4 +332,11 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
 
 def build_standard_optimizer(model, optim_name, lr, **kwargs):
     """Construct a standard PyTorch optimizer by name."""
+    if optim_name == "LBFGS":
+        # LBFGS has specific parameters; filter out irrelevant kwargs
+        lbfgs_kwargs = {
+            k: kwargs[k] for k in ("max_iter", "history_size", "line_search_fn")
+            if k in kwargs
+        }
+        return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
     return getattr(torch.optim, optim_name)(model.parameters(), lr=lr, **kwargs)
