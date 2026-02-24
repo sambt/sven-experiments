@@ -5,7 +5,7 @@ from torch.func import vmap, grad, functional_call
 from sv3.utils.perf_tracking import get_gpu_memory_mb
 import inspect
     
-class FunctionalModelJac:
+class SvenWrapper:
     def __init__(self, model, loss_fn, device, param_fraction=1.0, mask_by_block=False, microbatch_size=1):
         """
         model: nn.Module

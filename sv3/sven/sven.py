@@ -10,10 +10,10 @@ from collections import defaultdict
 
 from sv3.utils.perf_tracking import get_gpu_memory_mb
 from .pinv import pinv
-from sv3.nn.torch_func import FunctionalModelJac
+from sv3.nn.sven_wrapper import SvenWrapper
 
-class SVDOptimizer:
-    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='torch',
+class Sven:
+    def __init__(self, model:SvenWrapper, lr, k, rtol, track_svd_info=False, svd_mode='torch',
                  power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,variable_k=False):
         self.model = model 
         self.lr = lr

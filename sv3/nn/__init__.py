@@ -1,2 +1,2 @@
 from .nets import MLP, MultiMLP, SmallResNet, SmallCNN
-from .torch_func import FunctionalModelJac
+from .sven_wrapper import SvenWrapper
