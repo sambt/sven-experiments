@@ -16,8 +16,8 @@ from .experiment_utils import (
     train_loop_svd, train_loop_standard, set_seed,
     process_hparam_config, build_standard_optimizer,
 )
-from sv3.svd_sgd import SVDOptimizer
-from sv3.nn import FunctionalModelJac
+from sv3.sven import Sven
+from sv3.nn import SvenWrapper
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +217,8 @@ def scan(cfg):
 
                     mb = microbatch_size if microbatch_size is not None else 1
                     pf = param_fraction if param_fraction is not None else 1.0
-                    train_model = FunctionalModelJac(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
-                    optimizer = SVDOptimizer(
+                    train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
+                    optimizer = Sven(
                         train_model, lr=lr, k=k, rtol=rtol,
                         track_svd_info=True, svd_mode=svd_mode,
                         use_rmsprop=use_rmsprop, alpha_rmsprop=alpha_rmsprop,
