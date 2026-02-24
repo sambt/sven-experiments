@@ -17,7 +17,7 @@ loss: ce
 k_values: [128]
 lrs: [100.0]
 rtol: [1e-2]
-svd_mode: [randomized]
+svd_mode: [torch]
 use_rmsprop: true
 alpha_rmsProp: 0.99
 microbatch_sizes: [1, 2, 4, 16, 32, 64, 128]

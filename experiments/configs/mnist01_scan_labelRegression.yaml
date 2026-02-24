@@ -24,7 +24,7 @@ loss: label_regression
 k_values: [4, 8, 16, 32, 48, 64]
 lrs: [0.05,0.1,0.5]
 rtol: [1e-4, 1e-3, 1e-2]
-svd_mode: [randomized]
+svd_mode: [torch]
 use_rmsprop: false
 alpha_rmsProp: 0.99
 variable_k: false

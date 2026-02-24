@@ -13,15 +13,13 @@ from .pinv import pinv
 from sv3.nn.torch_func import FunctionalModelJac
 
 class SVDOptimizer:
-    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='randomized',
-                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,compile=True,variable_k=False):
+    def __init__(self, model:FunctionalModelJac, lr, k, rtol, track_svd_info=False, svd_mode='torch',
+                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,variable_k=False):
         self.model = model 
         self.lr = lr
         self.k = k
         self.rtol = rtol
-        self.power_iterations = power_iterations # number of power iterations for randomized SVD
-        self._compute_delta_compiled = torch.compile(self._compute_delta) if compile else self._compute_delta
-        self._compute_delta_k_compiled = torch.compile(self._compute_delta_k) if compile else self._compute_delta_k
+        self.power_iterations = power_iterations # number of power iterations for randomized SVD (if using)
         self.svd_info = {
             "svs":[],
             "num_nonzero_svs":[],
@@ -59,18 +57,7 @@ class SVDOptimizer:
     
     def _get_pinv(self, jacobian):
         # Get SVD components (memory efficient - returns views/slices)
-        if self.svd_mode == 'randomized':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=True, scipy=False, power_iter=self.power_iterations)
-        elif self.svd_mode == 'scipy':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=True)
-        elif self.svd_mode == 'full':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=True, randomized=False, scipy=False)
-        elif self.svd_mode == 'lobpcg':
-            VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, full=False, randomized=False, scipy=False, power_iter=self.power_iterations)
-        else:
-            raise ValueError(f"Unknown svd_mode: {self.svd_mode}")
-            # Vh.T is (P x k), S_inv is (k,), U.T is (k x B)
-        
+        VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, mode=self.svd_mode, power_iter=self.power_iterations)
         return VhT, S_inv, U_T
     
     def _apply_update(self, update):
@@ -85,7 +72,7 @@ class SVDOptimizer:
     @torch.no_grad()
     def _update_params(self, U_T, S_inv, VhT, losses):
         # Use compiled version for matmul operations (fused kernel)
-        update = self._compute_delta_compiled(U_T, S_inv, VhT, losses)
+        update = self._compute_delta(U_T, S_inv, VhT, losses)
 
         if self.use_rmsprop and self.rmsprop_post:
             # update rms estimate
@@ -118,7 +105,7 @@ class SVDOptimizer:
         
         substep_losses = [original_loss]
         while kcurr < kmax:
-            update = self._compute_delta_k_compiled(kcurr, U_T, S_inv, VhT, losses)
+            update = self._compute_delta_k(kcurr, U_T, S_inv, VhT, losses)
             self._apply_update(update)
 
             # evaluate new train loss after update

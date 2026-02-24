@@ -17,7 +17,7 @@ loss: ce
 k_values: [4, 8, 16, 32, 48, 64]
 lrs: [1.0,10.0,50.0,100.0]
 rtol: [1e-3, 1e-2, 1e-1]
-svd_mode: [randomized]
+svd_mode: [torch]
 use_rmsprop: true
 alpha_rmsProp: 0.99
 variable_k: false

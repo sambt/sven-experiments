@@ -2,21 +2,22 @@ import torch
 from scipy.sparse.linalg import svds
 
 @torch.no_grad()
-def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, full=False, randomized=True, scipy=False, power_iter: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, mode='randomized', power_iter: int = 1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute pseudo-inverse via truncated SVD. Memory-optimized version.
     Returns VhT, S_inv, U_T to avoid storing full pseudo-inverse matrix.
     """
+    assert mode in ['randomized', 'scipy', 'torch', 'lobpcg'], "Invalid mode for pinv"
     with torch.no_grad():
         M = M.detach()
-        if full:
-            U, S, Vh = truncated_svd_full(M,k=k,rtol=rtol)
-        elif randomized:
+        if mode == 'torch':
+            U, S, Vh = truncated_svd_torch(M,k=k,rtol=rtol)
+        elif mode == 'randomized':
             U, S, Vh = randomized_SVD(M, k=k, rtol=rtol, q=power_iter)
-        elif scipy:
+        elif mode == 'scipy':
             U, S, Vh = truncated_svd_scipy(M,k=k,rtol=rtol)
-        else:
-            U, S, Vh = truncated_svd(M, k=k, rtol=rtol)
+        elif mode == 'lobpcg':
+            U, S, Vh = truncated_svd_lobpcg(M, k=k, rtol=rtol)
         
         # threshold SVs to be above rtol * max SV
         kmax = 1 + (S > rtol * S[0]).nonzero(as_tuple=True)[0].max() # add 1 since answer is zero-indexed
@@ -30,7 +31,7 @@ def pinv(M: torch.Tensor, k: int = 2, tol: float = 1e-10, rtol:float = 1e-3, ful
     return Vh.T.detach(), S_inv.detach(), U.T.detach()
 
 @torch.no_grad()
-def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def truncated_svd_lobpcg(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     with torch.no_grad():
         A = A.detach()
         m, n = A.shape
@@ -55,18 +56,16 @@ def truncated_svd(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.T
         
         return U.detach(), s.detach(), Vh.detach()
 
-@torch.compile
 @torch.no_grad()     
-def truncated_svd_full(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def truncated_svd_torch(A: torch.Tensor, k: int = 2, rtol:float=1e-3) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     with torch.no_grad():
         A = A.detach()
-        U, S, Vh = torch.linalg.svd(A, full_matrices=True)
+        U, S, Vh = torch.linalg.svd(A, full_matrices=False)
         U = U[:,:k]
         S = S[:k]
         Vh = Vh[:k,:]
         return U.detach(), S.detach(), Vh.detach()
 
-@torch.compile
 @torch.no_grad()
 def randomized_SVD(A, k, p=5, q=1, rtol:float=1e-3) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
