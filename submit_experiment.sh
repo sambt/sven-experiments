@@ -14,7 +14,7 @@ cd /n/home11/sambt/iaifi/sv3/
 
 config=$1
 config_path=`dirname $config`
-config_name=`basename $config`
+config_name=`basename $config .yaml`
 shift
 
 python run.py --config-name $config_name "$@"
