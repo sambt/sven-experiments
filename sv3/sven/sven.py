@@ -14,7 +14,7 @@ from sv3.nn.sven_wrapper import SvenWrapper
 
 class Sven:
     def __init__(self, model:SvenWrapper, lr, k, rtol, track_svd_info=False, svd_mode='torch',
-                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,variable_k=False):
+                 power_iterations=1,use_rmsprop=False,alpha_rmsprop=0.99,eps_rmsprop=1e-8,mu_rmsprop=0,rmsprop_post=False,variable_k=False,eps_polyak=1e-8,f_star_polyak=0.0,max_lr_polyak=1.0):
         self.model = model 
         self.lr = lr
         self.k = k
@@ -31,6 +31,9 @@ class Sven:
         self.variable_k = variable_k
         self.use_rmsprop = use_rmsprop
         self.rmsprop_post = rmsprop_post
+        self.eps_polyak = eps_polyak
+        self.f_star_polyak = f_star_polyak
+        self.max_lr_polyak = max_lr_polyak
         if use_rmsprop:
             self.alpha_rmsprop = alpha_rmsprop
             self.eps_rmsprop = eps_rmsprop
@@ -59,10 +62,17 @@ class Sven:
         # Get SVD components (memory efficient - returns views/slices)
         VhT, S_inv, U_T = pinv(jacobian, k=self.k, rtol=self.rtol, mode=self.svd_mode, power_iter=self.power_iterations)
         return VhT, S_inv, U_T
+
+    def _get_lr(self):
+        if type(self.lr) == str and self.lr.lower() == 'polyak':
+            lr = (self.model.losses.mean().item() - self.f_star_polyak) / (self.model.grads.mean(dim=0).pow(2).sum() + self.eps_polyak)
+            return lr
+        else:
+            return self.lr
     
     def _apply_update(self, update):
         # apply direction and learning rate
-        update = -self.lr * update
+        update = -self._get_lr() * update
         # apply the update
         if self.model.param_mask is not None:
             self.model.params[self.model.param_mask] += update

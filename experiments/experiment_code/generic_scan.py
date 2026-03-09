@@ -276,9 +276,10 @@ def scan(cfg):
             print("Running standard optimizer scan")
             print(f"{'='*80}")
 
-            # Build the grid — for LBFGS we also sweep over its specific params
+            # Build the grid — LBFGS and PolyakSGD get their own dedicated scan blocks
             has_lbfgs = "LBFGS" in hparams['optimizers_standard']
-            non_lbfgs_optimizers = [o for o in hparams['optimizers_standard'] if o != "LBFGS"]
+            has_polyak = "PolyakSGD" in hparams['optimizers_standard']
+            non_lbfgs_optimizers = [o for o in hparams['optimizers_standard'] if o not in ("LBFGS", "PolyakSGD")]
 
             loss_fn_standard = STANDARD_LOSS_FNS[loss_key]
 
@@ -398,6 +399,69 @@ def scan(cfg):
                         "lbfgs_max_iter": max_iter,
                         "lbfgs_history_size": history_size,
                         "lbfgs_line_search_fn": line_search_fn,
+                        "losses": losses,
+                    }
+                    for f in rcfg.get("result_id_fields", []):
+                        result[f] = rcfg[f]
+
+                    _append_result(jsonl_path, result)
+                    existing_run_ids.add(run_id)
+
+            # --- PolyakSGD optimizer (no LR sweep) ---
+            if has_polyak:
+                polyak_grid = product(
+                    hparams['batch_size'],
+                    hparams['polyak_f_star'],
+                    hparams['polyak_max_lr'],
+                    hparams['polyak_eps'],
+                )
+
+                for batch_size, f_star, max_lr, eps in polyak_grid:
+                    run_id = (
+                        f"std_bs{batch_size}{id_str}_optimPolyakSGD"
+                        f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
+                    )
+
+                    if run_id in existing_run_ids:
+                        print(f"  [skip] {run_id}")
+                        continue
+
+                    print(f"\nPolyakSGD: bs={batch_size}, f_star={f_star}, max_lr={max_lr}, eps={eps}")
+
+                    model = instantiate(cfg.model)
+                    model.load_state_dict(init_state)
+                    model = model.to(device)
+
+                    polyak_kwargs = {"f_star": f_star, "max_lr": max_lr, "eps": eps}
+                    optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None, **polyak_kwargs)
+
+                    train_loader = DataLoader(
+                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                        generator=torch.Generator().manual_seed(loader_seed),
+                    )
+                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+
+                    model, losses = train_loop_standard(
+                        model, optimizer, loss_fn_standard,
+                        train_loader, val_loader,
+                        rcfg["num_epochs"], device, track_acc=track_acc,
+                    )
+
+                    result = {
+                        "run_id": run_id,
+                        "optimizer": "PolyakSGD",
+                        "batch_size": batch_size,
+                        "k_fraction": None,
+                        "k": None,
+                        "lr": None,
+                        "rtol": None,
+                        "model_seed": model_seed,
+                        "loader_seed": loader_seed,
+                        "svd_mode": None,
+                        "svd_info": None,
+                        "polyak_f_star": f_star,
+                        "polyak_max_lr": max_lr,
+                        "polyak_eps": eps,
                         "losses": losses,
                     }
                     for f in rcfg.get("result_id_fields", []):
