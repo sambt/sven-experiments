@@ -115,6 +115,7 @@ def scan(cfg):
 
     loss_key = rcfg.get("loss", "ce")
     track_acc = loss_key == "ce" or ("label_regression" in loss_key) # only track accuracy for classification
+    track_param_norm = rcfg.get("track_param_norm", False)
 
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
     scan_name = HydraConfig.get().job.config_name
@@ -236,6 +237,7 @@ def scan(cfg):
                         train_model, optimizer, loss_fn_svd,
                         train_loader, val_loader,
                         rcfg["num_epochs"], device, track_acc=track_acc,
+                        track_param_norm=track_param_norm,
                     )
 
                     result = {
@@ -288,22 +290,32 @@ def scan(cfg):
                     hparams['batch_size'],
                     hparams['lrs_standard'],
                     non_lbfgs_optimizers,
+                    hparams['weight_decays'],
                 )
 
-                for batch_size, lr, optim_name in standard_grid:
-                    run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}{seed_str}"
+                for batch_size, lr, optim_name, weight_decay in standard_grid:
+                    # Non-zero weight decay is only meaningful for AdamW
+                    if optim_name != "AdamW" and weight_decay != 0.0:
+                        continue
+
+                    run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}"
+                    if weight_decay != 0.0:
+                        run_id += f"_wd{weight_decay}"
+                    run_id += seed_str
 
                     if run_id in existing_run_ids:
                         print(f"  [skip] {run_id}")
                         continue
 
-                    print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}")
+                    wd_str = f", wd={weight_decay}" if weight_decay != 0.0 else ""
+                    print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}{wd_str}")
 
                     model = instantiate(cfg.model)
                     model.load_state_dict(init_state)
                     model = model.to(device)
 
-                    optimizer = build_standard_optimizer(model, optim_name, lr)
+                    optimizer = build_standard_optimizer(model, optim_name, lr,
+                                                         weight_decay=weight_decay)
 
                     train_loader = DataLoader(
                         dataset.train_dataset, batch_size=batch_size, shuffle=True,
@@ -315,6 +327,7 @@ def scan(cfg):
                         model, optimizer, loss_fn_standard,
                         train_loader, val_loader,
                         rcfg["num_epochs"], device, track_acc=track_acc,
+                        track_param_norm=track_param_norm,
                     )
 
                     result = {
@@ -325,6 +338,7 @@ def scan(cfg):
                         "k": None,
                         "lr": lr,
                         "rtol": None,
+                        "weight_decay": weight_decay,
                         "model_seed": model_seed,
                         "loader_seed": loader_seed,
                         "svd_mode": None,

@@ -107,6 +107,10 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     output['lbfgs_history_size'] = listify(cfg.get("lbfgs_history_size", 100))
     output['lbfgs_line_search_fn'] = listify(cfg.get("lbfgs_line_search_fn", "strong_wolfe"))
 
+    # Weight decay sweep — default [0.0] so existing configs are unaffected.
+    # Non-zero values are only applied to AdamW in the scan loop.
+    output['weight_decays'] = listify(cfg.get("weight_decays", [0.0]))
+
     return output
 
 def _compute_acc(ypred, yb):
@@ -129,7 +133,7 @@ def _is_closure_optimizer(optimizer):
     return isinstance(optimizer, torch.optim.LBFGS)
 
 
-def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any]]:
+def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
     uses_closure = _is_closure_optimizer(optimizer)
@@ -228,6 +232,10 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
         # Save per-model epoch averages (each is a list of M values)
         for k,v in epoch_pm.items():
             losses[f'{k}_per_model'].append(np.mean(v, axis=0).tolist())
+        if track_param_norm:
+            with torch.no_grad():
+                pnorm = torch.cat([p.detach().flatten() for p in model.parameters()]).norm().item()
+            losses['param_norm'].append(pnorm)
 
     total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy
@@ -240,7 +248,7 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
 
     return model, losses
 
-def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any], Any]:
+def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any], Any]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
 
@@ -318,6 +326,8 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
             # Save per-model epoch averages (each is a list of M values)
             for k_name, v in epoch_pm.items():
                 losses[f'{k_name}_per_model'].append(np.mean(v, axis=0).tolist())
+            if track_param_norm:
+                losses['param_norm'].append(model.params.norm().item())
 
     total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy

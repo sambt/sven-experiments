@@ -20,3 +20,7 @@ def set_style():
     })
     
 lr_labels = {10**k: f"10^{{{k}}}" for k in range(-10,10)}
+lr_labels[0.5] = "0.5"
+lr_labels[0.0003] = "3 \\times 10^{-4}"
+lr_labels[0.003] = "3 \\times 10^{-3}"
+lr_labels[0.03] = "3 \\times 10^{-2}"
