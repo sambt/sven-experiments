@@ -15,19 +15,19 @@ result_id_fields: [mlp_width]
 loss: mse
 
 k_values: [1,2,4,8,16,32]
-lrs: [0.05, 0.1, 0.5]
+lrs: [0.05, 0.1, 0.5, 1.0, "polyak"]
 rtol: [1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
 use_rmsprop: false
 alpha_rmsProp: 0.99
 variable_k: false
 
-lrs_standard: [1e-4, 1e-3, 1e-2]
-optimizers_standard: [Adam, SGD, RMSprop, LBFGS]
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, SGD, RMSprop, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1,2,5,10,15,20]
-lbfgs_line_search_fn: [strong_wolfe, null]
-lbfgs_history_size: [100]
+lbfgs_max_iter: [1,2,5,10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [1,2,5,10]
 
 loader_seed: 51159
 model_seed: 4372892

@@ -13,6 +13,7 @@ import tempfile
 import shutil
 import time
 import random
+import sv3
 
 def set_seed(seed: int, deterministic: bool = False):
     """
@@ -107,9 +108,16 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     output['lbfgs_history_size'] = listify(cfg.get("lbfgs_history_size", 100))
     output['lbfgs_line_search_fn'] = listify(cfg.get("lbfgs_line_search_fn", "strong_wolfe"))
 
+
     # Weight decay sweep — default [0.0] so existing configs are unaffected.
     # Non-zero values are only applied to AdamW in the scan loop.
     output['weight_decays'] = listify(cfg.get("weight_decays", [0.0]))
+
+    # PolyakSGD-specific hyperparameters (only used when "PolyakSGD" is in optimizers_standard)
+    # No LR sweep — the step size is computed automatically from the loss
+    output['polyak_f_star'] = listify(cfg.get("polyak_f_star", 0.0))
+    output['polyak_max_lr'] = listify(cfg.get("polyak_max_lr", 1.0))
+    output['polyak_eps'] = listify(cfg.get("polyak_eps", 1e-8))
 
     return output
 
@@ -130,7 +138,7 @@ def _compute_per_model_acc(ypred, yb):
 
 def _is_closure_optimizer(optimizer):
     """Check if an optimizer requires a closure (e.g. LBFGS)."""
-    return isinstance(optimizer, torch.optim.LBFGS)
+    return isinstance(optimizer, torch.optim.LBFGS) or isinstance(optimizer, sv3.sven.PolyakSGD)
 
 
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any]]:
@@ -340,7 +348,7 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
 
     return model, losses, optimizer
 
-def build_standard_optimizer(model, optim_name, lr, **kwargs):
+def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
     """Construct a standard PyTorch optimizer by name."""
     if optim_name == "LBFGS":
         # LBFGS has specific parameters; filter out irrelevant kwargs
@@ -349,4 +357,7 @@ def build_standard_optimizer(model, optim_name, lr, **kwargs):
             if k in kwargs
         }
         return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
-    return getattr(torch.optim, optim_name)(model.parameters(), lr=lr, **kwargs)
+    elif optim_name == "PolyakSGD":
+        return sv3.sven.PolyakSGD(model.parameters(), **kwargs)
+    else:
+        return getattr(torch.optim, optim_name)(model.parameters(), lr=lr, **kwargs)
