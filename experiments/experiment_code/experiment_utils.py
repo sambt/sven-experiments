@@ -14,6 +14,7 @@ import shutil
 import time
 import random
 import sv3
+from experiments.optimizers.baselines import Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD
 
 def set_seed(seed: int, deterministic: bool = False):
     """
@@ -136,10 +137,16 @@ def _is_closure_optimizer(optimizer):
     return isinstance(optimizer, torch.optim.LBFGS) or isinstance(optimizer, sv3.sven.PolyakSGD)
 
 
+def _is_schedule_free_optimizer(optimizer):
+    """Check if an optimizer uses the schedule-free interface (train/eval modes)."""
+    return getattr(optimizer, 'schedule_free', False)
+
+
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
     uses_closure = _is_closure_optimizer(optimizer)
+    is_sf = _is_schedule_free_optimizer(optimizer)
 
     print("Using device {}".format(device))
 
@@ -209,6 +216,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                 if is_multi:
                     epoch_pm['train_acc'].append(_compute_per_model_acc(ypred.detach(), yb))
         model.eval()
+        if is_sf:
+            optimizer.eval()  # switch schedule-free params from y -> x
         with torch.no_grad():
             for xb, yb in val_loader:
                 batch_start_time = time.perf_counter()
@@ -225,6 +234,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                     epoch_losses['val_acc'].append(_compute_acc(ypred, yb))
                     if is_multi:
                         epoch_pm['val_acc'].append(_compute_per_model_acc(ypred, yb))
+        if is_sf:
+            optimizer.train()  # switch schedule-free params back from x -> y
         epoch_end_time = time.perf_counter()
         losses['epoch_times'].append(epoch_end_time - epoch_start_time)
         # Save batch-wise losses
@@ -337,10 +348,17 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
 
     return model, losses, optimizer
 
+_CUSTOM_OPTIMIZERS = {
+    "Lion": Lion,
+    "Muon": Muon,
+    "ScheduleFreeAdamW": ScheduleFreeAdamW,
+    "ScheduleFreeSGD": ScheduleFreeSGD,
+}
+
+
 def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
     """Construct a standard PyTorch optimizer by name."""
     if optim_name == "LBFGS":
-        # LBFGS has specific parameters; filter out irrelevant kwargs
         lbfgs_kwargs = {
             k: kwargs[k] for k in ("max_iter", "history_size", "line_search_fn")
             if k in kwargs
@@ -348,5 +366,8 @@ def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
         return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
     elif optim_name == "PolyakSGD":
         return sv3.sven.PolyakSGD(model.parameters(), **kwargs)
+    elif optim_name in _CUSTOM_OPTIMIZERS:
+        cls = _CUSTOM_OPTIMIZERS[optim_name]
+        return cls(model.parameters(), lr=lr, **kwargs)
     else:
         return getattr(torch.optim, optim_name)(model.parameters(), lr=lr, **kwargs)

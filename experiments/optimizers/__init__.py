@@ -1,4 +1,5 @@
-from .svd import build_svd_optimizer
-from .adam import build_adam_optimizer
+# svd.py and adam.py use a register_optimizer() stub that is never populated at runtime;
+# they are not imported through this __init__ to avoid a circular import.
+from .baselines import Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD
 
-__all__ = ["build_svd_optimizer", "build_adam_optimizer"]
+__all__ = ["Lion", "Muon", "ScheduleFreeAdamW", "ScheduleFreeSGD"]
