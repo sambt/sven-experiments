@@ -34,6 +34,6 @@ weight_decays: [0.0, 1e-4, 1e-3, 1e-2]   # non-zero values applied to AdamW only
 track_param_norm: true
 
 # Multiple seeds for statistical reliability
-seeds: [1, 2, 3, 4, 5]
+model_seeds: [1, 2, 3, 4, 5]
 loader_seed: 82464
 data_seed: 57728

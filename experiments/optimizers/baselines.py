@@ -1,6 +1,6 @@
 """
 Baseline optimizers for Sven comparison experiments.
-Implements: Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD
+Implements: Lion, ScheduleFreeAdamW, ScheduleFreeSGD
 """
 
 import torch
@@ -55,83 +55,6 @@ class Lion(Optimizer):
 
                 # Momentum update (different from the update above)
                 exp_avg.mul_(beta2).add_(grad, alpha=1 - beta2)
-
-        return loss
-
-
-# ---------------------------------------------------------------------------
-# Muon (Jordan et al., 2024)
-# SGD with Nesterov momentum + Newton-Schulz orthogonalization for 2D params
-# ---------------------------------------------------------------------------
-
-def _zeropower_via_newtonschulz5(G: torch.Tensor, steps: int = 5, eps: float = 1e-7) -> torch.Tensor:
-    """
-    Newton-Schulz iteration to compute the polar factor of G (orthogonalization).
-    Coefficients from Jordan et al. 2024 (Muon paper).
-    """
-    assert G.ndim == 2
-    a, b, c = 3.4445, -4.7750, 2.0315
-    dtype = G.dtype
-    X = G.float() / (G.norm() + eps)
-    if G.shape[0] > G.shape[1]:
-        X = X.T
-    for _ in range(steps):
-        A = X @ X.T
-        B = b * A + c * (A @ A)
-        X = a * X + B @ X
-    if G.shape[0] > G.shape[1]:
-        X = X.T
-    return X.to(dtype)
-
-
-class Muon(Optimizer):
-    """
-    Muon optimizer (MomentUm Orthogonalized by Newton-schulz).
-    Applies Newton-Schulz orthogonalization to 2D weight gradients.
-    For 1D parameters (biases), falls back to SGD with momentum.
-    Reference: Jordan et al., 2024.
-    """
-
-    def __init__(self, params, lr=0.02, momentum=0.95, nesterov=True, ns_steps=5):
-        defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov, ns_steps=ns_steps)
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            lr = group['lr']
-            momentum = group['momentum']
-            nesterov = group['nesterov']
-            ns_steps = group['ns_steps']
-
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                grad = p.grad
-
-                state = self.state[p]
-                if len(state) == 0:
-                    state['momentum_buffer'] = torch.zeros_like(grad)
-
-                buf = state['momentum_buffer']
-                buf.mul_(momentum).add_(grad)
-
-                # Effective gradient (Nesterov or classical heavy ball)
-                g = grad.add(buf, alpha=momentum) if nesterov else buf
-
-                # Orthogonalize if 2D weight matrix
-                if g.ndim == 2:
-                    g = _zeropower_via_newtonschulz5(g, steps=ns_steps)
-                    # Scale to preserve RMS of updates
-                    scale = max(g.shape[0], g.shape[1]) ** 0.5
-                    g = g.mul_(scale)
-
-                p.add_(g, alpha=-lr)
 
         return loss
 

@@ -25,4 +25,4 @@ lrs_standard: [1e-3, 1e-2]
 optimizers_standard: [Adam, SGD, RMSprop]
 
 loader_seed: 51159
-model_seed: 47612
+model_seeds: [47612]

@@ -32,5 +32,5 @@ lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [1,2,5,10]
 
 loader_seed: 82464
-seeds: [89929, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+model_seeds: [89929, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 data_seed: 57728

@@ -14,7 +14,8 @@ import shutil
 import time
 import random
 import sv3
-from experiments.optimizers.baselines import Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD
+from sv3.sven import PolyakSGD
+from experiments.optimizers.baselines import Lion, ScheduleFreeAdamW, ScheduleFreeSGD
 
 def set_seed(seed: int, deterministic: bool = False):
     """
@@ -139,7 +140,7 @@ def _compute_per_model_acc(ypred, yb):
 
 def _is_closure_optimizer(optimizer):
     """Check if an optimizer requires a closure (e.g. LBFGS)."""
-    return isinstance(optimizer, torch.optim.LBFGS) or isinstance(optimizer, sv3.sven.PolyakSGD)
+    return isinstance(optimizer, torch.optim.LBFGS) or isinstance(optimizer, PolyakSGD)
 
 
 def _is_schedule_free_optimizer(optimizer):
@@ -360,7 +361,6 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
 
 _CUSTOM_OPTIMIZERS = {
     "Lion": Lion,
-    "Muon": Muon,
     "ScheduleFreeAdamW": ScheduleFreeAdamW,
     "ScheduleFreeSGD": ScheduleFreeSGD,
 }
@@ -375,7 +375,7 @@ def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
         }
         return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
     elif optim_name == "PolyakSGD":
-        return sv3.sven.PolyakSGD(model.parameters(), **kwargs)
+        return PolyakSGD(model.parameters(), **kwargs)
     elif optim_name in _CUSTOM_OPTIMIZERS:
         cls = _CUSTOM_OPTIMIZERS[optim_name]
         return cls(model.parameters(), lr=lr, **kwargs)
