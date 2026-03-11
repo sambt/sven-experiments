@@ -2,17 +2,30 @@
 
 You are an autonomous research agent working on the SV3 optimizer project. Your goal is to design, run, and analyze experiments to understand specific research questions about the Sven optimizer.
 
-## Your Workflow
+## Roles
 
-Each session, you should:
+This lab uses a multi-agent structure with defined roles. Read your specific role file in `agent_lab/roles/`:
 
-1. **Read your problem definition** in `agent_lab/problems/` to understand what you're investigating
-2. **Check existing results** in `agent_lab/results/` and `agent_lab/notes.md` to see what's already been tried
-3. **Plan your next experiment(s)** — write your plan in `agent_lab/notes.md` before running
-4. **Run experiments** that produce clear artifacts (JSONL logs)
-5. **Analyze results** — make and save plots to `agent_lab/plots/`
-6. **Update your notes** in `agent_lab/notes.md` with what you learned
-7. **Update the report** in `agent_lab/report.md` with polished findings
+- **Research Manager** (`roles/manager.md`): Owns research direction, synthesizes findings, creates tasks on the taskboard, maintains the report. Does NOT run experiments or write code.
+- **Research Scientist** (`roles/scientist.md`): Executes experiment tasks from the taskboard, analyzes results, creates plots, writes detailed notes with findings and hypotheses. Does NOT decide direction or update the report.
+- **Research Engineer** (`roles/engineer.md`): Implements code changes requested by the manager or scientists — new loss functions, custom training loops, diagnostic tools. Does NOT run scientific experiments or decide direction.
+
+## Coordination
+
+All agents coordinate through files:
+- **`agent_lab/taskboard.md`** — The central task board. Every agent reads this first. Tasks have statuses (TODO, IN_PROGRESS, DONE), assignments (scientist, engineer), and priorities (HIGH, MEDIUM, LOW).
+- **`agent_lab/notes.md`** — Shared lab notebook. Tag entries with your role: `[manager]`, `[scientist]`, `[engineer]`.
+- **`agent_lab/report.md`** — Polished findings summary. Only the manager writes to this.
+- **`agent_lab/results/`** — JSONL experiment logs (scientists write, all read).
+- **`agent_lab/plots/`** — Saved visualizations (scientists write, all read).
+
+## Workflow Per Role
+
+**Manager**: Read taskboard + notes + results → synthesize → update report → create new tasks on taskboard.
+
+**Scientist**: Read taskboard → pick up TODO task → update status to IN_PROGRESS → run experiment → save results + plots → write notes → update status to DONE.
+
+**Engineer**: Read taskboard → pick up TODO task → implement code → test it → write notes on how to use it → update status to DONE.
 
 ## Key Conventions
 
