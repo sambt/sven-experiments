@@ -59,24 +59,10 @@ def _to_json_serializable(obj):
     return obj
 
 
-def _load_existing_run_ids(jsonl_path):
-    """Load set of run_id strings from an existing JSONL file."""
-    run_ids = set()
-    if os.path.exists(jsonl_path):
-        with open(jsonl_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    row = json.loads(line)
-                    if 'run_id' in row:
-                        run_ids.add(row['run_id'])
-    return run_ids
-
-
-def _append_result(jsonl_path, result):
-    """Append a single result dict as a JSON line."""
+def _write_result(jsonl_path, result):
+    """Write a single result dict as a JSON line to its own file."""
     serializable = _to_json_serializable(result)
-    with open(jsonl_path, 'a') as f:
+    with open(jsonl_path, 'w') as f:
         f.write(json.dumps(serializable) + '\n')
 
 
@@ -120,22 +106,17 @@ def scan(cfg):
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
     scan_name = HydraConfig.get().job.config_name
 
-    # Output path: single JSONL file per scan
+    # Output directory: one JSONL file per run inside {output_dir}/{scan_name}/
     output_dir = "experiment_results"
-    os.makedirs(output_dir, exist_ok=True)
-    jsonl_path = f"{output_dir}/{scan_name}.jsonl"
-
-    # Load existing run IDs for deduplication
-    existing_run_ids = _load_existing_run_ids(jsonl_path)
-    if existing_run_ids:
-        print(f"Found {len(existing_run_ids)} existing runs in {jsonl_path}")
+    scan_dir = os.path.join(output_dir, scan_name)
+    os.makedirs(scan_dir, exist_ok=True)
 
     # Parse hparam grid
     hparams = process_hparam_config(rcfg)
     id_str = _build_id_string(rcfg)
 
     # Seed list: use 'seeds' if provided, otherwise single 'model_seed'
-    seeds = rcfg.get("seeds", [rcfg["model_seed"]])
+    seeds = rcfg.get("model_seeds")
     loader_seed = rcfg["loader_seed"]
 
     # Dataset (shared across seeds — same data, different model inits)
@@ -197,7 +178,7 @@ def scan(cfg):
                 if variable_k:
                     run_id += "_variablek"
 
-                if run_id in existing_run_ids:
+                if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                     print(f"  [skip] {run_id}")
                     continue
 
@@ -262,8 +243,7 @@ def scan(cfg):
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _append_result(jsonl_path, result)
-                    existing_run_ids.add(run_id)
+                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
 
                 except Exception as e:
                     print(f"  [error] Training failed: {e}")
@@ -304,7 +284,7 @@ def scan(cfg):
                         run_id += f"_wd{weight_decay}"
                     run_id += seed_str
 
-                    if run_id in existing_run_ids:
+                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
 
@@ -349,8 +329,7 @@ def scan(cfg):
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _append_result(jsonl_path, result)
-                    existing_run_ids.add(run_id)
+                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
 
             # --- LBFGS optimizer (separate grid with LBFGS-specific params) ---
             if has_lbfgs:
@@ -368,7 +347,7 @@ def scan(cfg):
                         f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
                     )
 
-                    if run_id in existing_run_ids:
+                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
 
@@ -418,8 +397,7 @@ def scan(cfg):
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _append_result(jsonl_path, result)
-                    existing_run_ids.add(run_id)
+                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
 
             # --- PolyakSGD optimizer (no LR sweep) ---
             if has_polyak:
@@ -436,7 +414,7 @@ def scan(cfg):
                         f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
                     )
 
-                    if run_id in existing_run_ids:
+                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
 
@@ -481,7 +459,6 @@ def scan(cfg):
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _append_result(jsonl_path, result)
-                    existing_run_ids.add(run_id)
+                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
 
-    print(f"\nScan complete. Results in {jsonl_path}")
+    print(f"\nScan complete. Results in {scan_dir}/")

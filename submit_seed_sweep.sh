@@ -16,6 +16,6 @@ config_name=$(basename "$config" .yaml)
 
 for seed in "${SEEDS[@]}"; do
     echo "Submitting seed=$seed for config=$config_name"
-    sbatch --job-name="${config_name}_s${seed}" \
-        submit_experiment.sh "$config" "seeds=[$seed]" "$@"
+    sbatch --time=1-12:00:00 --job-name="${config_name}_s${seed}" \
+        submit_experiment.sh "$config" "model_seeds=[$seed]" "$@"
 done
