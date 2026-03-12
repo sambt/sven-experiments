@@ -1,0 +1,28 @@
+defaults:
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
+result_id_fields: [mlp_width]
+loss: mse
+
+# Microbatch sweep: effective Jacobian rows = 32/mb
+microbatch_sizes: [1, 2, 4, 8, 16, 32]
+
+k_fractions: [0.25, 0.5, 1.0]
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-2]
+svd_mode: [torch]
+use_rmsprop: false
+
+loader_seed: 51159
+model_seeds: [4372892, 1, 2]
+data_seed: 54631
