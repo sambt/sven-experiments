@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def load_results(name, results_root='../experiment_results'):
+def load_results(name, results_root='../experiment_results', selection_fn=None):
     """Load experiment results, supporting both old and new storage formats.
 
     Old format: a single ``{name}.jsonl`` file with one JSON object per line.
@@ -22,6 +22,8 @@ def load_results(name, results_root='../experiment_results'):
     # New format: directory of per-run JSONL files
     if scan_dir.is_dir():
         for f in sorted(scan_dir.glob('*.jsonl')):
+            if selection_fn is not None and not selection_fn(str(f).split("/")[-1]):
+                continue
             with open(f) as fh:
                 for line in fh:
                     line = line.strip()
@@ -46,12 +48,31 @@ def load_results(name, results_root='../experiment_results'):
         f"No results found for '{name}': tried {scan_dir}/ and {jsonl_path}"
     )
 
+def load_results_jsonl(name, results_root='../experiment_results'):
+    """Load experiment results from a single JSONL file.
+
+    This is the old storage format, where all runs are stored in a single
+    ``{name}.jsonl`` file.  Returns a :class:`pd.DataFrame`.
+    """
+    jsonl_path = Path(results_root) / f'{name}.jsonl'
+    if not jsonl_path.is_file():
+        raise FileNotFoundError(f"No results found for '{name}': {jsonl_path} does not exist")
+
+    records: list[dict] = []
+    with open(jsonl_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    print(f"Loaded {len(records)} runs from {jsonl_path}")
+    return pd.DataFrame(records)
+
 def set_style():
     plt.rcParams.update({
         'font.size': 16,
-        'axes.labelsize': 16,
-        'axes.titlesize': 16,
-        'legend.fontsize': 12,
+        'axes.labelsize': 20,
+        'axes.titlesize': 20,
+        'legend.fontsize': 14,
         'xtick.labelsize': 12,
         'ytick.labelsize': 12,
         'figure.figsize': (8, 6),
