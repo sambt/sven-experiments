@@ -1,6 +1,6 @@
 from experiments import register_optimizer
-from sv3.nn import SvenWrapper
-from sv3.sven import Sven
+from sven.nn import SvenWrapper
+from sven.opt import Sven
 
 
 def mse_loss(pred, target):

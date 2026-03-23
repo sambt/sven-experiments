@@ -16,8 +16,8 @@ from .experiment_utils import (
     train_loop_svd, train_loop_standard, set_seed,
     process_hparam_config, build_standard_optimizer,
 )
-from sv3.sven import Sven
-from sv3.nn import SvenWrapper
+from sven.opt import Sven
+from sven.nn import SvenWrapper
 
 
 # ---------------------------------------------------------------------------

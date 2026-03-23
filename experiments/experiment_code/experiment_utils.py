@@ -13,8 +13,7 @@ import tempfile
 import shutil
 import time
 import random
-import sv3
-from sv3.sven import PolyakSGD
+from sven.opt import PolyakSGD
 from experiments.optimizers.baselines import Lion, ScheduleFreeAdamW, ScheduleFreeSGD
 
 def set_seed(seed: int, deterministic: bool = False):

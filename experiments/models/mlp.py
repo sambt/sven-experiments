@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from experiments import register_model
-from sv3.nn import MLP
+from experiments.nn import MLP
 
 
 @register_model("mlp")
