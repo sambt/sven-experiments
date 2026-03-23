@@ -275,8 +275,8 @@ def scan(cfg):
                 )
 
                 for batch_size, lr, optim_name, weight_decay in standard_grid:
-                    # Non-zero weight decay is only meaningful for AdamW
-                    if optim_name != "AdamW" and weight_decay != 0.0:
+                    # Non-zero weight decay is only meaningful for AdamW and Muon
+                    if optim_name not in ("AdamW", "Muon") and weight_decay != 0.0:
                         continue
 
                     run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}"

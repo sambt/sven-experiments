@@ -366,6 +366,36 @@ _CUSTOM_OPTIMIZERS = {
 }
 
 
+class _CombinedOptimizer:
+    """Wraps two optimizers so they behave as one (zero_grad / step / state_dict)."""
+
+    def __init__(self, *optimizers):
+        self.optimizers = optimizers
+
+    # Expose a unified param_groups (needed by some LR schedulers / logging)
+    @property
+    def param_groups(self):
+        groups = []
+        for opt in self.optimizers:
+            groups.extend(opt.param_groups)
+        return groups
+
+    def zero_grad(self, set_to_none=True):
+        for opt in self.optimizers:
+            opt.zero_grad(set_to_none=set_to_none)
+
+    def step(self, closure=None):
+        for opt in self.optimizers:
+            opt.step(closure=closure)
+
+    def state_dict(self):
+        return [opt.state_dict() for opt in self.optimizers]
+
+    def load_state_dict(self, state_dicts):
+        for opt, sd in zip(self.optimizers, state_dicts):
+            opt.load_state_dict(sd)
+
+
 def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
     """Construct a standard PyTorch optimizer by name."""
     if optim_name == "LBFGS":
@@ -376,6 +406,17 @@ def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
         return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
     elif optim_name == "PolyakSGD":
         return PolyakSGD(model.parameters(), **kwargs)
+    elif optim_name == "Muon":
+        # Muon only supports 2D parameters; use AdamW for the rest.
+        muon_params = [p for p in model.parameters() if p.ndim == 2]
+        other_params = [p for p in model.parameters() if p.ndim != 2]
+        weight_decay = kwargs.get("weight_decay", 0.0)
+        if other_params:
+            muon_opt = torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
+            adam_opt = torch.optim.AdamW(other_params, lr=lr, weight_decay=weight_decay)
+            return _CombinedOptimizer(muon_opt, adam_opt)
+        else:
+            return torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
     elif optim_name in _CUSTOM_OPTIMIZERS:
         cls = _CUSTOM_OPTIMIZERS[optim_name]
         return cls(model.parameters(), lr=lr, **kwargs)
