@@ -24,7 +24,7 @@ use_rmsprop: false
 alpha_rmsProp: 0.99
 variable_k: false
 
-lrs_standard: [1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1]
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
 optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1,2,5,10]
