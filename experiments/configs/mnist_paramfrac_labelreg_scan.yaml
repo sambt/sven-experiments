@@ -17,12 +17,10 @@ loss: label_regression
 # Param fraction sweep: Jacobian columns from ~27K to frac*27K
 param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 
-k_values: [8, 16, 32, 64]
-lrs: [0.05, 0.1, 0.5]
-rtol: [1e-2]
+k_values: [32, 64]
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-4]
 svd_mode: [torch]
-use_rmsprop: true
-alpha_rmsProp: 0.99
 
 loader_seed: 51159
-model_seeds: [47612, 1, 2]
+model_seeds: [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009]
