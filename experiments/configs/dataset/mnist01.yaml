@@ -1,2 +1,0 @@
-_target_: experiments.datasets.MNISTDataset
-digits: [0,1]

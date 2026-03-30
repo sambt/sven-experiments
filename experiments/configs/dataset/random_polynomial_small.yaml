@@ -1,6 +1,0 @@
-_target_: experiments.datasets.RandomPolynomialDataset
-degree: ${degree}
-num_vars: ${input_dim}
-seed: ${data_seed}
-n_train: 200
-n_val: 2000

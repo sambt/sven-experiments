@@ -1,4 +1,4 @@
-_target_: sv3.nn.MLP
+_target_: experiments.nn.MLP
 input_dim: 784
 hidden_dims:
 - ${mlp_width}
