@@ -1,4 +1,0 @@
-_target_: sv3.nn.SmallResNet
-num_classes: 10
-width: ${resnet_width}
-num_blocks: ${resnet_num_blocks}

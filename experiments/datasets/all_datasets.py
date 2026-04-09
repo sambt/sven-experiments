@@ -82,34 +82,6 @@ class MNISTDataset:
         self.train_dataset = TensorDataset(train_data, train_labels)
         self.val_dataset = TensorDataset(val_data, val_labels)
 
-class CIFAR10Dataset:
-    def __init__(self,for_mlp=False,ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/"):
-        transformations = [transforms.ToTensor(),
-                           transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.262))]
-        if for_mlp:
-            transformations.append(transforms.Lambda(lambda x: x.view(-1)))
-        transform = transforms.Compose(transformations)
-        train_dataset = CIFAR10(root=ROOT, train=True, download=True, transform=transform)
-        val_dataset = CIFAR10(root=ROOT, train=False, download=True, transform=transform)
-
-        train_data = []
-        train_labels = []
-        val_data = []
-        val_labels = []
-        for data,label in torch.utils.data.DataLoader(train_dataset, batch_size=512):
-            train_data.append(data)
-            train_labels.append(label)
-        for data,label in torch.utils.data.DataLoader(val_dataset, batch_size=512):
-            val_data.append(data)
-            val_labels.append(label)
-        train_data = torch.cat(train_data, dim=0)
-        train_labels = torch.cat(train_labels, dim=0)
-        val_data = torch.cat(val_data, dim=0)
-        val_labels = torch.cat(val_labels, dim=0)
-
-        self.train_dataset = TensorDataset(train_data, train_labels)
-        self.val_dataset = TensorDataset(val_data, val_labels)
-
 class RandomPolynomialDataset:
     def __init__(self,degree,num_vars,seed,n_train=10_000,n_val=10_000):
         rng = np.random.default_rng(seed)

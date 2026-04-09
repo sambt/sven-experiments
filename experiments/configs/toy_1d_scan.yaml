@@ -15,7 +15,7 @@ result_id_fields: [mlp_width]
 loss: mse
 
 k_values: [1,2,4,8,16,32]
-lrs: [0.05, 0.1, 0.5, 1.0, "polyak"]
+lrs: [0.05, 0.1, 0.5, 1.0]
 rtol: [1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
 use_rmsprop: false
