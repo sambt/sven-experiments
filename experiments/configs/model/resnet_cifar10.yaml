@@ -1,0 +1,2 @@
+_target_: experiments.nn.resnet18_functional
+num_classes: 10

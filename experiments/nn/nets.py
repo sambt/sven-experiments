@@ -3,7 +3,21 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .batchnorm import BatchNorm2d as customBatchNorm2D
+from .batchnorm import BatchNorm2d as customBatchNorm2D, replace_batchnorm
+from torchvision.models import resnet18
+
+
+def resnet18_functional(num_classes: int = 10, **kwargs) -> nn.Module:
+    """torchvision ResNet18 with torch.func-compatible BatchNorm (required for Sven).
+
+    Standard nn.BatchNorm2d updates running_mean/running_var in-place during the
+    forward pass, which crashes inside torch.func transforms (jacrev, grad, vmap…).
+    This wrapper replaces every BatchNorm2d with the drop-in version from
+    experiments.nn.batchnorm that skips those in-place writes when inside a transform.
+    """
+    model = resnet18(num_classes=num_classes, **kwargs)
+    replace_batchnorm(model)
+    return model
 
 
 class MultiLinear(nn.Module):

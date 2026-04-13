@@ -176,7 +176,10 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
 
     total_start_time = time.perf_counter()
 
-    for epoch in tqdm(range(num_epochs)):
+    pbar = tqdm(total=len(train_loader), leave=True)
+    for epoch in range(num_epochs):
+        pbar.reset()
+        pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
         epoch_start_time = time.perf_counter()
         epoch_losses = defaultdict(list)
         epoch_pm = defaultdict(list)  # per-model metrics for this epoch
@@ -209,6 +212,7 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
 
             batch_end_time = time.perf_counter()
             losses['batch_times_train'].append(batch_end_time - batch_start_time)
+            pbar.update(1)
             epoch_losses['train'].append(loss.item())
             if is_multi:
                 with torch.no_grad():
@@ -255,6 +259,7 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                 pnorm = torch.cat([p.detach().flatten() for p in model.parameters()]).norm().item()
             losses['param_norm'].append(pnorm)
 
+    pbar.close()
     total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy
     losses['total_time'] = total_end_time - total_start_time
@@ -293,8 +298,11 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
     total_start_time = time.perf_counter()
 
     # Ensure all computations are done without gradients
+    pbar = tqdm(total=len(train_loader), leave=True)
     with torch.no_grad():
-        for epoch in tqdm(range(num_epochs)):
+        for epoch in range(num_epochs):
+            pbar.reset()
+            pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
             epoch_start_time = time.perf_counter()
             epoch_losses = defaultdict(list)
             epoch_pm = defaultdict(list)  # per-model metrics for this epoch
@@ -306,6 +314,7 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                 optimizer.step(batch)
                 batch_end_time = time.perf_counter()
                 losses['batch_times_train'].append(batch_end_time - batch_start_time)
+                pbar.update(1)
                 epoch_losses['train'].append(batch_losses.mean().item())
                 if is_multi:
                     pm_losses = batch_losses.reshape(num_models, -1).mean(dim=1).tolist()
@@ -347,6 +356,7 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
             if track_param_norm:
                 losses['param_norm'].append(model.params.norm().item())
 
+    pbar.close()
     total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy
     losses['total_time'] = total_end_time - total_start_time

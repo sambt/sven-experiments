@@ -4,21 +4,22 @@ defaults:
   - _self_
 
 name: scan
-mode: svd
+mode: both
 device: cuda
 print_config: true
 
-num_epochs: 10
+num_epochs: 1
 batch_size: 64
 loss: ce
 
 # SVD optimizer sweep
-k_values: [32]
-lrs: [0.1]
-rtol: [1e-3]
-svd_mode: [torch]
-use_rmsprop: true
-alpha_rmsProp: 0.99
+k_values: [16,32,64]
+lrs: [0.1,0.5,1.0]
+rtol: [1e-3,1e-2]
+svd_mode: [randomized_v2]
+
+lrs_standard: [1e-3,1e-2]
+optimizers_standard: [Adam, RMSprop, SGD, PolyakSGD]
 
 loader_seed: 51159
 model_seeds: [47612]
