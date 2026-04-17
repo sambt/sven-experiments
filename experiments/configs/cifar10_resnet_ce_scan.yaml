@@ -8,7 +8,7 @@ mode: both
 device: cuda
 print_config: true
 
-num_epochs: 10
+num_epochs: 20
 batch_size: 128
 loss: ce
 
@@ -18,8 +18,12 @@ lrs: [0.1,0.5,1.0]
 rtol: [1e-3,1e-2]
 svd_mode: [randomized_v2]
 
-lrs_standard: [1e-3,1e-2]
-optimizers_standard: [Adam, RMSprop, SGD, PolyakSGD]
+lrs_standard: [1e-4,1e-3,1e-2,1e-1]
+optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [1,2,5,10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [1,2,5,10]
 
 loader_seed: 51159
 model_seeds: [47612]

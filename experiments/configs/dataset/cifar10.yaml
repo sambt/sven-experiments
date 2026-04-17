@@ -1,1 +1,2 @@
 _target_: experiments.datasets.CIFAR10Dataset
+train_fraction: 1.0

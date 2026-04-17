@@ -83,7 +83,7 @@ class MNISTDataset:
         self.val_dataset = TensorDataset(val_data, val_labels)
 
 class CIFAR10Dataset:
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/", train_fraction=1.0, val_fraction=1.0):
+    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/", train_fraction=1.0, val_fraction=1.0, shuffle_seed=1832):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
         transform = transforms.Compose([
@@ -104,6 +104,15 @@ class CIFAR10Dataset:
         train_labels = torch.cat(train_labels, dim=0)
         val_data = torch.cat(val_data, dim=0)
         val_labels = torch.cat(val_labels, dim=0)
+
+        # shuffle
+        rng = torch.Generator().manual_seed(shuffle_seed)
+        perm_train = torch.randperm(len(train_data), generator=rng)
+        perm_val = torch.randperm(len(val_data), generator=rng)
+        train_data = train_data[perm_train]
+        train_labels = train_labels[perm_train]
+        val_data = val_data[perm_val]
+        val_labels = val_labels[perm_val]
 
         if train_fraction < 1.0:
             n_train = int(len(train_data) * train_fraction)
