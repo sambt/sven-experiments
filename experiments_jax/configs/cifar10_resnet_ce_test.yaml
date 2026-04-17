@@ -1,0 +1,28 @@
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - _self_
+
+name: scan
+mode: both
+device: auto
+print_config: true
+
+num_epochs: 5
+batch_size: 64
+result_id_fields: []
+loss: ce
+
+k_values: [16, 32, 64]
+lrs: [0.1, 1.0]
+rtol: [1e-3]
+svd_mode: [randomized]
+use_rmsprop: true
+alpha_rmsProp: 0.99
+param_fractions: [0.1, 0.25]
+
+lrs_standard: [1e-3, 1e-2]
+optimizers_standard: [Adam, SGD]
+
+loader_seed: 51159
+model_seeds: [47612]

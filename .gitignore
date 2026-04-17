@@ -5,4 +5,9 @@ slurm_logs/
 outputs/
 **/.DS_STORE
 experiment_results/
-experiment_results/
+experiment_results_jax/
+notebooks_new/torch_datasets/
+overleaf_draft
+sven/
+slides/
+CLAUDE.md

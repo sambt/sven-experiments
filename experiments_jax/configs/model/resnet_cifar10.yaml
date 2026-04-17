@@ -1,0 +1,4 @@
+_target_: experiments_jax.nn.build_small_resnet
+num_classes: 10
+width: 16
+num_blocks: 2

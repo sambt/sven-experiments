@@ -1,0 +1,29 @@
+defaults:
+  - dataset: random_polynomial
+  - model: mlp_polynomial
+  - _self_
+
+name: scan
+mode: svd
+device: auto
+print_config: true
+
+num_epochs: 20
+batch_size: 128
+mlp_width: 16
+input_dim: 6
+degree: 4
+result_id_fields: [mlp_width]
+loss: mse
+
+k_values: [128]
+lrs: [0.1, 0.5]
+rtol: [1e-3]
+svd_mode: [full]
+use_rmsprop: false
+microbatch_sizes: [1, 2, 4, 16, 32, 64, 128]
+param_fractions: [1.0]
+
+loader_seed: 82464
+model_seeds: [89929]
+data_seed: 57728
