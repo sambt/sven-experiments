@@ -5,10 +5,10 @@ slurm_logs/
 outputs/
 **/.DS_STORE
 experiment_results/
-experiment_results/
 sven/
 experiment_results
 notebooks_new/torch_datasets/
 agent_lab/
 claude_experiments/
 experiment_results_jax/
+CLAUDE.md
