@@ -119,6 +119,8 @@ def scan(cfg):
     seeds = rcfg.get("model_seeds")
     loader_seed = rcfg["loader_seed"]
 
+    print("Seeds are: ", seeds)
+
     # Dataset (shared across seeds — same data, different model inits)
     dataset = instantiate(cfg.dataset)
 
