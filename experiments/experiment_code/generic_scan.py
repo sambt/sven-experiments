@@ -154,6 +154,7 @@ def scan(cfg):
                 hparams['svd_mode'],
                 hparams['microbatch_sizes'],
                 hparams['param_fractions'],
+                hparams['kappas'],
             )
 
             loss_fn_svd = SVD_LOSS_FNS[loss_key]
@@ -161,7 +162,7 @@ def scan(cfg):
             alpha_rmsprop = rcfg.get("alpha_rmsProp", 0.99)
             variable_k = rcfg.get("variable_k", False)
 
-            for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction in svd_grid:
+            for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
                 k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
 
                 # Build run_id for deduplication
@@ -177,6 +178,8 @@ def scan(cfg):
                     run_id += f"_RMSpropAlpha{alpha_rmsprop}"
                 if variable_k:
                     run_id += "_variablek"
+                if kappa != 2.0:
+                    run_id += f"_kappa{kappa}"
 
                 if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                     print(f"  [skip] {run_id}")
@@ -191,6 +194,8 @@ def scan(cfg):
                     print(f", rmsprop_alpha={alpha_rmsprop}", end="")
                 if variable_k:
                     print(f", variable_k=True", end="")
+                if kappa != 2.0:
+                    print(f", kappa={kappa}", end="")
                 print()
 
                 try:
@@ -199,7 +204,7 @@ def scan(cfg):
 
                     mb = microbatch_size if microbatch_size is not None else 1
                     pf = param_fraction if param_fraction is not None else 1.0
-                    train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
+                    train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf, kappa=kappa)
                     optimizer = Sven(
                         train_model, lr=lr, k=k, rtol=rtol,
                         track_svd_info=True, svd_mode=svd_mode,
@@ -237,6 +242,7 @@ def scan(cfg):
                         "microbatch_size": microbatch_size,
                         "param_fraction": param_fraction,
                         "variable_k": variable_k,
+                        "kappa": kappa,
                         "losses": losses,
                         "svd_info": getattr(optimizer, "svd_info", {})
                     }

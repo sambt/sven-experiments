@@ -17,6 +17,7 @@ k_values: [64,128]
 lrs: [0.1,0.5,1.0]
 rtol: [1e-3,1e-2]
 svd_mode: [randomized_v2]
+kappa: 2
 
 lrs_standard: [1e-3,1e-2]
 optimizers_standard: [Adam, RMSprop, SGD, PolyakSGD]

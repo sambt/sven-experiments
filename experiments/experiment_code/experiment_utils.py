@@ -102,6 +102,8 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     else:
         output['param_fractions'] = [None]
 
+    output['kappas'] = listify(cfg.get("kappa", 2.0))
+
     # LBFGS-specific hyperparameters (only used when "LBFGS" is in optimizers_standard)
     # Separate LR list for LBFGS since it typically needs much larger LRs than Adam/SGD
     output['lrs_lbfgs'] = listify(cfg.get("lrs_lbfgs", output['lrs_standard']))
@@ -146,6 +148,11 @@ def _is_schedule_free_optimizer(optimizer):
     """Check if an optimizer uses the schedule-free interface (train/eval modes)."""
     return getattr(optimizer, 'schedule_free', False)
 
+def _sync_if_cuda(device):
+    """Drain the CUDA queue so wall-clock timing reflects completed GPU work."""
+    if torch.cuda.is_available() and torch.device(device).type == "cuda":
+        torch.cuda.synchronize()
+
 def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
@@ -174,18 +181,15 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
         losses['val_acc'].append(np.mean(losses['val_init_acc']))
         del losses['val_init_acc']
 
-    total_start_time = time.perf_counter()
-
     pbar = tqdm(total=len(train_loader), leave=True)
     for epoch in range(num_epochs):
         pbar.reset()
         pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
-        epoch_start_time = time.perf_counter()
         epoch_losses = defaultdict(list)
         epoch_pm = defaultdict(list)  # per-model metrics for this epoch
         model.train()
+        epoch_start_time = time.perf_counter()
         for xb, yb in train_loader:
-            batch_start_time = time.perf_counter()
             xb, yb = xb.to(device), yb.to(device)
 
             if uses_closure:
@@ -210,8 +214,6 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                 loss.backward()
                 optimizer.step()
 
-            batch_end_time = time.perf_counter()
-            losses['batch_times_train'].append(batch_end_time - batch_start_time)
             pbar.update(1)
             epoch_losses['train'].append(loss.item())
             if is_multi:
@@ -223,17 +225,18 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                 epoch_losses['train_acc'].append(_compute_acc(ypred, yb))
                 if is_multi:
                     epoch_pm['train_acc'].append(_compute_per_model_acc(ypred.detach(), yb))
+        _sync_if_cuda(device)
+        epoch_end_time = time.perf_counter()
+        losses['epoch_times'].append(epoch_end_time - epoch_start_time)
+
         model.eval()
         if is_sf:
             optimizer.eval()  # switch schedule-free params from y -> x
         with torch.no_grad():
             for xb, yb in val_loader:
-                batch_start_time = time.perf_counter()
                 xb, yb = xb.to(device), yb.to(device)
                 ypred = model(xb)
                 loss = loss_fn(ypred, yb)
-                batch_end_time = time.perf_counter()
-                losses['batch_times_val'].append(batch_end_time - batch_start_time)
                 epoch_losses['val'].append(loss.item())
                 if is_multi:
                     pm_losses = [loss_fn(ypred[i], yb).item() for i in range(num_models)]
@@ -244,8 +247,6 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
                         epoch_pm['val_acc'].append(_compute_per_model_acc(ypred, yb))
         if is_sf:
             optimizer.train()  # switch schedule-free params back from x -> y
-        epoch_end_time = time.perf_counter()
-        losses['epoch_times'].append(epoch_end_time - epoch_start_time)
         # Save batch-wise losses
         losses['train_batch'].extend(epoch_losses['train'])
         losses['val_batch'].extend(epoch_losses['val'])
@@ -260,12 +261,9 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
             losses['param_norm'].append(pnorm)
 
     pbar.close()
-    total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy
-    losses['total_time'] = total_end_time - total_start_time
-    losses['avg_epoch_time'] = np.mean(losses['epoch_times'])
-    losses['avg_batch_time_train'] = np.mean(losses['batch_times_train'])
-    losses['avg_batch_time_val'] = np.mean(losses['batch_times_val'])
+    losses['total_time'] = float(np.sum(losses['epoch_times']))
+    losses['avg_epoch_time'] = float(np.mean(losses['epoch_times']))
 
     torch.cuda.empty_cache()
 
@@ -295,25 +293,20 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
         losses['val_acc'].append(np.mean(losses['val_init_acc']))
         del losses['val_init_acc']
 
-    total_start_time = time.perf_counter()
-
     # Ensure all computations are done without gradients
     pbar = tqdm(total=len(train_loader), leave=True)
     with torch.no_grad():
         for epoch in range(num_epochs):
             pbar.reset()
             pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
-            epoch_start_time = time.perf_counter()
             epoch_losses = defaultdict(list)
             epoch_pm = defaultdict(list)  # per-model metrics for this epoch
+            epoch_start_time = time.perf_counter()
             for xb, yb in train_loader:
-                batch_start_time = time.perf_counter()
                 xb, yb = xb.to(device), yb.to(device)
                 batch = (xb, yb)
                 batch_losses, ypred = model.loss_and_grad(batch)
                 optimizer.step(batch)
-                batch_end_time = time.perf_counter()
-                losses['batch_times_train'].append(batch_end_time - batch_start_time)
                 pbar.update(1)
                 epoch_losses['train'].append(batch_losses.mean().item())
                 if is_multi:
@@ -324,15 +317,15 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                     epoch_losses['train_acc'].append(_compute_acc(ypred, yb))
                     if is_multi:
                         epoch_pm['train_acc'].append(_compute_per_model_acc(ypred, yb))
+            _sync_if_cuda(device)
+            epoch_end_time = time.perf_counter()
+            losses['epoch_times'].append(epoch_end_time - epoch_start_time)
 
             for xb, yb in val_loader:
-                batch_start_time = time.perf_counter()
                 xb, yb = xb.to(device).detach(), yb.to(device).detach()
                 ypred = model.evaluate(xb)
                 per_sample_loss = loss_fn(ypred, yb)
                 loss = per_sample_loss.mean()
-                batch_end_time = time.perf_counter()
-                losses['batch_times_val'].append(batch_end_time - batch_start_time)
                 epoch_losses['val'].append(loss.item())
                 if is_multi:
                     pm_losses = per_sample_loss.reshape(num_models, -1).mean(dim=1).tolist()
@@ -342,8 +335,6 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                     if is_multi:
                         epoch_pm['val_acc'].append(_compute_per_model_acc(ypred, yb))
 
-            epoch_end_time = time.perf_counter()
-            losses['epoch_times'].append(epoch_end_time - epoch_start_time)
             # Save batch-wise losses
             losses['train_batch'].extend(epoch_losses['train'])
             losses['val_batch'].extend(epoch_losses['val'])
@@ -357,12 +348,9 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
                 losses['param_norm'].append(model.params.norm().item())
 
     pbar.close()
-    total_end_time = time.perf_counter()
     losses: dict[str,Any] = dict(losses) # making type checker happy
-    losses['total_time'] = total_end_time - total_start_time
-    losses['avg_epoch_time'] = np.mean(losses['epoch_times'])
-    losses['avg_batch_time_train'] = np.mean(losses['batch_times_train'])
-    losses['avg_batch_time_val'] = np.mean(losses['batch_times_val'])
+    losses['total_time'] = float(np.sum(losses['epoch_times']))
+    losses['avg_epoch_time'] = float(np.mean(losses['epoch_times']))
 
     torch.cuda.empty_cache()
 

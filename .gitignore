@@ -5,7 +5,6 @@ slurm_logs/
 outputs/
 **/.DS_STORE
 experiment_results/
-sven/
 experiment_results
 notebooks_new/torch_datasets/
 agent_lab/
