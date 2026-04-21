@@ -103,6 +103,7 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
         output['param_fractions'] = [None]
 
     output['kappas'] = listify(cfg.get("kappa", 2.0))
+    output['model_seeds'] = listify(cfg.get("model_seeds"))
 
     # LBFGS-specific hyperparameters (only used when "LBFGS" is in optimizers_standard)
     # Separate LR list for LBFGS since it typically needs much larger LRs than Adam/SGD

@@ -116,10 +116,8 @@ def scan(cfg):
     id_str = _build_id_string(rcfg)
 
     # Seed list: use 'seeds' if provided, otherwise single 'model_seed'
-    seeds = rcfg.get("model_seeds")
+    seeds = hparams['model_seeds']
     loader_seed = rcfg["loader_seed"]
-
-    print("Seeds are: ", seeds)
 
     # Dataset (shared across seeds — same data, different model inits)
     dataset = instantiate(cfg.dataset)
