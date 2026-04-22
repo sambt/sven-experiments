@@ -1,0 +1,24 @@
+defaults:
+  - dataset: mnist
+  - model: mlp_mnist
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 64
+mlp_width: 32
+result_id_fields: [mlp_width]
+loss: label_regression
+
+k_values: 64
+lrs: 0.5
+rtol: 1e-4
+svd_mode: [torch]
+kappa: [1, 1.5, 2, 2.5, 3]
+
+loader_seed: 51159
+model_seeds: [6310, 6311, 6312, 6313, 6314, 6315, 6316, 6317, 6318, 6319]

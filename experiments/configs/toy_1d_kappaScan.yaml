@@ -1,0 +1,25 @@
+defaults:
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
+result_id_fields: [mlp_width]
+loss: mse
+
+k_values: 32
+lrs: [0.05,0.1]
+rtol: 1e-3
+svd_mode: [torch]
+kappa: [1, 1.5, 2, 2.5, 3]
+
+loader_seed: 51159
+model_seeds: [4310, 4311, 4312, 4313, 4314, 4315, 4316, 4317, 4318, 4319]
+data_seed: 54631

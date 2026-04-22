@@ -1,0 +1,27 @@
+defaults:
+  - dataset: random_polynomial
+  - model: mlp_polynomial
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
+input_dim: 6
+degree: 4
+result_id_fields: [mlp_width]
+loss: mse
+
+k_values: 32
+lrs: [0.1, 0.5]
+rtol: [1e-3, 1e-2]
+svd_mode: [torch]
+kappa: [1, 1.5, 2, 2.5, 3]
+
+loader_seed: 82464
+model_seeds: [5310, 5311, 5312, 5313, 5314, 5315, 5316, 5317, 5318, 5319]
+data_seed: 57728
