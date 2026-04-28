@@ -1,6 +1,6 @@
 defaults:
-  - dataset: toy_1d_regression
-  - model: mlp_1d_regression
+  - dataset: random_polynomial
+  - model: mlp_polynomial
   - _self_
 
 name: scan
@@ -11,12 +11,14 @@ print_config: true
 num_epochs: 5
 batch_size: 32
 mlp_width: 16
+input_dim: 6
+degree: 4
 result_id_fields: [mlp_width]
 loss: mse
 
 k_values: [1,2,4,8,16,32]
-lrs: 0.05
-rtol: 1e-3
+lrs: 0.1
+rtol: 1e-2
 svd_mode: [torch, randomized, randomized_v2]
 kappa: 2
 

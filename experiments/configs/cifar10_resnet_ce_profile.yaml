@@ -13,14 +13,24 @@ batch_size: 128
 loss: ce
 
 # SVD optimizer sweep
-k_values: [32,64,128]
+k_values: [1,2,4,8,16,32,64,96,128]
 lrs: 0.1
 rtol: 1e-3
 svd_mode: randomized_v2
 kappa: 2
 
 lrs_standard: 1e-3
-optimizers_standard: [Adam, RMSprop, SGD, PolyakSGD]
+optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
+lrs_lbfgs: 0.1
+lbfgs_max_iter: [1,2,5,10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [1,2,5,10]
 
 loader_seed: 51159
 model_seeds: [47612]
+
+profile:
+  num_steps: 5
+  warmup_steps: 2
+  detailed: false
+  output_dir: profile_results

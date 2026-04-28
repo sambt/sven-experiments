@@ -1,6 +1,6 @@
 defaults:
-  - dataset: toy_1d_regression
-  - model: mlp_1d_regression
+  - dataset: mnist
+  - model: mlp_mnist
   - _self_
 
 name: scan
@@ -9,14 +9,14 @@ device: cuda
 print_config: true
 
 num_epochs: 5
-batch_size: 32
-mlp_width: 16
+batch_size: 64
+mlp_width: 32
 result_id_fields: [mlp_width]
-loss: mse
+loss: label_regression
 
 k_values: [1,2,4,8,16,32]
-lrs: 0.05
-rtol: 1e-3
+lrs: 0.1
+rtol: 1e-4
 svd_mode: [torch, randomized, randomized_v2]
 kappa: 2
 
