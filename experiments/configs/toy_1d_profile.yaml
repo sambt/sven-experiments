@@ -1,0 +1,32 @@
+defaults:
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
+result_id_fields: [mlp_width]
+loss: mse
+
+k_values: [1,2,4,8,16,32]
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-4, 1e-3, 1e-2]
+svd_mode: [torch]
+kappa: 2
+
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [1,2,5,10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [1,2,5,10]
+
+loader_seed: 51159
+model_seeds: [4372892, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+data_seed: 54631

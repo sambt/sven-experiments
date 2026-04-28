@@ -1,6 +1,6 @@
 defaults:
-  - dataset: mnist
-  - model: mlp_mnist
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
   - _self_
 
 name: scan
@@ -8,17 +8,17 @@ mode: svd
 device: cuda
 print_config: true
 
-num_epochs: 5
-batch_size: 64
-mlp_width: 32
+num_epochs: 20
+batch_size: 32
+mlp_width: 16
 result_id_fields: [mlp_width]
-loss: ce
+loss: mse
 
-k_values: 64
-lrs: 0.1
+k_values: 32
+lrs: 0.05
 rtol: 1e-3
-svd_mode: torch
-kappa: 2
+svd_mode: randomized
+kappa: 1
 
 loader_seed: 82464
 model_seeds: [12345]
