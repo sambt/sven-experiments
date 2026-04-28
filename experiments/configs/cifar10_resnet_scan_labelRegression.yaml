@@ -10,7 +10,7 @@ print_config: true
 
 num_epochs: 20
 batch_size: 128
-loss: ce
+loss: label_regression
 
 # SVD optimizer sweep
 k_values: [64,128]
