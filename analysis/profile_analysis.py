@@ -38,7 +38,7 @@ STANDARD_ORDER = [
 ]
 
 SVD_MODE_ORDER  = ['torch', 'randomized', 'randomized_v2']
-SVD_MODE_LABELS = {'torch': 'full SVD', 'randomized': 'rand.', 'randomized_v2': 'rand.\\ v2'}
+SVD_MODE_LABELS = {'torch': 'full SVD', 'randomized': 'rand.', 'randomized_v2': 'rand. v2'}
 SVD_MODE_CMAPS  = {'torch': 'Greens', 'randomized': 'Oranges', 'randomized_v2': 'Purples'}
 SVD_MODE_BASE   = {'torch': '#1a7c3a', 'randomized': '#d95f02', 'randomized_v2': '#7570b3'}
 
