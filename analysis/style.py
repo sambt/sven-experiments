@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 
-def load_results(name, results_root='../experiment_results', selection_fn=None):
+def load_results(name, results_root='../experiment_results', selection_fn=None, exclude_cols=None):
     """Load experiment results, supporting both old and new storage formats.
 
     Old format: a single ``{name}.jsonl`` file with one JSON object per line.
@@ -29,7 +29,11 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
                 for line in fh:
                     line = line.strip()
                     if line:
-                        records.append(json.loads(line))
+                        record = json.loads(line)
+                        if exclude_cols is not None:
+                            for col in exclude_cols:
+                                record.pop(col, None)
+                        records.append(record)
         if records:
             print(f"Loaded {len(records)} runs from {scan_dir}/ (directory format)")
             return pd.DataFrame(records)
@@ -41,7 +45,11 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
             for line in fh:
                 line = line.strip()
                 if line:
-                    records.append(json.loads(line))
+                    record = json.loads(line)
+                    if exclude_cols is not None:
+                        for col in exclude_cols:
+                            record.pop(col, None)
+                    records.append(record)
         print(f"Loaded {len(records)} runs from {jsonl_path} (single-file format)")
         return pd.DataFrame(records)
 
