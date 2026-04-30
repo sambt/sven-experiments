@@ -123,6 +123,15 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     output['polyak_max_lr'] = listify(cfg.get("polyak_max_lr", 1.0))
     output['polyak_eps'] = listify(cfg.get("polyak_eps", 1e-8))
 
+    # Jacobian Descent (torchjd) hyperparameters
+    output['lrs_jd'] = listify(cfg.get("lrs_jd", output['lrs_standard']))
+    output['aggregators_jd'] = listify(cfg.get("aggregators_jd", ["UPGrad"]))
+    output['inner_optimizers_jd'] = listify(cfg.get("inner_optimizers_jd", ["Adam"]))
+
+    # Half-Inverse Gradients hyperparameters
+    output['lrs_hig'] = listify(cfg.get("lrs_hig", output['lrs']))
+    output['tau_hig'] = listify(cfg.get("tau_hig", [1e-4]))
+
     return output
 
 def _compute_acc(ypred, yb):
@@ -356,6 +365,153 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
     torch.cuda.empty_cache()
 
     return model, losses, optimizer
+
+def train_loop_hig(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str, Any]]:
+    """Training loop for Half-Inverse Gradients (HIGWrapper + HIGOptimizer).
+
+    Mirrors train_loop_svd but calls model.output_and_loss_grad() then
+    optimizer.step() (no explicit backward pass).
+    """
+    losses = defaultdict(list)
+
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            ypred = model.evaluate(xb)
+            loss = loss_fn(ypred, yb).mean()
+            losses['val_init'].append(loss.item())
+            if track_acc:
+                losses['val_init_acc'].append(_compute_acc(ypred, yb))
+    losses['val'].append(np.mean(losses['val_init']))
+    del losses['val_init']
+    if track_acc:
+        losses['val_acc'].append(np.mean(losses['val_init_acc']))
+        del losses['val_init_acc']
+
+    pbar = tqdm(total=len(train_loader), leave=True)
+    for epoch in range(num_epochs):
+        pbar.reset()
+        pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
+        epoch_losses = defaultdict(list)
+        epoch_start_time = time.perf_counter()
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            batch_losses, ypred = model.output_and_loss_grad((xb, yb))
+            optimizer.step()
+            pbar.update(1)
+            epoch_losses['train'].append(batch_losses.mean().item())
+            if track_acc:
+                epoch_losses['train_acc'].append(_compute_acc(ypred, yb))
+        _sync_if_cuda(device)
+        losses['epoch_times'].append(time.perf_counter() - epoch_start_time)
+
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                ypred = model.evaluate(xb)
+                per_sample_loss = loss_fn(ypred, yb)
+                epoch_losses['val'].append(per_sample_loss.mean().item())
+                if track_acc:
+                    epoch_losses['val_acc'].append(_compute_acc(ypred, yb))
+
+        losses['train_batch'].extend(epoch_losses['train'])
+        losses['val_batch'].extend(epoch_losses['val'])
+        for k, v in epoch_losses.items():
+            losses[k].append(np.mean(v))
+        if track_param_norm:
+            with torch.no_grad():
+                losses['param_norm'].append(model.params.norm().item())
+
+    pbar.close()
+    losses: dict[str, Any] = dict(losses)
+    losses['total_time'] = float(np.sum(losses['epoch_times']))
+    losses['avg_epoch_time'] = float(np.mean(losses['epoch_times']))
+    torch.cuda.empty_cache()
+    return model, losses
+
+
+def train_loop_jd(model, inner_optimizer, aggregator, per_sample_loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str, Any]]:
+    """Training loop for Jacobian Descent (torchjd).
+
+    Uses torchjd.autojac.backward + jac_to_grad in place of loss.backward(),
+    then delegates the actual parameter update to inner_optimizer (e.g. Adam).
+
+    Args:
+        model:               Standard nn.Module.
+        inner_optimizer:     PyTorch optimizer (Adam, SGD, …) for the update step.
+        aggregator:          torchjd aggregator instance (e.g. UPGrad()).
+        per_sample_loss_fn:  Loss returning per-sample vector of shape (B,).
+    """
+    try:
+        from torchjd.autojac import backward as jd_backward, jac_to_grad
+    except ImportError as e:
+        raise ImportError("torchjd is required for train_loop_jd. Install it with: pip install torchjd") from e
+
+    losses = defaultdict(list)
+
+    model.eval()
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            ypred = model(xb)
+            loss = per_sample_loss_fn(ypred, yb).mean()
+            losses['val_init'].append(loss.item())
+            if track_acc:
+                losses['val_init_acc'].append(_compute_acc(ypred, yb))
+    losses['val'].append(np.mean(losses['val_init']))
+    del losses['val_init']
+    if track_acc:
+        losses['val_acc'].append(np.mean(losses['val_init_acc']))
+        del losses['val_init_acc']
+
+    pbar = tqdm(total=len(train_loader), leave=True)
+    for epoch in range(num_epochs):
+        pbar.reset()
+        pbar.set_description(f"Epoch {epoch + 1}/{num_epochs}")
+        epoch_losses = defaultdict(list)
+        model.train()
+        epoch_start_time = time.perf_counter()
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            inner_optimizer.zero_grad()
+            ypred = model(xb)
+            sample_losses = per_sample_loss_fn(ypred, yb)  # (B,)
+            jd_backward(sample_losses)
+            jac_to_grad(model.parameters(), aggregator)
+            inner_optimizer.step()
+            pbar.update(1)
+            epoch_losses['train'].append(sample_losses.mean().item())
+            if track_acc:
+                epoch_losses['train_acc'].append(_compute_acc(ypred, yb))
+        _sync_if_cuda(device)
+        losses['epoch_times'].append(time.perf_counter() - epoch_start_time)
+
+        model.eval()
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                ypred = model(xb)
+                per_sample = per_sample_loss_fn(ypred, yb)
+                epoch_losses['val'].append(per_sample.mean().item())
+                if track_acc:
+                    epoch_losses['val_acc'].append(_compute_acc(ypred, yb))
+
+        losses['train_batch'].extend(epoch_losses['train'])
+        losses['val_batch'].extend(epoch_losses['val'])
+        for k, v in epoch_losses.items():
+            losses[k].append(np.mean(v))
+        if track_param_norm:
+            with torch.no_grad():
+                pnorm = torch.cat([p.detach().flatten() for p in model.parameters()]).norm().item()
+            losses['param_norm'].append(pnorm)
+
+    pbar.close()
+    losses: dict[str, Any] = dict(losses)
+    losses['total_time'] = float(np.sum(losses['epoch_times']))
+    losses['avg_epoch_time'] = float(np.mean(losses['epoch_times']))
+    torch.cuda.empty_cache()
+    return model, losses
+
 
 _CUSTOM_OPTIMIZERS = {
     "Lion": Lion,

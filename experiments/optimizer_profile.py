@@ -50,6 +50,16 @@ from experiments.experiment_code.experiment_utils import (
 from sven.nn import SvenWrapper
 from sven.opt import Sven
 from sven.opt.pinv import pinv
+from experiments.optimizers.hig import HIGWrapper, HIGOptimizer
+
+try:
+    from torchjd.aggregation import UPGrad, Mean, Sum
+    from torchjd.autojac import backward as jd_backward, jac_to_grad
+    _JD_AGGREGATORS = {"UPGrad": UPGrad, "Mean": Mean, "Sum": Sum}
+    _HAS_TORCHJD = True
+except ImportError:
+    _JD_AGGREGATORS = {}
+    _HAS_TORCHJD = False
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +119,21 @@ def _standard_step(model, optimizer, loss_fn, batch):
         loss = loss_fn(pred, yb)
         loss.backward()
         optimizer.step()
+
+
+def _jd_step(model, inner_optimizer, aggregator, per_sample_loss_fn, batch):
+    xb, yb = batch
+    inner_optimizer.zero_grad()
+    pred = model(xb)
+    losses = per_sample_loss_fn(pred, yb)  # (B,)
+    jd_backward(losses)
+    jac_to_grad(model.parameters(), aggregator)
+    inner_optimizer.step()
+
+
+def _hig_step(train_model, optimizer, batch):
+    train_model.output_and_loss_grad(batch)
+    optimizer.step()
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +210,13 @@ def _profile_single(
     weight_decay: float = 0.0,
     lbfgs_kwargs: dict | None = None,
     polyak_kwargs: dict | None = None,
+    # JD params
+    jd_aggregator_name: str | None = None,
+    jd_inner_optim: str | None = None,
+    jd_lr: float | None = None,
+    # HIG params
+    hig_lr: float | None = None,
+    hig_tau: float = 1e-4,
 ) -> dict[str, Any]:
     """Profile a single optimizer configuration. Returns memory/time stats."""
     torch.cuda.empty_cache()
@@ -209,7 +241,25 @@ def _profile_single(
 
         def step_fn(batch):
             _svd_step(train_model, optimizer, batch)
-    else:
+
+    elif mode == "jd":
+        per_sample_loss_fn = SVD_LOSS_FNS[loss_key]
+        aggregator = _JD_AGGREGATORS[jd_aggregator_name]()
+        inner_optimizer = build_standard_optimizer(model, jd_inner_optim, jd_lr)
+        train_model = None
+
+        def step_fn(batch):
+            _jd_step(model, inner_optimizer, aggregator, per_sample_loss_fn, batch)
+
+    elif mode == "hig":
+        loss_fn = SVD_LOSS_FNS[loss_key]
+        train_model = HIGWrapper(model, loss_fn, device)
+        optimizer = HIGOptimizer(train_model, lr=hig_lr, tau=hig_tau)
+
+        def step_fn(batch):
+            _hig_step(train_model, optimizer, batch)
+
+    else:  # "standard"
         loss_fn = STANDARD_LOSS_FNS[loss_key]
         if polyak_kwargs is not None:
             optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None, **polyak_kwargs)
@@ -242,7 +292,10 @@ def _profile_single(
         return xb.to(device), yb.to(device)
 
     def _ctx():
-        return torch.no_grad() if mode == "svd" else torch.enable_grad()
+        # JD needs autograd; SVD and HIG manage their own gradient context internally
+        if mode in ("standard", "jd"):
+            return torch.enable_grad()
+        return torch.no_grad()
 
     # Warm-up (allocates optimizer state, caches CUDA workspaces, etc.)
     with _ctx():
@@ -376,7 +429,13 @@ def main(cfg: DictConfig) -> None:
     output_dir = profile_cfg.get("output_dir", "profile_results")
 
     mode = rcfg.get("mode", "both")
-    assert mode in ("svd", "standard", "both"), f"Unknown mode: {mode}"
+    _VALID_MODES = ("svd", "standard", "both", "jd", "hig", "all")
+    assert mode in _VALID_MODES, f"Unknown mode: {mode}. Choose from {_VALID_MODES}"
+
+    run_svd      = mode in ("svd", "both", "all")
+    run_standard = mode in ("standard", "both", "all")
+    run_jd       = mode in ("jd", "all") and ('lrs_jd' in rcfg or 'aggregators_jd' in rcfg)
+    run_hig      = mode in ("hig", "all") and ('lrs_hig' in rcfg or 'tau_hig' in rcfg)
     loss_key = rcfg.get("loss", "ce")
     loader_seed = rcfg.get("loader_seed", 0)
 
@@ -410,7 +469,7 @@ def main(cfg: DictConfig) -> None:
             # ------------------------------------------------------------------
             # SVD optimizer scan
             # ------------------------------------------------------------------
-            if mode in ("svd", "both"):
+            if run_svd:
                 print(f"\n{'='*80}\nProfiling SVD optimizer\n{'='*80}")
 
                 k_scan_values = hparams.get("k_fractions", hparams.get("k_values"))
@@ -504,7 +563,7 @@ def main(cfg: DictConfig) -> None:
             # ------------------------------------------------------------------
             # Standard optimizer scan
             # ------------------------------------------------------------------
-            if mode in ("standard", "both"):
+            if run_standard:
                 print(f"\n{'='*80}\nProfiling standard optimizers\n{'='*80}")
 
                 has_lbfgs = "LBFGS" in hparams["optimizers_standard"]
@@ -699,6 +758,139 @@ def main(cfg: DictConfig) -> None:
 
                         except Exception as e:
                             print(f"  [error] {run_id}: {e}")
+
+            # ------------------------------------------------------------------
+            # Jacobian Descent (torchjd) profiling
+            # ------------------------------------------------------------------
+            if run_jd:
+                if not _HAS_TORCHJD:
+                    print("  [skip] torchjd not installed — skipping JD profiling")
+                else:
+                    print(f"\n{'='*80}\nProfiling Jacobian Descent\n{'='*80}")
+
+                    jd_grid = product(
+                        hparams["batch_size"],
+                        hparams["lrs_jd"],
+                        hparams["aggregators_jd"],
+                        hparams["inner_optimizers_jd"],
+                    )
+
+                    for batch_size, lr, aggregator_name, inner_optim_name in jd_grid:
+                        if aggregator_name not in _JD_AGGREGATORS:
+                            print(f"  [skip] Unknown aggregator: {aggregator_name}")
+                            continue
+
+                        run_id = (
+                            f"profile_jd_bs{batch_size}{id_str}"
+                            f"_lr{lr}_agg{aggregator_name}_inner{inner_optim_name}{seed_str}"
+                        )
+                        out_path = os.path.join(scan_dir, run_id + ".json")
+                        if os.path.exists(out_path):
+                            print(f"  [skip] {run_id}")
+                            continue
+
+                        print(f"\nJD: bs={batch_size}, lr={lr}, aggregator={aggregator_name}, inner={inner_optim_name}")
+
+                        try:
+                            result = _profile_single(
+                                init_state, dataset, cfg, device, "jd", loss_key,
+                                batch_size, loader_seed, num_steps, warmup_steps, detailed,
+                                jd_aggregator_name=aggregator_name,
+                                jd_inner_optim=inner_optim_name,
+                                jd_lr=lr,
+                            )
+
+                            artifact = {
+                                "run_id": run_id,
+                                "config": {
+                                    "mode": "jd",
+                                    "optimizer": f"JD_{aggregator_name}",
+                                    "device": str(device),
+                                    "batch_size": batch_size,
+                                    "loss": loss_key,
+                                    "n_params": result["n_params"],
+                                    "model_seed": model_seed,
+                                    "loader_seed": loader_seed,
+                                    "num_steps": num_steps,
+                                    "warmup_steps": warmup_steps,
+                                    "lr": float(lr),
+                                    "aggregator": aggregator_name,
+                                    "inner_optimizer": inner_optim_name,
+                                },
+                                "memory": result["memory"],
+                                "time": result["time"],
+                            }
+                            for f in rcfg.get("result_id_fields", []):
+                                artifact["config"][f] = rcfg[f]
+
+                            with open(out_path, "w") as fh:
+                                json.dump(artifact, fh, indent=2)
+                            _print_summary(run_id, result, batch_size, num_steps, warmup_steps)
+                            print(f"  → {out_path}")
+
+                        except Exception as e:
+                            print(f"  [error] {run_id}: {e}")
+
+            # ------------------------------------------------------------------
+            # Half-Inverse Gradients profiling
+            # ------------------------------------------------------------------
+            if run_hig:
+                print(f"\n{'='*80}\nProfiling Half-Inverse Gradients\n{'='*80}")
+
+                hig_grid = product(
+                    hparams["batch_size"],
+                    hparams["lrs_hig"],
+                    hparams["tau_hig"],
+                )
+
+                for batch_size, lr, tau in hig_grid:
+                    run_id = (
+                        f"profile_hig_bs{batch_size}{id_str}"
+                        f"_lr{lr}_tau{tau}{seed_str}"
+                    )
+                    out_path = os.path.join(scan_dir, run_id + ".json")
+                    if os.path.exists(out_path):
+                        print(f"  [skip] {run_id}")
+                        continue
+
+                    print(f"\nHIG: bs={batch_size}, lr={lr}, tau={tau}")
+
+                    try:
+                        result = _profile_single(
+                            init_state, dataset, cfg, device, "hig", loss_key,
+                            batch_size, loader_seed, num_steps, warmup_steps, detailed,
+                            hig_lr=lr, hig_tau=tau,
+                        )
+
+                        artifact = {
+                            "run_id": run_id,
+                            "config": {
+                                "mode": "hig",
+                                "optimizer": "HIG",
+                                "device": str(device),
+                                "batch_size": batch_size,
+                                "loss": loss_key,
+                                "n_params": result["n_params"],
+                                "model_seed": model_seed,
+                                "loader_seed": loader_seed,
+                                "num_steps": num_steps,
+                                "warmup_steps": warmup_steps,
+                                "lr": float(lr),
+                                "tau": float(tau),
+                            },
+                            "memory": result["memory"],
+                            "time": result["time"],
+                        }
+                        for f in rcfg.get("result_id_fields", []):
+                            artifact["config"][f] = rcfg[f]
+
+                        with open(out_path, "w") as fh:
+                            json.dump(artifact, fh, indent=2)
+                        _print_summary(run_id, result, batch_size, num_steps, warmup_steps)
+                        print(f"  → {out_path}")
+
+                    except Exception as e:
+                        print(f"  [error] {run_id}: {e}")
 
     print(f"\nProfile scan complete. Results in {scan_dir}/")
 
