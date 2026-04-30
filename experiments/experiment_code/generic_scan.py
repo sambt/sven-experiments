@@ -13,11 +13,20 @@ from omegaconf import OmegaConf
 from hydra.core.hydra_config import HydraConfig
 
 from .experiment_utils import (
-    train_loop_svd, train_loop_standard, set_seed,
-    process_hparam_config, build_standard_optimizer,
+    train_loop_svd, train_loop_standard, train_loop_hig, train_loop_jd,
+    set_seed, process_hparam_config, build_standard_optimizer,
 )
 from sven.opt import Sven
 from sven.nn import SvenWrapper
+from experiments.optimizers.hig import HIGWrapper, HIGOptimizer
+
+try:
+    from torchjd.aggregation import UPGrad, Mean, Sum
+    _JD_AGGREGATORS = {"UPGrad": UPGrad, "Mean": Mean, "Sum": Sum}
+    _HAS_TORCHJD = True
+except ImportError:
+    _JD_AGGREGATORS = {}
+    _HAS_TORCHJD = False
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +106,13 @@ def scan(cfg):
     device = rcfg["device"]
 
     mode = rcfg.get("mode", "both")
-    assert mode in ("svd", "standard", "both"), f"Unknown mode: {mode}"
+    _VALID_MODES = ("svd", "standard", "both", "jd", "hig", "all")
+    assert mode in _VALID_MODES, f"Unknown mode: {mode}. Choose from {_VALID_MODES}"
+
+    run_svd      = mode in ("svd", "both", "all")
+    run_standard = mode in ("standard", "both", "all")
+    run_jd       = mode in ("jd", "all") and ('lrs_jd' in rcfg or 'aggregators_jd' in rcfg)
+    run_hig      = mode in ("hig", "all") and ('lrs_hig' in rcfg or 'tau_hig' in rcfg)
 
     loss_key = rcfg.get("loss", "ce")
     track_acc = loss_key == "ce" or ("label_regression" in loss_key) # only track accuracy for classification
@@ -138,7 +153,7 @@ def scan(cfg):
         # --------------------------------------------------------------
         # SVD optimizer scan
         # --------------------------------------------------------------
-        if mode in ("svd", "both"):
+        if run_svd:
             print(f"\n{'='*80}")
             print("Running SVD optimizer scan")
             print(f"{'='*80}")
@@ -259,7 +274,7 @@ def scan(cfg):
         # --------------------------------------------------------------
         # Standard optimizer scan
         # --------------------------------------------------------------
-        if mode in ("standard", "both"):
+        if run_standard:
             print(f"\n{'='*80}")
             print("Running standard optimizer scan")
             print(f"{'='*80}")
@@ -466,5 +481,151 @@ def scan(cfg):
                         result[f] = rcfg[f]
 
                     _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+
+        # --------------------------------------------------------------
+        # Jacobian Descent (torchjd) scan
+        # --------------------------------------------------------------
+        if run_jd:
+            if not _HAS_TORCHJD:
+                print("  [skip] torchjd not installed — skipping JD scan")
+            else:
+                print(f"\n{'='*80}")
+                print("Running Jacobian Descent scan")
+                print(f"{'='*80}")
+
+                loss_fn_svd = SVD_LOSS_FNS[loss_key]
+
+                jd_grid = product(
+                    hparams['batch_size'],
+                    hparams['lrs_jd'],
+                    hparams['aggregators_jd'],
+                    hparams['inner_optimizers_jd'],
+                )
+
+                for batch_size, lr, aggregator_name, inner_optim_name in jd_grid:
+                    if aggregator_name not in _JD_AGGREGATORS:
+                        print(f"  [skip] Unknown JD aggregator: {aggregator_name}")
+                        continue
+
+                    run_id = (
+                        f"jd_bs{batch_size}{id_str}"
+                        f"_lr{lr}_agg{aggregator_name}_inner{inner_optim_name}{seed_str}"
+                    )
+
+                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
+                        print(f"  [skip] {run_id}")
+                        continue
+
+                    print(f"\nJD: bs={batch_size}, lr={lr}, aggregator={aggregator_name}, inner={inner_optim_name}")
+
+                    try:
+                        model = instantiate(cfg.model)
+                        model.load_state_dict(init_state)
+                        model = model.to(device)
+
+                        aggregator = _JD_AGGREGATORS[aggregator_name]()
+                        inner_optimizer = build_standard_optimizer(model, inner_optim_name, lr)
+
+                        train_loader = DataLoader(
+                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                            generator=torch.Generator().manual_seed(loader_seed),
+                        )
+                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+
+                        model, losses = train_loop_jd(
+                            model, inner_optimizer, aggregator, loss_fn_svd,
+                            train_loader, val_loader,
+                            rcfg["num_epochs"], device,
+                            track_acc=track_acc, track_param_norm=track_param_norm,
+                        )
+
+                        result = {
+                            "run_id": run_id,
+                            "optimizer": f"JD_{aggregator_name}",
+                            "batch_size": batch_size,
+                            "lr": lr,
+                            "aggregator": aggregator_name,
+                            "inner_optimizer": inner_optim_name,
+                            "model_seed": model_seed,
+                            "loader_seed": loader_seed,
+                            "losses": losses,
+                        }
+                        for f in rcfg.get("result_id_fields", []):
+                            result[f] = rcfg[f]
+
+                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+
+                    except Exception as e:
+                        print(f"  [error] Training failed: {e}")
+
+                    torch.compiler.reset()
+
+        # --------------------------------------------------------------
+        # Half-Inverse Gradients (HIG) scan
+        # --------------------------------------------------------------
+        if run_hig:
+            print(f"\n{'='*80}")
+            print("Running Half-Inverse Gradients scan")
+            print(f"{'='*80}")
+
+            loss_fn_svd = SVD_LOSS_FNS[loss_key]
+
+            hig_grid = product(
+                hparams['batch_size'],
+                hparams['lrs_hig'],
+                hparams['tau_hig'],
+            )
+
+            for batch_size, lr, tau in hig_grid:
+                run_id = (
+                    f"hig_bs{batch_size}{id_str}"
+                    f"_lr{lr}_tau{tau}{seed_str}"
+                )
+
+                if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
+                    print(f"  [skip] {run_id}")
+                    continue
+
+                print(f"\nHIG: bs={batch_size}, lr={lr}, tau={tau}")
+
+                try:
+                    model = instantiate(cfg.model)
+                    model.load_state_dict(init_state)
+
+                    train_model = HIGWrapper(model, loss_fn_svd, device)
+                    optimizer = HIGOptimizer(train_model, lr=lr, tau=tau)
+
+                    train_loader = DataLoader(
+                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                        generator=torch.Generator().manual_seed(loader_seed),
+                    )
+                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+
+                    train_model, losses = train_loop_hig(
+                        train_model, optimizer, loss_fn_svd,
+                        train_loader, val_loader,
+                        rcfg["num_epochs"], device,
+                        track_acc=track_acc, track_param_norm=track_param_norm,
+                    )
+
+                    result = {
+                        "run_id": run_id,
+                        "optimizer": "HIG",
+                        "batch_size": batch_size,
+                        "lr": lr,
+                        "tau": tau,
+                        "model_seed": model_seed,
+                        "loader_seed": loader_seed,
+                        "losses": losses,
+                    }
+                    for f in rcfg.get("result_id_fields", []):
+                        result[f] = rcfg[f]
+
+                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+
+                except Exception as e:
+                    print(f"  [error] Training failed: {e}")
+
+                torch.compiler.reset()
 
     print(f"\nScan complete. Results in {scan_dir}/")
