@@ -25,4 +25,4 @@ use_rmsprop: true
 alpha_rmsProp: 0.99
 
 loader_seed: 51159
-model_seeds: [47612, 1, 2]
+model_seeds: [6310, 6311, 6312, 6313, 6314, 6315, 6316, 6317, 6318, 6319]

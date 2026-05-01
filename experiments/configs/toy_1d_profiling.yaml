@@ -37,7 +37,7 @@ lrs_hig: 0.05
 tau_hig: 1e-6
 
 loader_seed: 51159
-model_seeds: [101]
+model_seeds: [4310]
 data_seed: 54631
 
 profile:

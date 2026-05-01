@@ -29,8 +29,17 @@ lbfgs_max_iter: [1,2,5,10]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [1,2,5,10]
 
+# Jacobian Descent (torchjd) hyperparameters
+aggregators_jd: [UPGrad]
+inner_optimizers_jd: [Adam]
+lrs_jd: [1e-3]
+
+# Half-Inverse Gradients hyperparameters
+lrs_hig: [0.1]
+tau_hig: [1e-8]
+
 loader_seed: 51159
-model_seeds: [101]
+model_seeds: [5310]
 data_seed: 54631
 
 profile:

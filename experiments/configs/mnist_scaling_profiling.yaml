@@ -28,7 +28,7 @@ lbfgs_line_search_fn: strong_wolfe
 lbfgs_history_size: 10
 
 loader_seed: 51159
-model_seeds: [47612]
+model_seeds: [6310]
 
 profile:
   num_steps: 5

@@ -32,8 +32,7 @@ from style import set_style
 # ---------------------------------------------------------------------------
 
 STANDARD_ORDER = [
-    'Adam', 'AdamW', 'SGD', 'RMSprop', 'Muon',
-    'Lion', 'ScheduleFreeAdamW', 'ScheduleFreeSGD',
+    'Adam', 'AdamW', 'SGD', 'RMSprop',
     'LBFGS', 'PolyakSGD',
 ]
 

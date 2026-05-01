@@ -10,7 +10,7 @@ print_config: true
 
 num_epochs: 10
 batch_size: 128
-loss: ce
+loss: label_regression
 
 # SVD optimizer sweep
 k_values: [1,2,4,8,16,32,64,96,128]
@@ -22,12 +22,21 @@ kappa: 2
 lrs_standard: 1e-3
 optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
 lrs_lbfgs: 0.1
-lbfgs_max_iter: [1,2,5,10]
+lbfgs_max_iter: [1]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: [1]
+
+# Jacobian Descent (torchjd) hyperparameters
+aggregators_jd: [UPGrad]
+inner_optimizers_jd: [Adam]
+lrs_jd: [1e-3]
+
+# Half-Inverse Gradients hyperparameters
+lrs_hig: [0.05]
+tau_hig: [1e-8]
 
 loader_seed: 51159
-model_seeds: [47612]
+model_seeds: [7310]
 
 profile:
   num_steps: 5

@@ -26,5 +26,5 @@ svd_mode: [torch]
 use_rmsprop: false
 
 loader_seed: 82464
-model_seeds: [2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009]
+model_seeds: [5310, 5311, 5312, 5313, 5314, 5315, 5316, 5317, 5318, 5319]
 data_seed: 57728
