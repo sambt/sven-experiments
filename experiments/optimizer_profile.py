@@ -488,6 +488,13 @@ def main(cfg: DictConfig) -> None:
 
                 for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
                     k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
+                    microbatch_size = microbatch_size if microbatch_size is not None else 1
+                    param_fraction = param_fraction if param_fraction is not None else 1.0
+
+                    if k > batch_size:
+                        continue # skip unnecessary configs where k > batch_size
+                    if microbatch_size > batch_size:
+                        continue # skip configs where microbatch > batch
 
                     run_id = (
                         f"profile_svd_bs{batch_size}{id_str}"
