@@ -272,24 +272,30 @@ def _profile_single(
         def step_fn(batch):
             _standard_step(model, optimizer, loss_fn, batch)
 
-    # Data loader + auto-restart iterator
     train_loader = DataLoader(
         dataset.train_dataset,
         batch_size=batch_size,
         shuffle=True,
         generator=torch.Generator().manual_seed(loader_seed),
-        drop_last=(microbatch_size is not None),
+        drop_last=True,
     )
-    data_iter = iter(train_loader)
 
-    def _next_batch():
-        nonlocal data_iter
+    # Pre-stage all batches on GPU so DataLoader iteration and H2D transfers
+    # are excluded from the timed region. Per-step resident bytes are then
+    # measured with the staged batches already accounted for, so transient
+    # deltas reflect only what the optimizer step itself allocates.
+    n_detailed = num_steps if (detailed and mode == "svd") else 0
+    total_batches = warmup_steps + num_steps + n_detailed
+    staged: list[tuple[torch.Tensor, torch.Tensor]] = []
+    data_iter = iter(train_loader)
+    for _ in range(total_batches):
         try:
             xb, yb = next(data_iter)
         except StopIteration:
             data_iter = iter(train_loader)
             xb, yb = next(data_iter)
-        return xb.to(device), yb.to(device)
+        staged.append((xb.to(device), yb.to(device)))
+    torch.cuda.synchronize(device)
 
     def _ctx():
         # JD needs autograd; SVD and HIG manage their own gradient context internally
@@ -299,8 +305,8 @@ def _profile_single(
 
     # Warm-up (allocates optimizer state, caches CUDA workspaces, etc.)
     with _ctx():
-        for _ in range(warmup_steps):
-            step_fn(_next_batch())
+        for i in range(warmup_steps):
+            step_fn(staged[i])
 
     # Measurement loop
     resident_bytes: list[int] = []
@@ -308,8 +314,8 @@ def _profile_single(
     step_times_ms: list[float] = []
 
     with _ctx():
-        for _ in range(num_steps):
-            batch = _next_batch()
+        for i in range(num_steps):
+            batch = staged[warmup_steps + i]
 
             torch.cuda.synchronize(device)
             torch.cuda.reset_peak_memory_stats(device)
@@ -335,8 +341,8 @@ def _profile_single(
         tracker = _PhaseTracker(device)
         records_per_step: list[list[tuple[str, int, int]]] = []
         with torch.no_grad():
-            for _ in range(num_steps):
-                batch = _next_batch()
+            for i in range(num_steps):
+                batch = staged[warmup_steps + num_steps + i]
                 tracker.reset()
                 _detailed_svd_step(train_model, optimizer, batch, tracker)
                 records_per_step.append(list(tracker.records))
@@ -488,6 +494,13 @@ def main(cfg: DictConfig) -> None:
 
                 for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
                     k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
+                    microbatch_size = microbatch_size if microbatch_size is not None else 1
+                    param_fraction = param_fraction if param_fraction is not None else 1.0
+
+                    if k > batch_size:
+                        continue # skip unnecessary configs where k > batch_size
+                    if microbatch_size > batch_size:
+                        continue # skip configs where microbatch > batch
 
                     run_id = (
                         f"profile_svd_bs{batch_size}{id_str}"
