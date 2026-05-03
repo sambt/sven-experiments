@@ -34,7 +34,36 @@ from style import set_style
 STANDARD_ORDER = [
     'Adam', 'AdamW', 'SGD', 'RMSprop',
     'LBFGS', 'PolyakSGD',
+    'HIG', 'JD_UPGrad',
 ]
+
+BASELINE_LABELS = {
+    'JD_UPGrad': 'JD (UPGrad)',
+}
+
+# Modes treated as "baseline" methods (one bar / horizontal reference line each)
+BASELINE_MODES = ('standard', 'hig', 'jd')
+
+# Set from --dataset; used by _title() to prefix plot titles and table captions
+_DATASET_NAME: str | None = None
+
+
+def _title(t: str) -> str:
+    return f"{_DATASET_NAME}: {t}" if _DATASET_NAME else t
+
+
+def _baseline_label(opt: str) -> str:
+    return BASELINE_LABELS.get(opt, opt)
+
+
+def _baseline_label_tex(opt: str) -> str:
+    return _baseline_label(opt).replace('_', r'\_')
+
+
+def _format_model_size(mb: float) -> str:
+    if mb >= 1024.0:
+        return f"{mb / 1024.0:.2f} GB"
+    return f"{mb:.1f} MB"
 
 SVD_MODE_ORDER  = ['torch', 'randomized', 'randomized_v2']
 SVD_MODE_LABELS = {'torch': 'full SVD', 'randomized': 'rand.', 'randomized_v2': 'rand. v2'}
@@ -89,40 +118,10 @@ def _most_common(series: pd.Series):
     return Counter(series.dropna().tolist()).most_common(1)[0][0]
 
 
-def select_defaults(
-    df: pd.DataFrame,
-    batch_size: int | None,
-    model_seed: int | None,
-    mlp_width: int | None,
-) -> tuple[int, int, int | None, pd.DataFrame, pd.DataFrame]:
-    """Return (bs, seed, mw, df_single, df_all_widths).
-
-    df_single  — filtered to one (bs, seed, mlp_width), used for per-config plots.
-    df_all_widths — filtered to (bs, seed) only, used for scaling plots.
-    mw is None when no mlp_width column is present.
-    """
-    bs   = batch_size if batch_size is not None else int(_most_common(df['batch_size']))
-    seed = model_seed if model_seed is not None else int(_most_common(df['model_seed']))
-
-    df_all = df[(df['batch_size'] == bs) & (df['model_seed'] == seed)].copy()
-    if df_all.empty:
-        raise ValueError(f"No runs for batch_size={bs}, model_seed={seed}. "
-                         f"Available batch sizes: {sorted(df['batch_size'].unique())}")
-
-    has_width = 'mlp_width' in df_all.columns and df_all['mlp_width'].notna().any()
-    mw: int | None = None
-    if has_width:
-        mw = mlp_width if mlp_width is not None else int(_most_common(df_all['mlp_width']))
-        df_single = df_all[df_all['mlp_width'] == mw].copy()
-    else:
-        df_single = df_all
-
-    n_widths = df_all['mlp_width'].nunique() if has_width else 1
-    print(f"Using batch_size={bs}, model_seed={seed}"
-          + (f", mlp_width={mw}" if mw is not None else "")
-          + f"  ({len(df_single)} single-width runs"
-          + (f", {n_widths} widths available" if n_widths > 1 else "") + ")")
-    return bs, seed, mw, df_single, df_all
+def _resolve_mlp_width(df_at_bs: pd.DataFrame, requested: int | None) -> int | None:
+    if 'mlp_width' not in df_at_bs.columns or not df_at_bs['mlp_width'].notna().any():
+        return None
+    return requested if requested is not None else int(_most_common(df_at_bs['mlp_width']))
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +129,7 @@ def select_defaults(
 # ---------------------------------------------------------------------------
 
 def aggregate_standard(df: pd.DataFrame) -> pd.DataFrame:
-    std = df[df['mode'] == 'standard'].copy()
+    std = df[df['mode'].isin(BASELINE_MODES)].copy()
     if std.empty:
         return pd.DataFrame()
 
@@ -149,6 +148,10 @@ def aggregate_svd(df: pd.DataFrame, batch_size: int) -> pd.DataFrame:
     svd = df[df['mode'] == 'svd'].copy()
     if svd.empty:
         return pd.DataFrame()
+    if 'microbatch_size' in svd.columns:
+        svd = svd[_is_default_mb(svd['microbatch_size'])]
+    if 'param_fraction' in svd.columns:
+        svd = svd[_is_default_pf(svd['param_fraction'])]
 
     agg = svd.groupby(['svd_mode', 'k'], sort=False)[_METRICS].mean().reset_index()
     agg['k_fraction'] = agg['k'] / batch_size
@@ -174,8 +177,17 @@ def aggregate_svd(df: pd.DataFrame, batch_size: int) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def aggregate_svd_by_width(df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate SVD runs by (svd_mode, k, n_params), averaging over lr/rtol/kappa."""
+    """Aggregate SVD runs by (svd_mode, k, n_params), averaging over lr/rtol/kappa.
+
+    Filters to default microbatch_size (1 or None) and param_fraction (1.0 or None).
+    """
     svd = df[df['mode'] == 'svd'].copy()
+    if svd.empty:
+        return pd.DataFrame()
+    if 'microbatch_size' in svd.columns:
+        svd = svd[_is_default_mb(svd['microbatch_size'])]
+    if 'param_fraction' in svd.columns:
+        svd = svd[_is_default_pf(svd['param_fraction'])]
     if svd.empty:
         return pd.DataFrame()
     agg = svd.groupby(['svd_mode', 'k', 'n_params'], sort=False)[_METRICS].mean().reset_index()
@@ -186,7 +198,7 @@ def aggregate_svd_by_width(df: pd.DataFrame) -> pd.DataFrame:
 
 def aggregate_standard_by_width(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate standard optimizer runs by (optimizer, n_params), averaging over lr/etc."""
-    std = df[df['mode'] == 'standard'].copy()
+    std = df[df['mode'].isin(BASELINE_MODES)].copy()
     if std.empty:
         return pd.DataFrame()
     lbfgs_mask = std['optimizer'] == 'LBFGS'
@@ -254,9 +266,8 @@ def _svd_label(row: pd.Series) -> str:
 def _save(fig: plt.Figure, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path.with_suffix('.pdf'))
-    fig.savefig(path.with_suffix('.png'))
     plt.close(fig)
-    print(f"  Saved {path.stem}.pdf + .png")
+    print(f"  Saved {path.stem}.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -295,13 +306,16 @@ def _bar_chart(
                 capsize=3, error_kw={'linewidth': 1.2}, height=0.72)
 
     all_y      = np.concatenate([y_svd, y_std]) if (n_svd and n_std) else (y_svd if n_svd else y_std)
-    all_labels = [_svd_label(r) for _, r in svd_agg.iterrows()] + list(std_agg['optimizer'])
+    all_labels = (
+        [_svd_label(r) for _, r in svd_agg.iterrows()]
+        + [_baseline_label(o) for o in std_agg['optimizer']]
+    )
 
     ax.set_yticks(all_y)
     ax.set_yticklabels(all_labels, fontsize=10)
     ax.invert_yaxis()
     ax.set_xlabel(xlabel)
-    ax.set_title(title, pad=10)
+    ax.set_title(_title(title), pad=10)
 
     # Separator between SVD and standard groups
     if n_svd and n_std:
@@ -356,12 +370,12 @@ def _k_scaling_plot(
     fig, ax = plt.subplots()
 
     for mode in SVD_MODE_ORDER:
-        rows = svd_agg[svd_agg['svd_mode'] == mode].sort_values('k_fraction')
+        rows = svd_agg[svd_agg['svd_mode'] == mode].sort_values('k')
         if rows.empty:
             continue
         color = _svd_line_color(mode)
         label = f"Sven ({SVD_MODE_LABELS.get(mode, mode)})"
-        xs    = rows['k_fraction'].values
+        xs    = rows['k'].values
         ys    = rows[svd_col].values
         ax.plot(xs, ys, marker='o', color=color, label=label)
         if svd_err_col and svd_err_col in rows.columns:
@@ -371,11 +385,13 @@ def _k_scaling_plot(
     if not std_agg.empty:
         for _, row in std_agg.iterrows():
             ax.axhline(row[std_col], color=_std_color(row['optimizer']),
-                       linestyle='--', linewidth=1.5, alpha=0.85, label=row['optimizer'])
+                       linestyle='--', linewidth=1.5, alpha=0.85,
+                       label=_baseline_label(row['optimizer']))
 
-    ax.set_xlabel('$k / B$')
+    ax.set_xscale('log', base=2)
+    ax.set_xlabel('$k$')
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(_title(title))
     ax.legend(loc='best', fontsize=10)
 
     fig.tight_layout()
@@ -410,37 +426,47 @@ def plot_overhead_ratios(
     svd_agg: pd.DataFrame,
     std_agg: pd.DataFrame,
     out_path: Path,
+    baseline: str = 'Adam',
 ) -> None:
-    adam = std_agg[std_agg['optimizer'] == 'Adam']
-    if adam.empty:
-        print("  [skip] overhead_ratios: no Adam baseline found")
+    base = std_agg[std_agg['optimizer'] == baseline]
+    if base.empty:
+        print(f"  [skip] overhead_ratios: no {baseline} baseline found")
         return
 
-    adam_time = float(adam.iloc[0]['time_mean_ms'])
-    adam_mem  = float(adam.iloc[0]['mem_peak_mb'])
+    base_time = float(base.iloc[0]['time_mean_ms'])
+    base_mem  = float(base.iloc[0]['mem_peak_mb'])
+    base_lbl  = _baseline_label(baseline)
+
+    model_mb = float(base.iloc[0]['mem_baseline_mb'])
+    model_size_str = f"Model size: {_format_model_size(model_mb)}"
 
     set_style()
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     for mode in SVD_MODE_ORDER:
-        rows = svd_agg[svd_agg['svd_mode'] == mode].sort_values('k_fraction')
+        rows = svd_agg[svd_agg['svd_mode'] == mode].sort_values('k')
         if rows.empty:
             continue
         color = _svd_line_color(mode)
         label = f"Sven ({SVD_MODE_LABELS.get(mode, mode)})"
-        xs    = rows['k_fraction'].values
-        ax1.plot(xs, rows['time_mean_ms'].values / adam_time, marker='o', color=color, label=label)
-        ax2.plot(xs, rows['mem_peak_mb'].values  / adam_mem,  marker='o', color=color, label=label)
+        xs    = rows['k'].values
+        ax1.plot(xs, rows['time_mean_ms'].values / base_time, marker='o', color=color, label=label)
+        ax2.plot(xs, rows['mem_peak_mb'].values  / base_mem,  marker='o', color=color, label=label)
 
     for ax in (ax1, ax2):
-        ax.axhline(1.0, color='#777777', linestyle=':', linewidth=1.5, label='Adam (ref.)')
-        ax.set_xlabel('$k / B$')
+        ax.axhline(1.0, color='#777777', linestyle=':', linewidth=1.5, label=f'{base_lbl} (ref.)')
+        ax.set_xscale('log', base=2)
+        ax.set_xlabel('$k$')
         ax.legend(fontsize=10)
+        ax.text(0.98, 0.98, model_size_str, transform=ax.transAxes,
+                ha='right', va='top', fontsize=9,
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                          edgecolor='#bbbbbb', alpha=0.85))
 
-    ax1.set_ylabel('Step time / Adam step time')
-    ax1.set_title('Timing overhead vs Adam')
-    ax2.set_ylabel('Peak memory / Adam peak memory')
-    ax2.set_title('Memory overhead vs Adam')
+    ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
+    ax1.set_title(_title(f'Timing overhead vs {base_lbl}'))
+    ax2.set_ylabel(f'Peak Memory Ratio ({base_lbl})')
+    ax2.set_title(_title(f'Memory overhead vs {base_lbl}'))
 
     fig.tight_layout()
     _save(fig, out_path)
@@ -493,7 +519,7 @@ def plot_memory_breakdown(svd_agg: pd.DataFrame, out_path: Path) -> None:
         legend_text = '\n'.join(f'{i}: {l}' for i, l in enumerate(phase_labels))
         fig.text(0.01, 0.01, legend_text, fontsize=7, va='bottom', family='monospace', alpha=0.7)
 
-    fig.suptitle('Memory over SVD step phases', fontsize=14, y=1.01)
+    fig.suptitle(_title('Memory over SVD step phases'), fontsize=14, y=1.01)
     fig.tight_layout()
     _save(fig, out_path)
 
@@ -529,7 +555,7 @@ def _scaling_panel(
                 continue
             ax.plot(rows['n_params'].values, rows[y_col].values,
                     marker='s', linestyle='--', linewidth=1.5, alpha=0.85,
-                    color=_std_color(opt), label=opt)
+                    color=_std_color(opt), label=_baseline_label(opt))
 
     ax.set_xscale('log')
     ax.set_xlabel('Parameters')
@@ -559,7 +585,7 @@ def plot_scaling(
                        'Step time (ms)', 'Step time vs model size', None)
         _scaling_panel(ax2, None, std_by_width, 'mem_peak_mb',
                        'Peak GPU memory (MB)', 'Peak memory vs model size', None)
-        fig.suptitle('Standard optimizers — scaling with model size', fontsize=14)
+        fig.suptitle(_title('Standard optimizers — scaling with model size'), fontsize=14)
         fig.tight_layout()
         _save(fig, out_dir / 'scaling_standard')
 
@@ -577,9 +603,318 @@ def plot_scaling(
                            'Step time (ms)', 'Step time vs model size', mode)
             _scaling_panel(ax2, svd_mode_rows, std_by_width, 'mem_peak_mb',
                            'Peak GPU memory (MB)', 'Peak memory vs model size', mode)
-            fig.suptitle(f'Sven ({mode_label}) — scaling with model size', fontsize=14)
+            fig.suptitle(_title(f'Sven ({mode_label}) — scaling with model size'), fontsize=14)
             fig.tight_layout()
             _save(fig, out_dir / f'scaling_{mode}')
+
+
+# ---------------------------------------------------------------------------
+# Scans over batch_size / microbatch_size / param_fraction
+# ---------------------------------------------------------------------------
+
+def _is_default_mb(s: pd.Series) -> pd.Series:
+    return s.isna() | (s == 1)
+
+
+def _is_default_pf(s: pd.Series) -> pd.Series:
+    return s.isna() | (s == 1.0)
+
+
+def _aggregate_svd(df: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
+    svd = df[df['mode'] == 'svd'].copy()
+    if svd.empty:
+        return pd.DataFrame()
+    return svd.groupby(group_cols, sort=False, dropna=False)[_METRICS].mean().reset_index()
+
+
+def aggregate_baselines_by_bs(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate baseline runs by (optimizer, batch_size), averaging over lr/etc."""
+    std = df[df['mode'].isin(BASELINE_MODES)].copy()
+    if std.empty:
+        return pd.DataFrame()
+    lbfgs_mask = std['optimizer'] == 'LBFGS'
+    if lbfgs_mask.any() and 'lbfgs_max_iter' in std.columns:
+        mi = _most_common(std.loc[lbfgs_mask, 'lbfgs_max_iter'].dropna())
+        std = std[~lbfgs_mask | (std['lbfgs_max_iter'] == mi)].copy()
+    return std.groupby(['optimizer', 'batch_size'], sort=False)[_METRICS].mean().reset_index()
+
+
+def _k_cmap_color(svd_mode: str, k_index: int, n_ks: int):
+    cmap = plt.get_cmap(SVD_MODE_CMAPS.get(svd_mode, 'viridis'))
+    return cmap(0.30 + 0.55 * k_index / max(n_ks - 1, 1))
+
+
+def _bs_overlay_color(bs_index: int, n_bs: int):
+    cmap = plt.get_cmap('viridis')
+    return cmap(0.15 + 0.70 * bs_index / max(n_bs - 1, 1))
+
+
+def _annotate_model_size(ax, model_mb: float) -> None:
+    ax.text(0.98, 0.98, f"Model size: {_format_model_size(model_mb)}",
+            transform=ax.transAxes, ha='right', va='top', fontsize=9,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                      edgecolor='#bbbbbb', alpha=0.85))
+
+
+# --- Batch size scan -------------------------------------------------------
+
+def plot_batch_size_scan(df_scans: pd.DataFrame, out_dir: Path) -> None:
+    """SVD at default mb=1, pf=1.0; standard baselines per bs.
+
+    Produces one subdirectory per svd_mode (out_dir/<svd_mode>/) containing
+    time / memory / overhead_adam / overhead_sgd. Sven curves overlaid by k;
+    Adam/SGD as dashed reference lines on the time/memory plots; overheads
+    normalize by Adam/SGD at the matching batch size.
+    """
+    if 'microbatch_size' not in df_scans.columns or 'param_fraction' not in df_scans.columns:
+        return
+    svd_default = df_scans[
+        (df_scans['mode'] == 'svd')
+        & _is_default_mb(df_scans['microbatch_size'])
+        & _is_default_pf(df_scans['param_fraction'])
+    ].copy()
+    if svd_default.empty or svd_default['batch_size'].nunique() < 2:
+        return
+
+    std_agg = aggregate_baselines_by_bs(df_scans)
+    modes_present = [m for m in SVD_MODE_ORDER if m in svd_default['svd_mode'].unique()]
+
+    for svd_mode in modes_present:
+        svd_mode_rows = svd_default[svd_default['svd_mode'] == svd_mode]
+        if svd_mode_rows.empty or svd_mode_rows['batch_size'].nunique() < 2:
+            continue
+        svd_agg = _aggregate_svd(svd_mode_rows, ['svd_mode', 'k', 'batch_size'])
+
+        ks = sorted(svd_agg['k'].unique())
+        model_mb = float(svd_mode_rows['mem_baseline_mb'].iloc[0])
+        mode_label = SVD_MODE_LABELS.get(svd_mode, svd_mode)
+
+        def _draw_sven(ax, y_col):
+            for i, k in enumerate(ks):
+                rows = svd_agg[svd_agg['k'] == k].sort_values('batch_size')
+                color = _k_cmap_color(svd_mode, i, len(ks))
+                ax.plot(rows['batch_size'], rows[y_col], marker='o',
+                        color=color, label=f'$k = {int(k)}$')
+
+        def _draw_baselines(ax, y_col, optimizers):
+            for opt in optimizers:
+                rows = std_agg[std_agg['optimizer'] == opt].sort_values('batch_size')
+                if rows.empty:
+                    continue
+                ax.plot(rows['batch_size'], rows[y_col], marker='s', linestyle='--',
+                        linewidth=1.5, alpha=0.85,
+                        color=_std_color(opt), label=_baseline_label(opt))
+
+        # Time and memory
+        for y_col, ylabel, fstem, ttl in (
+            ('time_mean_ms', 'Step time (ms)', 'time', 'time'),
+            ('mem_peak_mb',  'Peak GPU memory (MB)', 'memory', 'peak memory'),
+        ):
+            set_style()
+            fig, ax = plt.subplots()
+            _draw_sven(ax, y_col)
+            _draw_baselines(ax, y_col, ('Adam', 'SGD'))
+            ax.set_xscale('log', base=2)
+            ax.set_xlabel('Batch size $B$')
+            ax.set_ylabel(ylabel)
+            ax.set_title(_title(f'Sven ({mode_label}) — {ttl} vs batch size'))
+            ax.legend(fontsize=8, ncol=2)
+            _annotate_model_size(ax, model_mb)
+            fig.tight_layout()
+            _save(fig, out_dir / svd_mode / fstem)
+
+        # Overhead vs Adam and SGD
+        for baseline in ('Adam', 'SGD'):
+            base_rows = std_agg[std_agg['optimizer'] == baseline]
+            if base_rows.empty:
+                print(f"  [skip] bs_scan/{svd_mode}/overhead_{baseline.lower()}: no {baseline}")
+                continue
+            base_lbl = _baseline_label(baseline)
+            merged = svd_agg.merge(
+                base_rows[['batch_size', 'time_mean_ms', 'mem_peak_mb']].rename(
+                    columns={'time_mean_ms': '_b_t', 'mem_peak_mb': '_b_m'}),
+                on='batch_size', how='inner',
+            )
+            if merged.empty:
+                continue
+            merged['_t_ratio'] = merged['time_mean_ms'] / merged['_b_t']
+            merged['_m_ratio'] = merged['mem_peak_mb']  / merged['_b_m']
+
+            set_style()
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+            for i, k in enumerate(ks):
+                rows = merged[merged['k'] == k].sort_values('batch_size')
+                if rows.empty:
+                    continue
+                color = _k_cmap_color(svd_mode, i, len(ks))
+                ax1.plot(rows['batch_size'], rows['_t_ratio'], marker='o',
+                         color=color, label=f'$k = {int(k)}$')
+                ax2.plot(rows['batch_size'], rows['_m_ratio'], marker='o',
+                         color=color, label=f'$k = {int(k)}$')
+            for ax in (ax1, ax2):
+                ax.axhline(1.0, color='#777', linestyle=':', linewidth=1.5,
+                           label=f'{base_lbl} (ref.)')
+                ax.set_xscale('log', base=2)
+                ax.set_xlabel('Batch size $B$')
+                ax.legend(fontsize=8, ncol=2)
+                _annotate_model_size(ax, model_mb)
+            ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
+            ax1.set_title(_title(f'Sven ({mode_label}) — timing overhead vs {base_lbl}'))
+            ax2.set_ylabel(f'Peak Memory Ratio ({base_lbl})')
+            ax2.set_title(_title(f'Sven ({mode_label}) — memory overhead vs {base_lbl}'))
+            fig.tight_layout()
+            _save(fig, out_dir / svd_mode / f'overhead_{baseline.lower()}')
+
+
+# --- Microbatch / param-fraction scan (with batch_size overlay) ------------
+
+def _plot_one_inner_scan(
+    svd_pair: pd.DataFrame,
+    std_agg: pd.DataFrame,
+    out_dir: Path,
+    svd_mode: str,
+    k: int,
+    *,
+    x_col: str,
+    x_label: str,
+    title_stem: str,
+    log_x: bool,
+) -> None:
+    """One (svd_mode, k) figure-set: time / memory / overhead-Adam / overhead-SGD,
+    Sven curves overlaid by batch_size."""
+    if svd_pair.empty or svd_pair[x_col].nunique() < 2:
+        return
+
+    svd_agg = _aggregate_svd(svd_pair, ['batch_size', x_col])
+    bss = sorted(svd_agg['batch_size'].unique())
+    model_mb = float(svd_pair['mem_baseline_mb'].iloc[0])
+    mode_label = SVD_MODE_LABELS.get(svd_mode, svd_mode)
+    title_tag = f'Sven ({mode_label}, $k = {int(k)}$)'
+    sub_dir   = out_dir / svd_mode / f'k{int(k)}'
+
+    def _draw_per_bs(ax, src, y_col):
+        for i, b in enumerate(bss):
+            rows = src[src['batch_size'] == b].sort_values(x_col)
+            color = _bs_overlay_color(i, len(bss))
+            ax.plot(rows[x_col], rows[y_col], marker='o',
+                    color=color, label=f'$B = {int(b)}$')
+
+    # Time and memory
+    for y_col, ylabel, suffix, ttl in (
+        ('time_mean_ms', 'Step time (ms)', 'time', 'time'),
+        ('mem_peak_mb',  'Peak GPU memory (MB)', 'memory', 'peak memory'),
+    ):
+        set_style()
+        fig, ax = plt.subplots()
+        _draw_per_bs(ax, svd_agg, y_col)
+        if log_x:
+            ax.set_xscale('log', base=2)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(ylabel)
+        ax.set_title(_title(f'{title_tag} — {ttl} vs {title_stem}'))
+        ax.legend(fontsize=9)
+        _annotate_model_size(ax, model_mb)
+        fig.tight_layout()
+        _save(fig, sub_dir / suffix)
+
+    # Overheads
+    for baseline in ('Adam', 'SGD'):
+        base_rows = std_agg[std_agg['optimizer'] == baseline]
+        if base_rows.empty:
+            print(f"  [skip] {sub_dir.name}/overhead_{baseline.lower()}: no {baseline}")
+            continue
+        base_lbl = _baseline_label(baseline)
+        merged = svd_agg.merge(
+            base_rows[['batch_size', 'time_mean_ms', 'mem_peak_mb']].rename(
+                columns={'time_mean_ms': '_b_t', 'mem_peak_mb': '_b_m'}),
+            on='batch_size', how='inner',
+        )
+        if merged.empty:
+            continue
+        merged['_t_ratio'] = merged['time_mean_ms'] / merged['_b_t']
+        merged['_m_ratio'] = merged['mem_peak_mb']  / merged['_b_m']
+
+        set_style()
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        for i, b in enumerate(bss):
+            rows = merged[merged['batch_size'] == b].sort_values(x_col)
+            if rows.empty:
+                continue
+            color = _bs_overlay_color(i, len(bss))
+            ax1.plot(rows[x_col], rows['_t_ratio'], marker='o',
+                     color=color, label=f'$B = {int(b)}$')
+            ax2.plot(rows[x_col], rows['_m_ratio'], marker='o',
+                     color=color, label=f'$B = {int(b)}$')
+        for ax in (ax1, ax2):
+            ax.axhline(1.0, color='#777', linestyle=':', linewidth=1.5,
+                       label=f'{base_lbl} (ref.)')
+            if log_x:
+                ax.set_xscale('log', base=2)
+            ax.set_xlabel(x_label)
+            ax.legend(fontsize=9)
+            _annotate_model_size(ax, model_mb)
+        ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
+        ax1.set_title(_title(f'{title_tag} — timing overhead vs {base_lbl}'))
+        ax2.set_ylabel(f'Peak Memory Ratio ({base_lbl})')
+        ax2.set_title(_title(f'{title_tag} — memory overhead vs {base_lbl}'))
+        fig.tight_layout()
+        _save(fig, sub_dir / f'overhead_{baseline.lower()}')
+
+
+def _run_inner_scan(
+    df_scans: pd.DataFrame,
+    out_dir: Path,
+    *,
+    x_col: str,
+    x_label: str,
+    title_stem: str,
+    fix_mb_default: bool,
+    fix_pf_default: bool,
+    log_x: bool,
+) -> None:
+    """Enumerate every (svd_mode, k) pair present and emit one set of plots each."""
+    if x_col not in df_scans.columns:
+        return
+    svd = df_scans[df_scans['mode'] == 'svd'].copy()
+    if svd.empty:
+        return
+    if fix_mb_default and 'microbatch_size' in svd.columns:
+        svd = svd[_is_default_mb(svd['microbatch_size'])]
+    if fix_pf_default and 'param_fraction' in svd.columns:
+        svd = svd[_is_default_pf(svd['param_fraction'])]
+    if svd.empty:
+        return
+
+    std_agg = aggregate_baselines_by_bs(df_scans)
+    modes_present = [m for m in SVD_MODE_ORDER if m in svd['svd_mode'].unique()]
+
+    for svd_mode in modes_present:
+        ks = sorted(svd[svd['svd_mode'] == svd_mode]['k'].unique())
+        for k in ks:
+            pair = svd[(svd['svd_mode'] == svd_mode) & (svd['k'] == k)]
+            _plot_one_inner_scan(
+                pair, std_agg, out_dir, svd_mode, int(k),
+                x_col=x_col, x_label=x_label,
+                title_stem=title_stem, log_x=log_x,
+            )
+
+
+def plot_microbatch_scan(df_scans: pd.DataFrame, out_dir: Path) -> None:
+    _run_inner_scan(
+        df_scans, out_dir,
+        x_col='microbatch_size', x_label='Microbatch size',
+        title_stem='microbatch size',
+        fix_mb_default=False, fix_pf_default=True, log_x=True,
+    )
+
+
+def plot_param_fraction_scan(df_scans: pd.DataFrame, out_dir: Path) -> None:
+    _run_inner_scan(
+        df_scans, out_dir,
+        x_col='param_fraction', x_label='Parameter fraction',
+        title_stem='parameter fraction',
+        fix_mb_default=True, fix_pf_default=False, log_x=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -600,10 +935,12 @@ def make_main_table(
     batch_size: int,
     n_params: int,
 ) -> str:
+    dataset_prefix = f"Dataset: {_DATASET_NAME}. " if _DATASET_NAME else ""
     lines = [
         r"\begin{table}[htbp]",
         r"\centering",
-        (r"\caption{Per-step wall-clock time and GPU memory for Sven and standard "
+        (r"\caption{" + dataset_prefix +
+         r"Per-step wall-clock time and GPU memory for Sven and standard "
          r"optimizers. "
          f"Batch size $B = {batch_size}$, {n_params:,} parameters. "
          r"Time is mean $\pm$ std over measured steps; "
@@ -633,7 +970,7 @@ def make_main_table(
         lines.append(r"\multicolumn{5}{l}{\emph{Standard optimizers}} \\[2pt]")
         for _, row in std_agg.iterrows():
             lines.append(
-                f"\\quad {row['optimizer']} & "
+                f"\\quad {_baseline_label_tex(row['optimizer'])} & "
                 f"{_pm(row['time_mean_ms'], row['time_std_ms'])} & "
                 f"{_mb(row['mem_resident_mb'])} & {_mb(row['mem_peak_mb'])} & "
                 f"{_mb(row['mem_transient_mb'])} \\\\"
@@ -653,17 +990,19 @@ def make_k_scaling_table(
     adam_time = float(adam.iloc[0]['time_mean_ms']) if has_adam else None
     adam_mem  = float(adam.iloc[0]['mem_peak_mb'])  if has_adam else None
 
-    ncols    = 7 if has_adam else 5
+    ncols    = 6 if has_adam else 4
     col_spec = 'l' + 'r' * (ncols - 1)
-    header   = ['$k$', 'SVD mode', '$k/B$', 'Step time (ms)', 'Peak mem (MB)']
+    header   = ['$k$', 'SVD mode', 'Step time (ms)', 'Peak mem (MB)']
     if has_adam:
         header += ['Time / Adam', 'Mem / Adam']
 
     ratio_note = r" Ratios are relative to Adam." if has_adam else ""
+    dataset_prefix = f"Dataset: {_DATASET_NAME}. " if _DATASET_NAME else ""
     lines = [
         r"\begin{table}[htbp]",
         r"\centering",
-        (r"\caption{Sven $k$-scaling: per-step time and peak memory "
+        (r"\caption{" + dataset_prefix +
+         r"Sven $k$-scaling: per-step time and peak memory "
          f"(batch size $B = {batch_size}$).{ratio_note}}}"),
         r"\label{tab:sven_k_scaling}",
         f"\\begin{{tabular}}{{{col_spec}}}",
@@ -687,7 +1026,6 @@ def make_k_scaling_table(
         cells = [
             f"${int(row['k'])}$",
             mode,
-            f"${row['k_fraction']:.2f}$",
             _pm(row['time_mean_ms'], row['time_std_ms']),
             _mb(row['mem_peak_mb']),
         ]
@@ -713,19 +1051,72 @@ def save_table(table: str, out_path: Path) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+def _run_single_config(
+    df: pd.DataFrame,
+    bs: int,
+    mw: int | None,
+    out_dir: Path,
+) -> None:
+    """All single-config plots and tables for one (batch_size, mlp_width).
+
+    "Default" means microbatch_size=1 and param_fraction=1.0 (filtering done
+    inside the aggregators).
+    """
+    df_at_bs = df[df['batch_size'] == bs].copy()
+    if mw is not None and 'mlp_width' in df_at_bs.columns:
+        df_single = df_at_bs[df_at_bs['mlp_width'] == mw].copy()
+    else:
+        df_single = df_at_bs
+    if df_single.empty:
+        print(f"  [skip] no runs at bs={bs}, mlp_width={mw}")
+        return
+
+    std_agg = order_standard(aggregate_standard(df_single))
+    svd_agg = order_svd(aggregate_svd(df_single, bs))
+    both = not std_agg.empty and not svd_agg.empty
+
+    if both:
+        plot_time_bars(std_agg, svd_agg,     out_dir / 'time_bar')
+        plot_memory_bars(std_agg, svd_agg,   out_dir / 'memory_bar')
+        plot_overhead_ratios(svd_agg, std_agg, out_dir / 'overhead_ratios_adam',
+                             baseline='Adam')
+        plot_overhead_ratios(svd_agg, std_agg, out_dir / 'overhead_ratios_sgd',
+                             baseline='SGD')
+
+    if not svd_agg.empty:
+        plot_time_vs_k(svd_agg, std_agg,   out_dir / 'time_vs_k')
+        plot_memory_vs_k(svd_agg, std_agg, out_dir / 'memory_vs_k')
+        plot_memory_breakdown(svd_agg,     out_dir / 'memory_breakdown')
+
+    # Scaling plots (only generated when multiple mlp_widths are present at this bs)
+    svd_by_w = aggregate_svd_by_width(df_at_bs)
+    std_by_w = aggregate_standard_by_width(df_at_bs)
+    plot_scaling(svd_by_w, std_by_w, out_dir)
+
+    if not std_agg.empty or not svd_agg.empty:
+        n_params = int(df_single['n_params'].dropna().iloc[0])
+        t1 = make_main_table(std_agg, svd_agg, bs, n_params)
+        save_table(t1, out_dir / 'table_main.tex')
+    if not svd_agg.empty:
+        t2 = make_k_scaling_table(svd_agg, std_agg, bs)
+        save_table(t2, out_dir / 'table_k_scaling.tex')
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Profile analysis: Sven vs baselines")
     ap.add_argument('results_dir', type=Path,
                     help="Path to profile_results/{scan_name}/ directory")
     ap.add_argument('--output-dir', type=Path, default=None,
                     help="Output directory (default: analysis/plots/profile/<scan_name>/)")
-    ap.add_argument('--batch-size', type=int, default=None,
-                    help="Batch size to focus on (default: most common in results)")
-    ap.add_argument('--model-seed', type=int, default=None,
-                    help="Model seed to focus on (default: most common in results)")
     ap.add_argument('--mlp-width', type=int, default=None,
-                    help="mlp_width to use for single-width plots (default: most common)")
+                    help="mlp_width to use for single-width plots and scans "
+                         "(default: most common per batch size)")
+    ap.add_argument('--dataset', type=str, default=None,
+                    help="Dataset name to display in plot titles and table captions")
     args = ap.parse_args()
+
+    global _DATASET_NAME
+    _DATASET_NAME = args.dataset
 
     scan_name  = args.results_dir.name
     output_dir = args.output_dir or (
@@ -735,44 +1126,32 @@ def main() -> None:
     print(f"Output: {output_dir}")
 
     df = load_profile_results(args.results_dir)
-    bs, seed, mw, df_single, df_all = select_defaults(
-        df, args.batch_size, args.model_seed, args.mlp_width
-    )
-    n_params = int(df_single['n_params'].dropna().iloc[0])
 
-    std_agg = order_standard(aggregate_standard(df_single))
-    svd_agg = order_svd(aggregate_svd(df_single, bs))
+    # ----- Single-config plots & tables: one subdir per batch size -----
+    unique_bss = sorted(int(b) for b in df['batch_size'].dropna().unique())
+    print(f"\n=== Single-config plots & tables — {len(unique_bss)} batch size(s) ===")
+    for bs in unique_bss:
+        df_at_bs = df[df['batch_size'] == bs]
+        mw = _resolve_mlp_width(df_at_bs, args.mlp_width)
+        sub_dir = output_dir / 'single_config' / f'bs{bs}'
+        print(f"\n--- bs={bs}"
+              + (f", mlp_width={mw}" if mw is not None else "")
+              + f" → {sub_dir.relative_to(output_dir)} ---")
+        _run_single_config(df, bs, mw, sub_dir)
 
-    if std_agg.empty:
-        print("No standard optimizer runs found.")
-    if svd_agg.empty:
-        print("No SVD runs found.")
-
-    both = not std_agg.empty and not svd_agg.empty
-
-    print("\n--- Plots ---")
-    if both:
-        plot_time_bars(std_agg, svd_agg,     output_dir / 'time_bar')
-        plot_memory_bars(std_agg, svd_agg,   output_dir / 'memory_bar')
-        plot_overhead_ratios(svd_agg, std_agg, output_dir / 'overhead_ratios')
-
-    if not svd_agg.empty:
-        plot_time_vs_k(svd_agg, std_agg,   output_dir / 'time_vs_k')
-        plot_memory_vs_k(svd_agg, std_agg, output_dir / 'memory_vs_k')
-        plot_memory_breakdown(svd_agg,     output_dir / 'memory_breakdown')
-
-    # Scaling plots (only generated when multiple mlp_widths are present)
-    svd_by_w = aggregate_svd_by_width(df_all)
-    std_by_w = aggregate_standard_by_width(df_all)
-    plot_scaling(svd_by_w, std_by_w, output_dir)
-
-    print("\n--- Tables ---")
-    t1 = make_main_table(std_agg, svd_agg, bs, n_params)
-    save_table(t1, output_dir / 'table_main.tex')
-
-    if not svd_agg.empty:
-        t2 = make_k_scaling_table(svd_agg, std_agg, bs)
-        save_table(t2, output_dir / 'table_k_scaling.tex')
+    # ----- Scan plots: one mlp_width across all batch sizes -----
+    svd_all = df[df['mode'] == 'svd']
+    if not svd_all.empty and 'svd_mode' in svd_all.columns:
+        scan_mw = _resolve_mlp_width(svd_all, args.mlp_width)
+        df_scans = df.copy()
+        if scan_mw is not None and 'mlp_width' in df_scans.columns:
+            df_scans = df_scans[df_scans['mlp_width'] == scan_mw]
+        print(f"\n=== Scan plots"
+              + (f" (mlp_width={scan_mw})" if scan_mw is not None else "")
+              + " ===")
+        plot_batch_size_scan(df_scans,       output_dir / 'bs_scan')
+        plot_microbatch_scan(df_scans,       output_dir / 'microbatch_scan')
+        plot_param_fraction_scan(df_scans,   output_dir / 'param_fraction_scan')
 
     print(f"\nDone. All outputs in {output_dir}/")
 
