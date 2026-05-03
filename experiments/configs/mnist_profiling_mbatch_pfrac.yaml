@@ -1,6 +1,6 @@
 defaults:
-  - dataset: cifar10
-  - model: resnet_cifar10
+  - dataset: mnist
+  - model: mlp_mnist
   - _self_
 
 name: scan
@@ -8,16 +8,19 @@ mode: both
 device: cuda
 print_config: true
 
-num_epochs: 10
-batch_size: [32, 64, 128]
+num_epochs: 5
+batch_size: 64
+mlp_width: 32
+result_id_fields: [mlp_width]
 loss: label_regression
 
-# SVD optimizer sweep
-k_values: [1,2,4,8,16,32,64,96,128]
+k_values: [1,2,4,8,16,32,64]
 lrs: 0.1
-rtol: 1e-3
-svd_mode: randomized_v2
+rtol: 1e-4
+svd_mode: [torch, randomized, randomized_v2]
 kappa: 2
+param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
+microbatch_sizes: [1, 2, 4, 8, 16, 32, 64]
 
 lrs_standard: 1e-3
 optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
@@ -32,11 +35,12 @@ inner_optimizers_jd: [Adam]
 lrs_jd: [1e-3]
 
 # Half-Inverse Gradients hyperparameters
-lrs_hig: [0.05]
+lrs_hig: [0.1]
 tau_hig: [1e-8]
 
 loader_seed: 51159
-model_seeds: [7310]
+model_seeds: [6310]
+data_seed: 54631
 
 profile:
   num_steps: 5

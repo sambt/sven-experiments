@@ -10,7 +10,7 @@ print_config: true
 
 batch_size: 64
 mlp_width: 32        # scalar default used by ${mlp_width} interpolation
-mlp_widths: [32, 64, 128, 256, 512, 1024]   # sweep list consumed by the profiler
+mlp_widths: [32, 64, 128, 256, 512, 1024, 2048]   # sweep list consumed by the profiler
 result_id_fields: [mlp_width]
 loss: ce
 

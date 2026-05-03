@@ -25,9 +25,9 @@ kappa: 2
 lrs_standard: 1e-3
 optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
 lrs_lbfgs: 0.1
-lbfgs_max_iter: [1,2,5,10]
+lbfgs_max_iter: 3
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: 1
 
 # Jacobian Descent (torchjd) hyperparameters
 aggregators_jd: [UPGrad]
