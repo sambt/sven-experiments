@@ -22,7 +22,7 @@ microbatch_sizes: [1, 2, 4, 8, 16, 32]
 k_values: [32]
 lrs: [0.5]
 rtol: [1e-2]
-svd_mode: [randomized, torch]
+svd_mode: [randomized, torch, randomized_v3]
 use_rmsprop: false
 
 loader_seed: 82464

@@ -20,7 +20,7 @@ microbatch_sizes: [1, 2, 4, 8, 16, 32, 64]
 k_values: [64]
 lrs: [0.5]
 rtol: [1e-3]
-svd_mode: [randomized]
+svd_mode: [randomized, torch, randomized_v3]
 
 loader_seed: 51159
 model_seeds: [6310, 6311, 6312, 6313, 6314, 6315, 6316, 6317, 6318, 6319]

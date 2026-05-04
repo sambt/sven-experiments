@@ -22,7 +22,7 @@ param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 k_values: [32]
 lrs: [0.5]
 rtol: [1e-2]
-svd_mode: [randomized, torch]
+svd_mode: [randomized, torch, randomized_v3]
 use_rmsprop: false
 
 loader_seed: 82464

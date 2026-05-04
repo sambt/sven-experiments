@@ -1,0 +1,23 @@
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 128
+loss: label_regression
+
+# SVD optimizer sweep
+k_values: [128]
+lrs: [0.1,0.5,1.0]
+rtol: [1e-4,1e-3,1e-2]
+svd_mode: [randomized_v3]
+kappa: 2
+
+loader_seed: 51159
+model_seeds: [7310]
