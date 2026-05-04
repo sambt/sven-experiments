@@ -19,10 +19,10 @@ loss: mse
 # Param fraction sweep: Jacobian columns from ~673 to frac*673
 param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 
-k_values: [16, 32]
-lrs: [0.05, 0.1, 0.5, 1.0]
+k_values: [32]
+lrs: [0.5]
 rtol: [1e-2]
-svd_mode: [torch]
+svd_mode: [randomized]
 use_rmsprop: false
 
 loader_seed: 82464
