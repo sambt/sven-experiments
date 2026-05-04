@@ -14,13 +14,12 @@ mlp_width: 16
 result_id_fields: [mlp_width]
 loss: mse
 
-# Param fraction sweep: Jacobian columns from ~593 to frac*593
 param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 
-k_values: [32]
+k_values: [16]
 lrs: [0.05]
-rtol: [1e-4]
-svd_mode: [randomized]
+rtol: [1e-3]
+svd_mode: [randomized, torch]
 use_rmsprop: false
 
 loader_seed: 51159
