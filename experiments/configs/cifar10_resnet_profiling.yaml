@@ -4,7 +4,7 @@ defaults:
   - _self_
 
 name: scan
-mode: both
+mode: all
 device: cuda
 print_config: true
 
@@ -39,7 +39,7 @@ loader_seed: 51159
 model_seeds: [7310]
 
 profile:
-  num_steps: 5
-  warmup_steps: 2
+  num_steps: 10
+  warmup_steps: 5
   detailed: false
   output_dir: profile_results

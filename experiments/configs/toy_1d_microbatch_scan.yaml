@@ -17,10 +17,10 @@ loss: mse
 # Microbatch sweep: effective Jacobian rows = 32/mb
 microbatch_sizes: [1, 2, 4, 8, 16, 32]
 
-k_values: [16, 32]
-lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-3]
-svd_mode: [torch]
+k_values: [32]
+lrs: [0.05]
+rtol: [1e-4]
+svd_mode: [randomized]
 use_rmsprop: false
 
 loader_seed: 51159
