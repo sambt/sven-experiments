@@ -1,6 +1,6 @@
 # Experiment Repository for Sven
 
-This repository contains code for the experiments presented in **Sven: Singular Value Descent as a Computationally Efficient Natural Gradient Method**. You will need to install the `sven` package from [this repository](https://github.com/sambt/sven) to use the Sven optimizer.
+This repository contains code for the experiments presented in **Sven: Singular Value Descent as a Computationally Efficient Natural Gradient Method**. You will need to install the `sven` package to use the Sven optimizer.
 
 ## Setup
 

@@ -36,7 +36,7 @@ class Toy1DRegressionDataset:
         self.test_dataset = TensorDataset(xtest, ytest)
 
 class MNISTDataset:
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None):
+    def __init__(self, ROOT="anon/dataset/directory",digits=None):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
         transform = transforms.Compose([
@@ -83,7 +83,7 @@ class MNISTDataset:
         self.val_dataset = TensorDataset(val_data, val_labels)
 
 class CIFAR10Dataset:
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/", train_fraction=1.0, val_fraction=1.0, shuffle_seed=1832):
+    def __init__(self, ROOT="anon/dataset/directory", train_fraction=1.0, val_fraction=1.0, shuffle_seed=1832):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
         transform = transforms.Compose([
