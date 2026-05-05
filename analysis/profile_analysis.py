@@ -404,6 +404,7 @@ def _k_scaling_plot(
     legend_ncol: int = 1,
     n_params: int | None = None,
     model_mb: float | None = None,
+    log_y: bool = False,
 ) -> None:
     set_style()
     fig, ax = plt.subplots()
@@ -445,10 +446,19 @@ def _k_scaling_plot(
                 bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
                           edgecolor='#bbbbbb', alpha=0.85))
 
+    if log_y:
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=10)
+    else:
+        ax.set_ylim(bottom=0)
     # Add headspace above data so an upper-anchored legend doesn't overlap lines.
     if 'upper' in legend_loc:
         ymin, ymax = ax.get_ylim()
-        ax.set_ylim(ymin, ymin + (ymax - ymin) * 1.25)
+        if log_y:
+            log_min, log_max = np.log10(ymin), np.log10(ymax)
+            ax.set_ylim(ymin, 10 ** (log_min + (log_max - log_min) * 1.25))
+        else:
+            ax.set_ylim(ymin, ymin + (ymax - ymin) * 1.25)
 
     fig.tight_layout()
     _save(fig, out_path)
@@ -481,6 +491,7 @@ def plot_memory_vs_k(svd_agg: pd.DataFrame, std_agg: pd.DataFrame, out_path: Pat
         title='Peak GPU memory vs $k$' + _bs_suffix(batch_size),
         out_path=out_path,
         n_params=n_params, model_mb=model_mb,
+        log_y=True,
     )
 
 
@@ -488,56 +499,62 @@ def plot_memory_vs_k(svd_agg: pd.DataFrame, std_agg: pd.DataFrame, out_path: Pat
 # Plot 5: Overhead ratios vs k (relative to Adam)
 # ---------------------------------------------------------------------------
 
-def plot_overhead_ratios(
-    svd_agg: pd.DataFrame,
-    std_agg: pd.DataFrame,
-    out_path: Path,
-    baseline: str = 'Adam',
-    batch_size: int | None = None,
-) -> None:
-    base = std_agg[std_agg['optimizer'] == baseline]
+def _adam_value(std_agg: pd.DataFrame, col: str) -> float | None:
+    if std_agg.empty:
+        return None
+    base = std_agg[std_agg['optimizer'] == 'Adam']
     if base.empty:
-        print(f"  [skip] overhead_ratios: no {baseline} baseline found")
+        return None
+    return float(base.iloc[0][col])
+
+
+def plot_time_overhead_vs_k(svd_agg: pd.DataFrame, std_agg: pd.DataFrame, out_path: Path,
+                            batch_size: int | None = None,
+                            n_params: int | None = None,
+                            model_mb: float | None = None) -> None:
+    adam_t = _adam_value(std_agg, 'time_mean_ms')
+    if adam_t is None:
+        print(f"  [skip] {out_path.name}: no Adam baseline")
         return
+    svd_r = svd_agg.copy()
+    svd_r['time_mean_ms'] = svd_r['time_mean_ms'] / adam_t
+    if 'time_std_ms' in svd_r.columns:
+        svd_r['time_std_ms'] = svd_r['time_std_ms'] / adam_t
+    std_r = std_agg.copy()
+    std_r['time_mean_ms'] = std_r['time_mean_ms'] / adam_t
+    _k_scaling_plot(
+        svd_r, std_r,
+        svd_col='time_mean_ms', svd_err_col='time_std_ms', std_col='time_mean_ms',
+        legend_loc='upper left', legend_ncol=3,
+        ylabel='Step time / Adam',
+        title='Per-step time overhead vs $k$' + _bs_suffix(batch_size),
+        out_path=out_path,
+        n_params=n_params, model_mb=model_mb,
+    )
 
-    base_time = float(base.iloc[0]['time_mean_ms'])
-    base_mem  = float(base.iloc[0]['mem_peak_mb'])
-    base_lbl  = _baseline_label(baseline)
 
-    model_mb = float(base.iloc[0]['mem_baseline_mb'])
-    model_size_str = f"Model size: {_format_model_size(model_mb)}"
-
-    set_style()
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
-    for mode in SVD_MODE_ORDER:
-        rows = svd_agg[svd_agg['svd_mode'] == mode].sort_values('k')
-        if rows.empty:
-            continue
-        color = _svd_line_color(mode)
-        label = f"Sven ({SVD_MODE_LABELS.get(mode, mode)})"
-        xs    = rows['k'].values
-        ax1.plot(xs, rows['time_mean_ms'].values / base_time, marker='o', color=color, label=label)
-        ax2.plot(xs, rows['mem_peak_mb'].values  / base_mem,  marker='o', color=color, label=label)
-
-    for ax in (ax1, ax2):
-        ax.axhline(1.0, color='#777777', linestyle=':', linewidth=_LW_THIN, label=f'{base_lbl} (ref.)')
-        ax.set_xscale('log', base=2)
-        ax.set_xlabel('$k$')
-        ax.legend(fontsize=10)
-        ax.text(0.98, 0.98, model_size_str, transform=ax.transAxes,
-                ha='right', va='top', fontsize=9,
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
-                          edgecolor='#bbbbbb', alpha=0.85))
-
-    bs_suffix = _bs_suffix(batch_size)
-    ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
-    ax1.set_title(_title(f'Timing overhead vs {base_lbl}{bs_suffix}'))
-    ax2.set_ylabel(f'Peak Memory Ratio ({base_lbl})')
-    ax2.set_title(_title(f'Memory overhead vs {base_lbl}{bs_suffix}'))
-
-    fig.tight_layout()
-    _save(fig, out_path)
+def plot_memory_overhead_vs_k(svd_agg: pd.DataFrame, std_agg: pd.DataFrame, out_path: Path,
+                              batch_size: int | None = None,
+                              n_params: int | None = None,
+                              model_mb: float | None = None) -> None:
+    adam_m = _adam_value(std_agg, 'mem_peak_mb')
+    if adam_m is None:
+        print(f"  [skip] {out_path.name}: no Adam baseline")
+        return
+    svd_r = svd_agg.copy()
+    svd_r['mem_peak_mb'] = svd_r['mem_peak_mb'] / adam_m
+    std_r = std_agg.copy()
+    std_r['mem_peak_mb'] = std_r['mem_peak_mb'] / adam_m
+    _k_scaling_plot(
+        svd_r, std_r,
+        svd_col='mem_peak_mb', svd_err_col=None, std_col='mem_peak_mb',
+        legend_loc='upper left', legend_ncol=3,
+        ylabel='Peak memory / Adam',
+        title='Peak memory overhead vs $k$' + _bs_suffix(batch_size),
+        out_path=out_path,
+        n_params=n_params, model_mb=model_mb,
+        log_y=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -776,13 +793,19 @@ def plot_batch_size_scan(df_scans: pd.DataFrame, out_dir: Path) -> None:
             set_style()
             fig, ax = plt.subplots()
             _draw_sven(ax, y_col)
-            _draw_baselines(ax, y_col, ('Adam', 'SGD'))
+            _draw_baselines(ax, y_col, STANDARD_ORDER)
             ax.set_xscale('log', base=2)
+            ax.set_yscale('log')
+            if y_col == 'mem_peak_mb':
+                ax.set_ylim(bottom=10)
             ax.set_xlabel('Batch size $B$')
             ax.set_ylabel(ylabel)
             ax.set_title(_title(f'Sven ({mode_label}) — {ttl} vs batch size'))
-            ax.legend(fontsize=8, ncol=2)
+            ax.legend(loc='upper left', fontsize=8, ncol=3)
             _annotate_model_size(ax, model_mb)
+            ymin, ymax = ax.get_ylim()
+            log_min, log_max = np.log10(ymin), np.log10(ymax)
+            ax.set_ylim(ymin, 10 ** (log_min + (log_max - log_min) * 1.25))
             fig.tight_layout()
             _save(fig, out_dir / svd_mode / fstem)
 
@@ -819,6 +842,7 @@ def plot_batch_size_scan(df_scans: pd.DataFrame, out_dir: Path) -> None:
                            label=f'{base_lbl} (ref.)')
                 ax.set_xscale('log', base=2)
                 ax.set_xlabel('Batch size $B$')
+                ax.set_ylim(bottom=0)
                 ax.legend(fontsize=8, ncol=2)
                 _annotate_model_size(ax, model_mb)
             ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
@@ -862,6 +886,18 @@ def _plot_inner_scan_for_mode(
             ax.plot(rows[x_col], rows[y_col], marker='o',
                     color=color, label=f'$k = {int(k)}$')
 
+    base_at_bs = std_agg[std_agg['batch_size'] == batch_size]
+
+    def _draw_baseline_hlines(ax, y_col):
+        for opt in STANDARD_ORDER:
+            rows = base_at_bs[base_at_bs['optimizer'] == opt]
+            if rows.empty:
+                continue
+            val = float(rows.iloc[0][y_col])
+            ax.axhline(val, color=_std_color(opt), linestyle='--',
+                       linewidth=_LW_THIN, alpha=0.85,
+                       label=_baseline_label(opt))
+
     # Time and memory
     for y_col, ylabel, suffix, ttl in (
         ('time_mean_ms', 'Step time (ms)', 'time', 'time'),
@@ -870,13 +906,20 @@ def _plot_inner_scan_for_mode(
         set_style()
         fig, ax = plt.subplots()
         _draw_per_k(ax, svd_agg, y_col)
+        _draw_baseline_hlines(ax, y_col)
         if log_x:
             ax.set_xscale('log', base=2)
+        ax.set_yscale('log')
+        if y_col == 'mem_peak_mb':
+            ax.set_ylim(bottom=10)
         ax.set_xlabel(x_label)
         ax.set_ylabel(ylabel)
         ax.set_title(_title(f'{title_tag} — {ttl} vs {title_stem}'))
-        ax.legend(fontsize=9)
+        ax.legend(loc='upper left', fontsize=9, ncol=3)
         _annotate_model_size(ax, model_mb)
+        ymin, ymax = ax.get_ylim()
+        log_min, log_max = np.log10(ymin), np.log10(ymax)
+        ax.set_ylim(ymin, 10 ** (log_min + (log_max - log_min) * 1.25))
         fig.tight_layout()
         _save(fig, sub_dir / suffix)
 
@@ -909,6 +952,7 @@ def _plot_inner_scan_for_mode(
             if log_x:
                 ax.set_xscale('log', base=2)
             ax.set_xlabel(x_label)
+            ax.set_ylim(bottom=0)
             ax.legend(fontsize=9)
             _annotate_model_size(ax, model_mb)
         ax1.set_ylabel(f'Step Time Ratio ({base_lbl})')
@@ -1139,10 +1183,6 @@ def _run_single_config(
     if both:
         plot_time_bars(std_agg, svd_agg,     out_dir / 'time_bar', batch_size=bs)
         plot_memory_bars(std_agg, svd_agg,   out_dir / 'memory_bar', batch_size=bs)
-        plot_overhead_ratios(svd_agg, std_agg, out_dir / 'overhead_ratios_adam',
-                             baseline='Adam', batch_size=bs)
-        plot_overhead_ratios(svd_agg, std_agg, out_dir / 'overhead_ratios_sgd',
-                             baseline='SGD', batch_size=bs)
 
     if not svd_agg.empty:
         np_series = df_single['n_params'].dropna()
@@ -1153,6 +1193,11 @@ def _run_single_config(
                        n_params=n_params, model_mb=model_mb)
         plot_memory_vs_k(svd_agg, std_agg, out_dir / 'memory_vs_k', batch_size=bs,
                          n_params=n_params, model_mb=model_mb)
+        if both:
+            plot_time_overhead_vs_k(svd_agg, std_agg, out_dir / 'time_overhead_vs_k',
+                                    batch_size=bs, n_params=n_params, model_mb=model_mb)
+            plot_memory_overhead_vs_k(svd_agg, std_agg, out_dir / 'memory_overhead_vs_k',
+                                      batch_size=bs, n_params=n_params, model_mb=model_mb)
         plot_memory_breakdown(svd_agg,     out_dir / 'memory_breakdown')
 
     # Scaling plots (only generated when multiple mlp_widths are present at this bs)
