@@ -7,11 +7,12 @@ from itertools import combinations_with_replacement, product
 import os
 
 class Toy1DRegressionDataset:
-    def __init__(self, n_train=10_000, n_val=10_000, n_test=10_000, seed=0):
+    def __init__(self, n_train=10_000, n_val=10_000, n_test=10_000, seed=0, noise_scale=0.0):
         self.n_train = n_train
         self.n_val = n_val
         self.n_test = n_test
         self.seed = seed
+        self.noise_scale = noise_scale
 
         rng = torch.Generator().manual_seed(seed)
         def func(x):
@@ -20,6 +21,8 @@ class Toy1DRegressionDataset:
         def sample(n):
             x = 2 * torch.rand((n, 1), generator=rng) - 1
             y = func(x)
+            if self.noise_scale > 0:
+                y += self.noise_scale * torch.randn_like(y, generator=rng)
             return x, y
 
         xtrain, ytrain = sample(n_train)
