@@ -1,0 +1,59 @@
+# Rebuttal experiment: DATASET-overparametrized regime (P > N) for 1D regression.
+#
+# Addresses Reviewer 1's central criticism: the main-paper experiments are
+# overparametrized only at the minibatch level (P > B), never at the dataset
+# level (P < N_train). Here we make P > N_train explicit.
+#
+# 1D MLP (width 16, 3 hidden layers, GeLU) has P = 593 parameters.
+# We train FULL-BATCH (batch_size = n_train = n_data) so each step solves the
+# minimum-norm problem over the ENTIRE dataset -- the purest test of the theory.
+#
+# Sweep n_data on the command line to trace the P/N crossover, e.g.:
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_toy_1d_scan.yaml n_data=150   # P/N ~ 4.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_toy_1d_scan.yaml n_data=300   # P/N ~ 2.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_toy_1d_scan.yaml n_data=600   # P/N ~ 1.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_toy_1d_scan.yaml n_data=1200  # P/N ~ 0.5 (under-param)
+defaults:
+  - dataset: toy_1d_regression
+  - model: mlp_1d_regression
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+# n_data couples the training-set size and the (full) batch size.
+n_data: 300
+dataset:
+  n_train: ${n_data}
+  n_val: 10000
+
+num_epochs: 200          # full-batch => num_epochs == number of gradient steps
+batch_size: ${n_data}    # full batch: B = N, so B < P is dataset-overparametrized
+mlp_width: 16
+result_id_fields: [mlp_width, n_data]
+loss: mse
+track_param_norm: true   # min-norm story: track ||theta|| growth
+
+# Sven: k as a fraction of the (full) batch so it scales with n_data
+k_fractions: [0.25, 0.5, 1.0]
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-4, 1e-3, 1e-2]
+svd_mode: [torch]
+use_rmsprop: false
+use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
+variable_k: false
+
+# Baselines: full modern suite (AdamW, Muon, SOAP, Shampoo, K-FAC all wired + tested).
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+weight_decays: [0.0, 0.01]         # only applied to AdamW / Muon
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [4, 10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [10]
+
+loader_seed: 51159
+model_seeds: [4372892, 1, 2, 3, 4]
+data_seed: 54631

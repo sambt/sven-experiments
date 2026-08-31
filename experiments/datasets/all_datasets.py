@@ -36,7 +36,7 @@ class Toy1DRegressionDataset:
         self.test_dataset = TensorDataset(xtest, ytest)
 
 class MNISTDataset:
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None):
+    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None,n_train=None,subsample_seed=0):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
         transform = transforms.Compose([
@@ -79,6 +79,14 @@ class MNISTDataset:
                 train_labels[train_labels == d] = i
                 val_labels[val_labels == d] = i
 
+        # Optional training-set subsampling (for dataset-overparametrized experiments,
+        # where P > N_train). Validation set is left full for a stable estimate.
+        if n_train is not None and n_train < train_data.shape[0]:
+            g = torch.Generator().manual_seed(subsample_seed)
+            idx = torch.randperm(train_data.shape[0], generator=g)[:n_train]
+            train_data = train_data[idx]
+            train_labels = train_labels[idx]
+
         self.train_dataset = TensorDataset(train_data, train_labels)
         self.val_dataset = TensorDataset(val_data, val_labels)
 
@@ -119,4 +127,43 @@ class RandomPolynomialDataset:
                                            torch.tensor(y_train,dtype=torch.float32).unsqueeze(1))
         self.val_dataset = TensorDataset(torch.tensor(x_val,dtype=torch.float32),
                                          torch.tensor(y_val,dtype=torch.float32).unsqueeze(1))
+
+
+class CIFAR10Dataset:
+    def __init__(self, for_mlp=False, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/",
+                 n_train=None, subsample_seed=0):
+        if not os.path.isdir(ROOT):
+            ROOT = "./torch_datasets/"
+        transformations = [transforms.ToTensor(),
+                           transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.262))]
+        if for_mlp:
+            transformations.append(transforms.Lambda(lambda x: x.view(-1)))
+        transform = transforms.Compose(transformations)
+        train_dataset = CIFAR10(root=ROOT, train=True, download=True, transform=transform)
+        val_dataset = CIFAR10(root=ROOT, train=False, download=True, transform=transform)
+
+        train_data = []
+        train_labels = []
+        val_data = []
+        val_labels = []
+        for data,label in torch.utils.data.DataLoader(train_dataset, batch_size=512):
+            train_data.append(data)
+            train_labels.append(label)
+        for data,label in torch.utils.data.DataLoader(val_dataset, batch_size=512):
+            val_data.append(data)
+            val_labels.append(label)
+        train_data = torch.cat(train_data, dim=0)
+        train_labels = torch.cat(train_labels, dim=0)
+        val_data = torch.cat(val_data, dim=0)
+        val_labels = torch.cat(val_labels, dim=0)
+
+        # Optional training-set subsampling (dataset-overparametrized experiments).
+        if n_train is not None and n_train < train_data.shape[0]:
+            g = torch.Generator().manual_seed(subsample_seed)
+            idx = torch.randperm(train_data.shape[0], generator=g)[:n_train]
+            train_data = train_data[idx]
+            train_labels = train_labels[idx]
+
+        self.train_dataset = TensorDataset(train_data, train_labels)
+        self.val_dataset = TensorDataset(val_data, val_labels)
         

@@ -4,5 +4,26 @@
 slurm_logs/
 outputs/
 **/.DS_STORE
+
+# Experiment outputs (live on holystore; experiment_results is a symlink there)
+experiment_results
 experiment_results/
-experiment_results/
+experiment_results_jax/
+profile_results/
+
+# Reviews / submission PDF (not for the public repo)
+rev*.md
+sven_submission.pdf
+
+# Vendored subrepo (its own git) and local envs / scratch
+sven/
+.venv
+uv_cache/
+
+# Assorted local scratch / agent working dirs
+notebooks_new
+notebooks_new/
+agent_lab
+agent_lab/
+claude_experiments/
+sven_experiments/

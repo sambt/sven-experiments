@@ -1,0 +1,55 @@
+# Rebuttal experiment: DATASET-overparametrized regime (P > N) for random polynomial.
+#
+# Polynomial MLP (input_dim 6, width 16, 3 hidden layers, GeLU) has P = 673.
+# Full-batch training (batch_size = n_train = n_data): each step solves the
+# minimum-norm problem over the whole dataset. Sweep n_data to cross P/N = 1.
+#
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_polynomial_scan.yaml n_data=170   # P/N ~ 4.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_polynomial_scan.yaml n_data=340   # P/N ~ 2.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_polynomial_scan.yaml n_data=675   # P/N ~ 1.0
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_polynomial_scan.yaml n_data=1350  # P/N ~ 0.5
+defaults:
+  - dataset: random_polynomial
+  - model: mlp_polynomial
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+# degree / input_dim are referenced by the dataset + model configs
+degree: 4
+input_dim: 6
+
+n_data: 340
+dataset:
+  n_train: ${n_data}
+  n_val: 10000
+
+num_epochs: 200
+batch_size: ${n_data}
+mlp_width: 16
+result_id_fields: [mlp_width, n_data]
+loss: mse
+track_param_norm: true
+
+k_fractions: [0.25, 0.5, 1.0]
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-4, 1e-3, 1e-2]
+svd_mode: [torch]
+use_rmsprop: false
+use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
+variable_k: false
+
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+weight_decays: [0.0, 0.01]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [4, 10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [10]
+
+loader_seed: 51159
+model_seeds: [4372892, 1, 2, 3, 4]
+data_seed: 54631

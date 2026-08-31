@@ -1,0 +1,54 @@
+# Rebuttal experiment: DATASET-overparametrized regime (P > N) on a REAL dataset.
+#
+# The most faithful answer to Reviewer 1: keep the paper's exact MNIST setup
+# (width-32 MLP, P = 27,562 params, minibatch B = 64, label-regression loss)
+# but SUBSAMPLE the training set so P/N_train crosses 1. The crossover is at
+# N ~ 27,562; MNIST full train is 60k (P/N ~ 0.46, the main-paper under-param case).
+#
+# Sweep n_data on the command line to trace the crossover, e.g.:
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=2500    # P/N ~ 11
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=5000    # P/N ~ 5.5
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=10000   # P/N ~ 2.8
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=20000   # P/N ~ 1.4
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=40000   # P/N ~ 0.69 (under)
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=60000   # P/N ~ 0.46 (paper)
+defaults:
+  - dataset: mnist
+  - model: mlp_mnist
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+n_data: 5000
+dataset:
+  n_train: ${n_data}
+
+num_epochs: 20
+batch_size: 64
+mlp_width: 32
+result_id_fields: [mlp_width, n_data]
+loss: label_regression
+track_param_norm: true
+
+k_values: [16, 32, 48, 64]
+lrs: [0.1, 0.5, 1.0]
+rtol: [1e-3, 1e-2]
+svd_mode: [torch]
+use_rmsprop: false
+alpha_rmsProp: 0.99
+variable_k: false
+use_gram: true            # Gram-trick backend: exact same update, ~400x faster
+
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+weight_decays: [0.0, 0.01]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [4, 10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [10]
+
+loader_seed: 51159
+model_seeds: [3000, 3001, 3002, 3003, 3004]

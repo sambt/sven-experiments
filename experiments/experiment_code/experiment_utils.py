@@ -15,6 +15,7 @@ import time
 import random
 from sven.opt import PolyakSGD
 from experiments.optimizers.baselines import Lion, ScheduleFreeAdamW, ScheduleFreeSGD
+from experiments.optimizers.soap import SOAP  # vendored zero-dep reference SOAP
 
 def set_seed(seed: int, deterministic: bool = False):
     """
@@ -174,6 +175,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
         losses['val_acc'].append(np.mean(losses['val_init_acc']))
         del losses['val_init_acc']
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     total_start_time = time.perf_counter()
 
     for epoch in tqdm(range(num_epochs)):
@@ -261,6 +264,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
     losses['avg_epoch_time'] = np.mean(losses['epoch_times'])
     losses['avg_batch_time_train'] = np.mean(losses['batch_times_train'])
     losses['avg_batch_time_val'] = np.mean(losses['batch_times_val'])
+    if torch.cuda.is_available():
+        losses['peak_gpu_mem_mb'] = torch.cuda.max_memory_allocated() / 1e6
 
     torch.cuda.empty_cache()
 
@@ -290,6 +295,8 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
         losses['val_acc'].append(np.mean(losses['val_init_acc']))
         del losses['val_init_acc']
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     total_start_time = time.perf_counter()
 
     # Ensure all computations are done without gradients
@@ -353,6 +360,8 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
     losses['avg_epoch_time'] = np.mean(losses['epoch_times'])
     losses['avg_batch_time_train'] = np.mean(losses['batch_times_train'])
     losses['avg_batch_time_val'] = np.mean(losses['batch_times_val'])
+    if torch.cuda.is_available():
+        losses['peak_gpu_mem_mb'] = torch.cuda.max_memory_allocated() / 1e6
 
     torch.cuda.empty_cache()
 
@@ -362,7 +371,39 @@ _CUSTOM_OPTIMIZERS = {
     "Lion": Lion,
     "ScheduleFreeAdamW": ScheduleFreeAdamW,
     "ScheduleFreeSGD": ScheduleFreeSGD,
+    "SOAP": SOAP,
 }
+
+
+class _KFACOptimizer:
+    """Bundles a K-FAC preconditioner with a base optimizer so the standard
+    training loop needs no changes.  K-FAC requires ``preconditioner.step()``
+    to run AFTER ``loss.backward()`` and BEFORE the base ``optimizer.step()``;
+    both are performed here inside a single ``.step()`` call.  The preconditioner
+    installs its own forward/backward hooks on the model at construction time.
+    """
+
+    def __init__(self, base, preconditioner):
+        self.base = base
+        self.preconditioner = preconditioner
+
+    @property
+    def param_groups(self):
+        return self.base.param_groups
+
+    def zero_grad(self, set_to_none=True):
+        self.base.zero_grad(set_to_none=set_to_none)
+
+    def step(self, closure=None):
+        # grads are already populated by loss.backward() in the training loop
+        self.preconditioner.step()
+        self.base.step()
+
+    def state_dict(self):
+        return {"base": self.base.state_dict()}
+
+    def load_state_dict(self, sd):
+        self.base.load_state_dict(sd["base"])
 
 
 class _CombinedOptimizer:
@@ -416,6 +457,32 @@ def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
             return _CombinedOptimizer(muon_opt, adam_opt)
         else:
             return torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
+    elif optim_name == "Shampoo":
+        # torch_optimizer.Shampoo — pure drop-in. NOTE: default lr=0.1 is too hot
+        # for tiny MLPs; sweep lr down (grid already includes 1e-4..1e-1).
+        import torch_optimizer
+        return torch_optimizer.Shampoo(
+            model.parameters(), lr=lr,
+            weight_decay=kwargs.get("weight_decay", 0.0),
+            update_freq=kwargs.get("update_freq", 1),
+            epsilon=kwargs.get("epsilon", 1e-4),
+        )
+    elif optim_name == "KFAC":
+        # kfac-pytorch: a KFAC preconditioner wrapping a base optimizer (classic
+        # K-FAC uses SGD+momentum). Hooks are installed on `model` at construction.
+        from kfac.preconditioner import KFACPreconditioner
+        base = torch.optim.SGD(
+            model.parameters(), lr=lr, momentum=kwargs.get("momentum", 0.9),
+            weight_decay=kwargs.get("weight_decay", 0.0),
+        )
+        precond = KFACPreconditioner(
+            model,
+            factor_update_steps=kwargs.get("factor_update_steps", 1),
+            inv_update_steps=kwargs.get("inv_update_steps", 1),
+            lr=lr,
+            damping=kwargs.get("kfac_damping", 3e-3),
+        )
+        return _KFACOptimizer(base, precond)
     elif optim_name in _CUSTOM_OPTIMIZERS:
         cls = _CUSTOM_OPTIMIZERS[optim_name]
         return cls(model.parameters(), lr=lr, **kwargs)

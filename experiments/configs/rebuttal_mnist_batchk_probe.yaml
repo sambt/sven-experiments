@@ -1,0 +1,42 @@
+# Diagnostic probe: does a LARGER batch (=> larger k) rescue Sven on MNIST overparam?
+# Hypothesis: Sven is direction-starved on MNIST because k <= batch = 64 << P = 27,562.
+# Sweep batch_size (and k = fraction of batch) on overparam MNIST; Adam is the
+# batch-robust reference. If Sven's final loss drops sharply as batch grows, the
+# k<<P hypothesis is confirmed (and points to a scaling recipe: bigger batch / bigger k).
+defaults:
+  - dataset: mnist
+  - model: mlp_mnist
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: false
+
+n_data: 10000            # overparam: P/N ~ 2.8 (P=27,562)
+dataset:
+  n_train: ${n_data}
+
+num_epochs: 40           # more epochs so large-batch runs still get enough steps
+batch_size: [64, 128, 256, 512, 1024]   # <-- swept axis; max k scales with this
+mlp_width: 32
+result_id_fields: [mlp_width, n_data]
+loss: label_regression
+track_param_norm: true
+
+# k as a fraction of batch => k in {batch/2, batch}. At batch=1024, k up to 1024 (16x the 64 cap).
+k_fractions: [0.5, 1.0]
+lrs: [0.1, 0.5, 1.0]
+rtol: [1e-3]
+svd_mode: [torch]
+use_rmsprop: true
+alpha_rmsProp: 0.99
+variable_k: false
+
+# Reference baseline only (Adam is batch-robust); keep the probe cheap.
+optimizers_standard: [Adam]
+lrs_standard: [1e-3, 1e-2, 1e-1]
+weight_decays: [0.0]
+
+loader_seed: 51159
+model_seeds: [3000, 3001, 3002]

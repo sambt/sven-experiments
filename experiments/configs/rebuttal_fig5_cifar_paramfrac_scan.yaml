@@ -1,0 +1,33 @@
+# Fig-5 rebuttal: ResNet18/CIFAR-10 parameter-fraction scan on the exact Gram backend.
+# The paper ran this via randomized_v2 SVD of the (128, ~11M) Jacobian because the
+# classic pipeline was intractable at this P; the Gram trick computes the identical
+# update exactly and cheaply, so we can add seeds and report accuracy / peak memory /
+# step time. Sven-only (param-fraction is a Sven-specific story). >=3 seeds (R1 ask).
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 128
+loss: label_regression
+
+use_gram: true
+# chunked capture: exact for any architecture and the ONLY Gram mode that can apply
+# param-fraction masking to a conv-net (hooks-rows cannot split BatchNorm affine params;
+# CPU-smoke-tested). Memory bounded by chunk_numel; ~11M-param ResNet18 = a few groups.
+gram_capture: chunked
+
+k_values: [128]
+lrs: [0.1]
+rtol: [1e-4]
+svd_mode: [torch]     # irrelevant under Gram (eig of G replaces the SVD of J)
+param_fractions: [0.05, 0.1, 0.25, 0.5, 1.0]
+
+loader_seed: 51159
+model_seeds: [7310, 7311, 7312]

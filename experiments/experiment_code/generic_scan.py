@@ -16,8 +16,8 @@ from .experiment_utils import (
     train_loop_svd, train_loop_standard, set_seed,
     process_hparam_config, build_standard_optimizer,
 )
-from sven.opt import Sven
-from sven.nn import SvenWrapper
+from sven.opt import Sven, SvenGram
+from sven.nn import SvenWrapper, GramSvenWrapper
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +119,18 @@ def scan(cfg):
     seeds = rcfg.get("model_seeds")
     loader_seed = rcfg["loader_seed"]
 
+    # Optional work-sharding for intra-GPU parallelism: launch N processes with
+    # n_shards=N and shard_id=0..N-1; each runs a disjoint 1/N slice of the runs.
+    # The counter advances before the dedup check so shard assignment is stable
+    # across resumes; disjoint shards write disjoint run_ids, so it is race-free.
+    n_shards = int(rcfg.get("n_shards", 1))
+    shard_id = int(rcfg.get("shard_id", 0))
+    _run_idx = [0]
+    def _shard_skip():
+        take = (_run_idx[0] % n_shards) == shard_id
+        _run_idx[0] += 1
+        return not take
+
     # Dataset (shared across seeds — same data, different model inits)
     dataset = instantiate(cfg.dataset)
 
@@ -160,6 +172,16 @@ def scan(cfg):
             use_rmsprop = rcfg.get("use_rmsprop", False)
             alpha_rmsprop = rcfg.get("alpha_rmsProp", 0.99)
             variable_k = rcfg.get("variable_k", False)
+            # Gram-trick backend: same exact update, ~400x faster / far less memory
+            # (eigendecomposes B x B G = J J^T instead of materializing the B x P Jacobian).
+            # Incompatible with variable_k and pre-pseudoinverse RMSProp.
+            use_gram = rcfg.get("use_gram", False)
+            if use_gram and (variable_k or use_rmsprop):
+                raise ValueError("use_gram is incompatible with variable_k / use_rmsprop (pre-pinv)")
+            # Gram capture backend: "hooks" (fast, per-sample-decoupled layers only)
+            # or "chunked" (exact for any architecture, e.g. conv-nets with custom
+            # BatchNorm). Default "hooks" for the MLP suite; CIFAR/ResNet uses "chunked".
+            gram_capture = rcfg.get("gram_capture", "hooks")
 
             for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction in svd_grid:
                 k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
@@ -177,7 +199,11 @@ def scan(cfg):
                     run_id += f"_RMSpropAlpha{alpha_rmsprop}"
                 if variable_k:
                     run_id += "_variablek"
+                if use_gram:
+                    run_id += "_gram"
 
+                if _shard_skip():
+                    continue
                 if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                     print(f"  [skip] {run_id}")
                     continue
@@ -199,13 +225,24 @@ def scan(cfg):
 
                     mb = microbatch_size if microbatch_size is not None else 1
                     pf = param_fraction if param_fraction is not None else 1.0
-                    train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
-                    optimizer = Sven(
-                        train_model, lr=lr, k=k, rtol=rtol,
-                        track_svd_info=True, svd_mode=svd_mode,
-                        use_rmsprop=use_rmsprop, alpha_rmsprop=alpha_rmsprop,
-                        variable_k=variable_k,
-                    )
+                    if use_gram:
+                        # Gram trick: exact same update via B x B G = J J^T (no B x P Jacobian).
+                        # svd_mode is irrelevant (eigendecomposition of G replaces the SVD of J).
+                        train_model = GramSvenWrapper(
+                            model, loss_fn_svd, device,
+                            microbatch_size=mb, param_fraction=pf,
+                            mask_mode=("rows" if pf < 1.0 else None),
+                            capture=gram_capture,
+                        )
+                        optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=True)
+                    else:
+                        train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
+                        optimizer = Sven(
+                            train_model, lr=lr, k=k, rtol=rtol,
+                            track_svd_info=True, svd_mode=svd_mode,
+                            use_rmsprop=use_rmsprop, alpha_rmsprop=alpha_rmsprop,
+                            variable_k=variable_k,
+                        )
 
                     train_loader = DataLoader(
                         dataset.train_dataset, batch_size=batch_size, shuffle=True,
@@ -237,6 +274,8 @@ def scan(cfg):
                         "microbatch_size": microbatch_size,
                         "param_fraction": param_fraction,
                         "variable_k": variable_k,
+                        "use_gram": use_gram,
+                        "gram_capture": gram_capture if use_gram else None,
                         "losses": losses,
                         "svd_info": getattr(optimizer, "svd_info", {})
                     }
@@ -284,6 +323,8 @@ def scan(cfg):
                         run_id += f"_wd{weight_decay}"
                     run_id += seed_str
 
+                    if _shard_skip():
+                        continue
                     if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
@@ -291,45 +332,50 @@ def scan(cfg):
                     wd_str = f", wd={weight_decay}" if weight_decay != 0.0 else ""
                     print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}{wd_str}")
 
-                    model = instantiate(cfg.model)
-                    model.load_state_dict(init_state)
-                    model = model.to(device)
+                    try:
+                        model = instantiate(cfg.model)
+                        model.load_state_dict(init_state)
+                        model = model.to(device)
 
-                    optimizer = build_standard_optimizer(model, optim_name, lr,
-                                                         weight_decay=weight_decay)
+                        optimizer = build_standard_optimizer(model, optim_name, lr,
+                                                             weight_decay=weight_decay)
 
-                    train_loader = DataLoader(
-                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                        generator=torch.Generator().manual_seed(loader_seed),
-                    )
-                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+                        train_loader = DataLoader(
+                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                            generator=torch.Generator().manual_seed(loader_seed),
+                        )
+                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-                    model, losses = train_loop_standard(
-                        model, optimizer, loss_fn_standard,
-                        train_loader, val_loader,
-                        rcfg["num_epochs"], device, track_acc=track_acc,
-                        track_param_norm=track_param_norm,
-                    )
+                        model, losses = train_loop_standard(
+                            model, optimizer, loss_fn_standard,
+                            train_loader, val_loader,
+                            rcfg["num_epochs"], device, track_acc=track_acc,
+                            track_param_norm=track_param_norm,
+                        )
 
-                    result = {
-                        "run_id": run_id,
-                        "optimizer": optim_name,
-                        "batch_size": batch_size,
-                        "k_fraction": None,
-                        "k": None,
-                        "lr": lr,
-                        "rtol": None,
-                        "weight_decay": weight_decay,
-                        "model_seed": model_seed,
-                        "loader_seed": loader_seed,
-                        "svd_mode": None,
-                        "svd_info": None,
-                        "losses": losses,
-                    }
-                    for f in rcfg.get("result_id_fields", []):
-                        result[f] = rcfg[f]
+                        result = {
+                            "run_id": run_id,
+                            "optimizer": optim_name,
+                            "batch_size": batch_size,
+                            "k_fraction": None,
+                            "k": None,
+                            "lr": lr,
+                            "rtol": None,
+                            "weight_decay": weight_decay,
+                            "model_seed": model_seed,
+                            "loader_seed": loader_seed,
+                            "svd_mode": None,
+                            "svd_info": None,
+                            "losses": losses,
+                        }
+                        for f in rcfg.get("result_id_fields", []):
+                            result[f] = rcfg[f]
 
-                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                    except Exception as e:
+                        print(f"  [error] {optim_name} run failed: {e}")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
             # --- LBFGS optimizer (separate grid with LBFGS-specific params) ---
             if has_lbfgs:
@@ -347,6 +393,8 @@ def scan(cfg):
                         f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
                     )
 
+                    if _shard_skip():
+                        continue
                     if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
@@ -354,50 +402,55 @@ def scan(cfg):
                     print(f"\nLBFGS: bs={batch_size}, lr={lr}, max_iter={max_iter}, "
                           f"history_size={history_size}, line_search={line_search_fn}")
 
-                    model = instantiate(cfg.model)
-                    model.load_state_dict(init_state)
-                    model = model.to(device)
+                    try:
+                        model = instantiate(cfg.model)
+                        model.load_state_dict(init_state)
+                        model = model.to(device)
 
-                    lbfgs_kwargs = {
-                        "max_iter": max_iter,
-                        "history_size": history_size,
-                        "line_search_fn": line_search_fn if line_search_fn != "none" else None,
-                    }
-                    optimizer = build_standard_optimizer(model, "LBFGS", lr, **lbfgs_kwargs)
+                        lbfgs_kwargs = {
+                            "max_iter": max_iter,
+                            "history_size": history_size,
+                            "line_search_fn": line_search_fn if line_search_fn != "none" else None,
+                        }
+                        optimizer = build_standard_optimizer(model, "LBFGS", lr, **lbfgs_kwargs)
 
-                    train_loader = DataLoader(
-                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                        generator=torch.Generator().manual_seed(loader_seed),
-                    )
-                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+                        train_loader = DataLoader(
+                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                            generator=torch.Generator().manual_seed(loader_seed),
+                        )
+                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-                    model, losses = train_loop_standard(
-                        model, optimizer, loss_fn_standard,
-                        train_loader, val_loader,
-                        rcfg["num_epochs"], device, track_acc=track_acc,
-                    )
+                        model, losses = train_loop_standard(
+                            model, optimizer, loss_fn_standard,
+                            train_loader, val_loader,
+                            rcfg["num_epochs"], device, track_acc=track_acc,
+                        )
 
-                    result = {
-                        "run_id": run_id,
-                        "optimizer": "LBFGS",
-                        "batch_size": batch_size,
-                        "k_fraction": None,
-                        "k": None,
-                        "lr": lr,
-                        "rtol": None,
-                        "model_seed": model_seed,
-                        "loader_seed": loader_seed,
-                        "svd_mode": None,
-                        "svd_info": None,
-                        "lbfgs_max_iter": max_iter,
-                        "lbfgs_history_size": history_size,
-                        "lbfgs_line_search_fn": line_search_fn,
-                        "losses": losses,
-                    }
-                    for f in rcfg.get("result_id_fields", []):
-                        result[f] = rcfg[f]
+                        result = {
+                            "run_id": run_id,
+                            "optimizer": "LBFGS",
+                            "batch_size": batch_size,
+                            "k_fraction": None,
+                            "k": None,
+                            "lr": lr,
+                            "rtol": None,
+                            "model_seed": model_seed,
+                            "loader_seed": loader_seed,
+                            "svd_mode": None,
+                            "svd_info": None,
+                            "lbfgs_max_iter": max_iter,
+                            "lbfgs_history_size": history_size,
+                            "lbfgs_line_search_fn": line_search_fn,
+                            "losses": losses,
+                        }
+                        for f in rcfg.get("result_id_fields", []):
+                            result[f] = rcfg[f]
 
-                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                    except Exception as e:
+                        print(f"  [error] LBFGS run failed: {e}")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
             # --- PolyakSGD optimizer (no LR sweep) ---
             if has_polyak:
@@ -414,51 +467,58 @@ def scan(cfg):
                         f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
                     )
 
+                    if _shard_skip():
+                        continue
                     if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
                         print(f"  [skip] {run_id}")
                         continue
 
                     print(f"\nPolyakSGD: bs={batch_size}, f_star={f_star}, max_lr={max_lr}, eps={eps}")
 
-                    model = instantiate(cfg.model)
-                    model.load_state_dict(init_state)
-                    model = model.to(device)
+                    try:
+                        model = instantiate(cfg.model)
+                        model.load_state_dict(init_state)
+                        model = model.to(device)
 
-                    polyak_kwargs = {"f_star": f_star, "max_lr": max_lr, "eps": eps}
-                    optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None, **polyak_kwargs)
+                        polyak_kwargs = {"f_star": f_star, "max_lr": max_lr, "eps": eps}
+                        optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None, **polyak_kwargs)
 
-                    train_loader = DataLoader(
-                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                        generator=torch.Generator().manual_seed(loader_seed),
-                    )
-                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
+                        train_loader = DataLoader(
+                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
+                            generator=torch.Generator().manual_seed(loader_seed),
+                        )
+                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
 
-                    model, losses = train_loop_standard(
-                        model, optimizer, loss_fn_standard,
-                        train_loader, val_loader,
-                        rcfg["num_epochs"], device, track_acc=track_acc,
-                    )
+                        model, losses = train_loop_standard(
+                            model, optimizer, loss_fn_standard,
+                            train_loader, val_loader,
+                            rcfg["num_epochs"], device, track_acc=track_acc,
+                        )
 
-                    result = {
-                        "run_id": run_id,
-                        "optimizer": "PolyakSGD",
-                        "batch_size": batch_size,
-                        "k_fraction": None,
-                        "k": None,
-                        "lr": None,
-                        "rtol": None,
-                        "model_seed": model_seed,
-                        "loader_seed": loader_seed,
-                        "svd_mode": None,
-                        "svd_info": None,
-                        "polyak_f_star": f_star,
-                        "polyak_max_lr": max_lr,
-                        "polyak_eps": eps,
-                        "losses": losses,
-                    }
-                    for f in rcfg.get("result_id_fields", []):
-                        result[f] = rcfg[f]
+                        result = {
+                            "run_id": run_id,
+                            "optimizer": "PolyakSGD",
+                            "batch_size": batch_size,
+                            "k_fraction": None,
+                            "k": None,
+                            "lr": None,
+                            "rtol": None,
+                            "model_seed": model_seed,
+                            "loader_seed": loader_seed,
+                            "svd_mode": None,
+                            "svd_info": None,
+                            "polyak_f_star": f_star,
+                            "polyak_max_lr": max_lr,
+                            "polyak_eps": eps,
+                            "losses": losses,
+                        }
+                        for f in rcfg.get("result_id_fields", []):
+                            result[f] = rcfg[f]
 
-                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                    except Exception as e:
+                        print(f"  [error] PolyakSGD run failed: {e}")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
 
     print(f"\nScan complete. Results in {scan_dir}/")

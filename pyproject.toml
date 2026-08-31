@@ -1,0 +1,48 @@
+[project]
+name = "sven-experiments"
+version = "0.1.0"
+description = "Experiment harness and rebuttal studies for the Sven optimizer"
+readme = "REBUTTALS.md"
+requires-python = ">=3.12"
+
+# Pinned to the working cu128 GPU environment on the cluster. torch/torchvision
+# come from the PyTorch cu128 index (see [tool.uv.sources] + [[tool.uv.index]]).
+dependencies = [
+    "sven",
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+    "hydra-core==1.3.4",
+    "omegaconf==2.3.1",
+    "numpy==2.4.4",
+    "pandas==3.0.5",
+    "matplotlib==3.11.1",
+    "scipy==1.18.0",
+    "seaborn==0.13.2",
+    "tqdm==4.69.0",
+    # Reviewer-requested baseline optimizers:
+    "torch-optimizer==0.3.0",   # Shampoo (pulls pytorch-ranger)
+    "kfac-pytorch",             # K-FAC (git; see [tool.uv.sources])
+]
+
+[tool.uv.sources]
+# The Sven package lives in ./sven and is developed in-tree: editable install.
+sven = { path = "sven", editable = true }
+# GPU builds of torch/torchvision from the PyTorch cu128 wheel index.
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+# K-FAC has no PyPI release with the API we use; pin the git revision.
+kfac-pytorch = { git = "https://github.com/gpauloski/kfac-pytorch", rev = "869cf110334e5a6e9ea054bafdc4558313a821e8" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# This is a workspace-style project: the experiment code is imported as the
+# `experiments` package from the repo root, not built into a wheel.
+[tool.uv]
+package = false
+# sven/pyproject.toml pins torch==2.8.0; the working cluster env uses 2.9.1+cu128
+# and sven runs fine against it. Force the working version repo-wide so the
+# editable sven dependency does not drag the resolution back to 2.8.0.
+override-dependencies = ["torch==2.9.1", "torchvision==0.24.1"]

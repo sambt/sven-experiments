@@ -1,0 +1,3 @@
+# torchvision CIFAR-10; full training set (no train_fraction arg on this class).
+_target_: experiments.datasets.CIFAR10Dataset
+for_mlp: false
