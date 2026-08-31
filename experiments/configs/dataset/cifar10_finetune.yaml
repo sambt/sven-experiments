@@ -1,0 +1,5 @@
+# genuine dataset-overparam: 11M params, small labelled set (P >> N). n_train
+# overridden per run in the scan config / launcher.
+_target_: experiments.datasets.CIFAR10Dataset
+for_mlp: false
+n_train: 500

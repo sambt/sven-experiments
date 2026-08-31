@@ -1,0 +1,31 @@
+# Critical batch size (McCandlish et al.) for Sven vs AdamW on the LM. Because the
+# Sven update rank is <= B, its batch-size behaviour is distinctive and unchecked.
+# Sweep B; k_fraction=0.5 so k scales with B. Analysis: steps-to-target vs B.
+defaults:
+  - dataset: shakespeare_char
+  - model: nanogpt
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 40
+batch_size: [8, 16, 32, 64, 128, 256]
+loss: lm_ce
+
+use_gram: true
+use_rmsprop: false
+gram_capture: hooks
+
+k_fractions: [0.5]           # k = B/2, scales with batch
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-3]
+svd_mode: [torch]
+
+optimizers_standard: [AdamW]
+lrs_standard: [3e-4, 1e-3, 3e-3]
+
+loader_seed: 51159
+model_seeds: [8100, 8101]

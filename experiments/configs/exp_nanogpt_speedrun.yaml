@@ -1,0 +1,32 @@
+# nanoGPT char-level LM speedrun: Sven-Gram vs the modern optimizer set on the
+# task where they're all benchmarked. Untied embeddings + dropout=0 keep it on
+# the fast Gram hooks path. Report val loss (=> perplexity) vs steps AND wall-time.
+defaults:
+  - dataset: shakespeare_char
+  - model: nanogpt
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 50
+batch_size: 64
+loss: lm_ce
+
+use_gram: true
+use_rmsprop: false
+gram_capture: hooks
+
+k_values: [32, 64]           # k <= B; Sven update lives in a <=B-dim subspace
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-3]
+svd_mode: [torch]            # irrelevant under Gram
+
+# modern competitors (Muon/SOAP are the current LM-speedrun leaders)
+optimizers_standard: [AdamW, Muon, SOAP]
+lrs_standard: [1e-4, 3e-4, 1e-3, 3e-3]
+
+loader_seed: 51159
+model_seeds: [8000, 8001, 8002]

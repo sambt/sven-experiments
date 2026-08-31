@@ -27,14 +27,19 @@ from sven.nn import SvenWrapper, GramSvenWrapper
 SVD_LOSS_FNS = {
     "ce": lambda pred, y: F.cross_entropy(pred, y, reduction='none'),
     "mse": lambda pred, y: ((pred - y) ** 2).sum(dim=-1),
-    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1)
+    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1),
+    # language modeling: logits (B, T, V), targets (B, T) -> per-sample mean CE (B,)
+    "lm_ce": lambda pred, y: F.cross_entropy(
+        pred.reshape(-1, pred.shape[-1]), y.reshape(-1), reduction='none'
+    ).reshape(y.shape[0], -1).mean(dim=1),
 }
 
 # Standard loss returns a scalar
 STANDARD_LOSS_FNS = {
     "ce": nn.CrossEntropyLoss(),
     "mse": nn.MSELoss(),
-    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1).mean()
+    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1).mean(),
+    "lm_ce": lambda pred, y: F.cross_entropy(pred.reshape(-1, pred.shape[-1]), y.reshape(-1)),
 }
 
 
@@ -101,6 +106,7 @@ def scan(cfg):
 
     loss_key = rcfg.get("loss", "ce")
     track_acc = loss_key == "ce" or ("label_regression" in loss_key) # only track accuracy for classification
+    is_lm = loss_key == "lm_ce"  # language modeling: 3D logits, no classification accuracy
     track_param_norm = rcfg.get("track_param_norm", False)
 
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
@@ -133,6 +139,14 @@ def scan(cfg):
 
     # Dataset (shared across seeds — same data, different model inits)
     dataset = instantiate(cfg.dataset)
+
+    # Language-model datasets carry vocab_size/block_size the model must match;
+    # inject them into the model config so the config need not hardcode the vocab.
+    if hasattr(dataset, "vocab_size"):
+        OmegaConf.set_struct(cfg.model, False)
+        cfg.model.vocab_size = int(dataset.vocab_size)
+        if hasattr(dataset, "block_size") and "block_size" in cfg.model:
+            cfg.model.block_size = int(dataset.block_size)
 
     for model_seed in seeds:
         print(f"\n{'#'*80}")
@@ -261,7 +275,7 @@ def scan(cfg):
                         train_model, optimizer, loss_fn_svd,
                         train_loader, val_loader,
                         rcfg["num_epochs"], device, track_acc=track_acc,
-                        track_param_norm=track_param_norm,
+                        track_param_norm=track_param_norm, is_lm=is_lm,
                     )
 
                     result = {
@@ -357,7 +371,7 @@ def scan(cfg):
                             model, optimizer, loss_fn_standard,
                             train_loader, val_loader,
                             rcfg["num_epochs"], device, track_acc=track_acc,
-                            track_param_norm=track_param_norm,
+                            track_param_norm=track_param_norm, is_lm=is_lm,
                         )
 
                         result = {
@@ -431,6 +445,7 @@ def scan(cfg):
                             model, optimizer, loss_fn_standard,
                             train_loader, val_loader,
                             rcfg["num_epochs"], device, track_acc=track_acc,
+                            is_lm=is_lm,
                         )
 
                         result = {
@@ -500,6 +515,7 @@ def scan(cfg):
                             model, optimizer, loss_fn_standard,
                             train_loader, val_loader,
                             rcfg["num_epochs"], device, track_acc=track_acc,
+                            is_lm=is_lm,
                         )
 
                         result = {

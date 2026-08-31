@@ -5,6 +5,111 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .batchnorm import BatchNorm2d as customBatchNorm2D, replace_batchnorm
 from torchvision.models import resnet18
+from torchvision.models import resnet18 as _tv_resnet18, ResNet18_Weights
+
+
+def resnet18_pretrained_functional(num_classes: int = 10, freeze_backbone: bool = False,
+                                   **kwargs) -> nn.Module:
+    """ImageNet-pretrained torchvision ResNet18, torch.func-compatible, new head.
+
+    For the fine-tuning experiment (genuine P >> N): ~11M pretrained parameters
+    adapted to a small labelled set. BatchNorm is swapped for the transform-safe
+    variant (frozen to its ImageNet running stats by the Gram wrapper). The final
+    fc is replaced to match ``num_classes`` (fresh init). ``freeze_backbone`` is
+    accepted for experiments that only train the head, but by default everything
+    trains.
+    """
+    model = _tv_resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    replace_batchnorm(model)
+    if freeze_backbone:
+        for name, p in model.named_parameters():
+            if not name.startswith("fc."):
+                p.requires_grad_(False)
+    return model
+
+
+class CausalSelfAttention(nn.Module):
+    """Multi-head causal self-attention with explicit q/k/v/proj nn.Linear layers.
+
+    Kept as separate nn.Linear modules (not a packed qkv) so the Gram hooks
+    capture sees standard Linear layers; the attention softmax/matmuls are
+    parameter-free and per-sample (positions couple within a sequence, never
+    across the batch), so they need no capture.
+    """
+    def __init__(self, n_embd, n_head, block_size, bias=True):
+        super().__init__()
+        assert n_embd % n_head == 0
+        self.n_head = n_head
+        self.n_embd = n_embd
+        self.q = nn.Linear(n_embd, n_embd, bias=bias)
+        self.k = nn.Linear(n_embd, n_embd, bias=bias)
+        self.v = nn.Linear(n_embd, n_embd, bias=bias)
+        self.proj = nn.Linear(n_embd, n_embd, bias=bias)
+        self.register_buffer(
+            "mask", torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size)
+        )
+
+    def forward(self, x):
+        B, T, C = x.shape
+        h = self.n_head
+        q = self.q(x).view(B, T, h, C // h).transpose(1, 2)  # (B, h, T, d)
+        k = self.k(x).view(B, T, h, C // h).transpose(1, 2)
+        v = self.v(x).view(B, T, h, C // h).transpose(1, 2)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
+        att = F.softmax(att, dim=-1)
+        y = att @ v                                     # (B, h, T, d)
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+        return self.proj(y)
+
+
+class _Block(nn.Module):
+    def __init__(self, n_embd, n_head, block_size):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.attn = CausalSelfAttention(n_embd, n_head, block_size)
+        self.ln2 = nn.LayerNorm(n_embd)
+        self.mlp = nn.Sequential(
+            nn.Linear(n_embd, 4 * n_embd), nn.GELU(), nn.Linear(4 * n_embd, n_embd)
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
+
+
+class NanoGPT(nn.Module):
+    """Minimal GPT kept on the Gram fast (hooks) path.
+
+    Design constraints for hooks capture (exact per-sample Gram without the
+    (B, P) Jacobian): (1) NO weight tying between token embedding and lm_head
+    (tying forces the slow chunked capture); (2) dropout = 0 (dropout resamples
+    between the capture and update passes); (3) positional lookup uses an
+    nn.Embedding fed (B, T) indices, not a bare nn.Parameter table (invisible to
+    hooks) or 1-D arange indices (rejected). All parameters therefore live in
+    captured nn.Linear / nn.LayerNorm / nn.Embedding modules.
+    """
+    def __init__(self, vocab_size, block_size=128, n_layer=4, n_head=4,
+                 n_embd=128, tie_weights=False):
+        super().__init__()
+        self.block_size = block_size
+        self.tok_emb = nn.Embedding(vocab_size, n_embd)
+        self.pos_emb = nn.Embedding(block_size, n_embd)
+        self.blocks = nn.Sequential(*[_Block(n_embd, n_head, block_size) for _ in range(n_layer)])
+        self.ln_f = nn.LayerNorm(n_embd)
+        self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
+        if tie_weights:  # only usable with capture="chunked"
+            self.lm_head.weight = self.tok_emb.weight
+
+    def forward(self, idx):
+        B, T = idx.shape
+        pos = torch.arange(T, device=idx.device).unsqueeze(0).expand(B, T)  # (B, T), hooks-safe
+        x = self.tok_emb(idx) + self.pos_emb(pos)
+        x = self.blocks(x)
+        x = self.ln_f(x)
+        return self.lm_head(x)  # (B, T, vocab)
 
 
 def resnet18_functional(num_classes: int = 10, **kwargs) -> nn.Module:

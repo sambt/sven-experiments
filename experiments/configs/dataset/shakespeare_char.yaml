@@ -1,0 +1,2 @@
+_target_: experiments.datasets.CharTextDataset
+block_size: 128

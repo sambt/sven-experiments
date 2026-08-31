@@ -151,7 +151,7 @@ def _is_schedule_free_optimizer(optimizer):
     """Check if an optimizer uses the schedule-free interface (train/eval modes)."""
     return getattr(optimizer, 'schedule_free', False)
 
-def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any]]:
+def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False, is_lm=False) -> tuple[Any, dict[str,Any]]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
     uses_closure = _is_closure_optimizer(optimizer)
@@ -169,7 +169,8 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
             if track_acc:
                     losses['val_init_acc'].append(_compute_acc(ypred, yb))
             if is_multi is None:
-                is_multi = ypred.dim() == 3
+                # LM logits are (B, T, V) -- also 3D, but NOT multi-model; is_lm disambiguates.
+                is_multi = (ypred.dim() == 3) and not is_lm
                 if is_multi:
                     num_models = ypred.shape[0]
                     losses['num_models'] = num_models
@@ -275,7 +276,7 @@ def train_loop_standard(model, optimizer, loss_fn, train_loader, val_loader, num
 
     return model, losses
 
-def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False) -> tuple[Any, dict[str,Any], Any]:
+def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epochs, device, track_acc=False, track_param_norm=False, is_lm=False) -> tuple[Any, dict[str,Any], Any]:
     losses = defaultdict(list)
     is_multi = None  # detected on first forward pass
 
@@ -289,7 +290,8 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
             if track_acc:
                     losses['val_init_acc'].append(_compute_acc(ypred, yb))
             if is_multi is None:
-                is_multi = ypred.dim() == 3
+                # LM logits are (B, T, V) -- also 3D, but NOT multi-model; is_lm disambiguates.
+                is_multi = (ypred.dim() == 3) and not is_lm
                 if is_multi:
                     num_models = ypred.shape[0]
                     losses['num_models'] = num_models

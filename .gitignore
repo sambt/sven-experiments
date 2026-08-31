@@ -27,3 +27,6 @@ agent_lab
 agent_lab/
 claude_experiments/
 sven_experiments/
+
+# one-off validation scripts
+scratch_*.py

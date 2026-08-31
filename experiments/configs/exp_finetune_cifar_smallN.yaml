@@ -1,0 +1,33 @@
+# Fine-tune an ImageNet-pretrained ResNet18 (~11M params) on a SMALL CIFAR-10
+# subset -> genuine dataset-overparam (P >> N), Sven's theoretical sweet spot and
+# the honest answer to R1. n_train swept via the launcher. Report test accuracy +
+# parameter norm (min-norm/generalization story).
+defaults:
+  - dataset: cifar10_finetune
+  - model: resnet18_pretrained
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 30
+batch_size: 64
+loss: label_regression
+
+use_gram: true
+use_rmsprop: false
+gram_capture: hooks          # pretrained BN is _NormBase -> frozen-stats hooks (validated)
+track_param_norm: true       # min-norm claim
+
+k_values: [32, 64]
+lrs: [0.01, 0.05, 0.1, 0.5]
+rtol: [1e-3]
+svd_mode: [torch]
+
+optimizers_standard: [AdamW, SGD, Muon]
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+
+loader_seed: 51159
+model_seeds: [9000, 9001, 9002]

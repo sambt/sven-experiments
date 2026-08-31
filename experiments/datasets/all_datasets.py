@@ -167,3 +167,49 @@ class CIFAR10Dataset:
         self.train_dataset = TensorDataset(train_data, train_labels)
         self.val_dataset = TensorDataset(val_data, val_labels)
         
+
+class CharTextDataset:
+    """Char-level language-modeling dataset (tiny-shakespeare by default).
+
+    Produces fixed (input, target) sequence pairs for next-token prediction:
+    the corpus is encoded to char ids, split train/val by position, and chunked
+    into non-overlapping blocks of length ``block_size`` (target = input shifted
+    by one). Exposes ``vocab_size`` and ``block_size`` for model construction.
+    ``n_train`` optionally subsamples the number of training sequences (for the
+    critical-batch / data-scaling studies).
+    """
+    def __init__(self,
+                 ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/shakespeare/",
+                 block_size=128, val_fraction=0.1, n_train=None, subsample_seed=0):
+        path = os.path.join(ROOT, "input.txt")
+        if not os.path.isfile(path):
+            path = "./torch_datasets/shakespeare/input.txt"
+        with open(path, "r") as f:
+            text = f.read()
+        chars = sorted(set(text))
+        self.vocab_size = len(chars)
+        self.block_size = block_size
+        stoi = {c: i for i, c in enumerate(chars)}
+        data = torch.tensor([stoi[c] for c in text], dtype=torch.long)
+
+        n_val = int(len(data) * val_fraction)
+        train_ids, val_ids = data[:-n_val], data[-n_val:]
+
+        def chunk(ids):
+            # non-overlapping (block_size + 1) windows -> (x, y) each (N, block_size)
+            n_seq = (len(ids) - 1) // block_size
+            usable = ids[: n_seq * block_size + 1]
+            x = torch.stack([usable[i * block_size: (i + 1) * block_size] for i in range(n_seq)])
+            y = torch.stack([usable[i * block_size + 1: (i + 1) * block_size + 1] for i in range(n_seq)])
+            return x, y
+
+        xtr, ytr = chunk(train_ids)
+        xva, yva = chunk(val_ids)
+
+        if n_train is not None and n_train < xtr.shape[0]:
+            g = torch.Generator().manual_seed(subsample_seed)
+            idx = torch.randperm(xtr.shape[0], generator=g)[:n_train]
+            xtr, ytr = xtr[idx], ytr[idx]
+
+        self.train_dataset = TensorDataset(xtr, ytr)
+        self.val_dataset = TensorDataset(xva, yva)
