@@ -1,0 +1,42 @@
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 128
+loss: ce
+use_gram: true
+use_rmsprop: false
+gram_capture: hooks
+
+# SVD optimizer sweep
+k_values: [64,128]
+lrs: [0.1,0.5,1.0]
+rtol: [1e-4,1e-3,1e-2]
+svd_mode: [randomized_v2]
+kappa: 2
+
+lrs_standard: [1e-4,1e-3,1e-2,1e-1]
+optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [1,2,5,10]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [1,2,5,10]
+
+# Jacobian Descent (torchjd) hyperparameters
+aggregators_jd: [UPGrad]
+inner_optimizers_jd: [Adam]
+lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+
+# Half-Inverse Gradients hyperparameters
+lrs_hig: [0.05, 0.1, 0.5, 1.0]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+
+loader_seed: 51159
+model_seeds: [7310]

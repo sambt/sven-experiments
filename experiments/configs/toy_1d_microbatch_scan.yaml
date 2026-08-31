@@ -13,6 +13,8 @@ batch_size: 32
 mlp_width: 16
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
+use_rmsprop: false
 
 # Microbatch sweep: effective Jacobian rows = 32/mb
 microbatch_sizes: [1, 2, 4, 8, 16, 32]
@@ -21,7 +23,6 @@ k_values: [16, 32]
 lrs: [0.05, 0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]
-use_rmsprop: false
 
 loader_seed: 51159
 model_seeds: [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]

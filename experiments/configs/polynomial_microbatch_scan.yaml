@@ -15,6 +15,8 @@ input_dim: 6
 degree: 4
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
+use_rmsprop: false
 
 # Microbatch sweep: effective Jacobian rows = 32/mb
 microbatch_sizes: [1, 2, 4, 8, 16, 32]
@@ -23,7 +25,6 @@ k_values: [16, 32]
 lrs: [0.05, 0.1, 0.5, 1.0]
 rtol: [1e-2]
 svd_mode: [torch]
-use_rmsprop: false
 
 loader_seed: 82464
 model_seeds: [2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009]

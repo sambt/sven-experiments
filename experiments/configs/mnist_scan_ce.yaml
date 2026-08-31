@@ -12,7 +12,7 @@ num_epochs: 20
 batch_size: 64
 mlp_width: 32
 result_id_fields: [mlp_width]
-loss: label_regression
+loss: ce
 use_gram: true
 use_rmsprop: false
 
@@ -20,16 +20,23 @@ k_values: [1, 2, 4, 8, 16, 32, 48, 64]
 lrs: [0.05,0.1,0.5,1.0]
 rtol: [1e-4, 1e-3, 1e-2, 1e-1]
 svd_mode: [torch]
-alpha_rmsProp: 0.99
-variable_k: false
+kappa: 2
 
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-#optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
 optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1,2,5,10]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [1,2,5,10]
 
+# Jacobian Descent (torchjd) hyperparameters
+aggregators_jd: [UPGrad]
+inner_optimizers_jd: [Adam]
+lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+
+# Half-Inverse Gradients hyperparameters
+lrs_hig: [0.05, 0.1, 0.5, 1.0]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+
 loader_seed: 51159
-model_seeds: [47612, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+model_seeds: [6310, 6311, 6312, 6313, 6314, 6315, 6316, 6317, 6318, 6319]

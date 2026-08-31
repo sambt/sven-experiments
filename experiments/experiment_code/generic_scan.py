@@ -166,6 +166,7 @@ def scan(cfg):
                 hparams['svd_mode'],
                 hparams['microbatch_sizes'],
                 hparams['param_fractions'],
+                hparams['kappas'],
             )
 
             loss_fn_svd = SVD_LOSS_FNS[loss_key]
@@ -183,7 +184,7 @@ def scan(cfg):
             # BatchNorm). Default "hooks" for the MLP suite; CIFAR/ResNet uses "chunked".
             gram_capture = rcfg.get("gram_capture", "hooks")
 
-            for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction in svd_grid:
+            for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
                 k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
 
                 # Build run_id for deduplication
@@ -201,6 +202,8 @@ def scan(cfg):
                     run_id += "_variablek"
                 if use_gram:
                     run_id += "_gram"
+                if kappa != 2.0:
+                    run_id += f"_kappa{kappa}"
 
                 if _shard_skip():
                     continue
@@ -213,6 +216,8 @@ def scan(cfg):
                     print(f", mb={microbatch_size}", end="")
                 if param_fraction is not None:
                     print(f", pf={param_fraction}", end="")
+                if kappa != 2.0:
+                    print(f", kappa={kappa}", end="")
                 if use_rmsprop:
                     print(f", rmsprop_alpha={alpha_rmsprop}", end="")
                 if variable_k:
@@ -230,13 +235,14 @@ def scan(cfg):
                         # svd_mode is irrelevant (eigendecomposition of G replaces the SVD of J).
                         train_model = GramSvenWrapper(
                             model, loss_fn_svd, device,
+                            kappa=kappa,
                             microbatch_size=mb, param_fraction=pf,
                             mask_mode=("rows" if pf < 1.0 else None),
                             capture=gram_capture,
                         )
                         optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=True)
                     else:
-                        train_model = SvenWrapper(model, loss_fn_svd, device, microbatch_size=mb, param_fraction=pf)
+                        train_model = SvenWrapper(model, loss_fn_svd, device, kappa=kappa, microbatch_size=mb, param_fraction=pf)
                         optimizer = Sven(
                             train_model, lr=lr, k=k, rtol=rtol,
                             track_svd_info=True, svd_mode=svd_mode,
@@ -276,6 +282,7 @@ def scan(cfg):
                         "variable_k": variable_k,
                         "use_gram": use_gram,
                         "gram_capture": gram_capture if use_gram else None,
+                        "kappa": kappa,
                         "losses": losses,
                         "svd_info": getattr(optimizer, "svd_info", {})
                     }

@@ -103,6 +103,10 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     else:
         output['param_fractions'] = [None]
 
+    # kappa sweep for the residual decomposition (Sven only). Default [2.0] so
+    # non-kappa configs are unaffected (kappa==2.0 leaves run_id unchanged).
+    output['kappas'] = listify(cfg.get("kappa", 2.0))
+
     # LBFGS-specific hyperparameters (only used when "LBFGS" is in optimizers_standard)
     # Separate LR list for LBFGS since it typically needs much larger LRs than Adam/SGD
     output['lrs_lbfgs'] = listify(cfg.get("lrs_lbfgs", output['lrs_standard']))
