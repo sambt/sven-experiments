@@ -26,6 +26,11 @@ dependencies = [
     "kfac-pytorch",             # K-FAC (git; see [tool.uv.sources])
 ]
 
+[dependency-groups]
+# Notebook kernel for VS Code / Jupyter (`uv sync` installs it into .venv, which
+# VS Code then offers as a kernel). Synced by default; harmless on the cluster.
+dev = ["ipykernel>=6.29"]
+
 [tool.uv.sources]
 # The Sven package lives in ./sven and is developed in-tree: editable install.
 sven = { path = "sven", editable = true }
