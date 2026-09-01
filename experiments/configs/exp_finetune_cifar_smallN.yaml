@@ -12,6 +12,14 @@ mode: both
 device: cuda
 print_config: true
 
+# P >> N sweep: subsample the CIFAR training set. Override n_data on the command
+# line to trace P/N (P = 11.18M). result_id_fields puts n_data in the run_id so
+# different subset sizes don't collide in the shared output dir.
+n_data: 500
+dataset:
+  n_train: ${n_data}
+result_id_fields: [n_data]
+
 num_epochs: 30
 batch_size: 64
 loss: label_regression
