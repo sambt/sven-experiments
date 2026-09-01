@@ -5,8 +5,10 @@ description = "Experiment harness and rebuttal studies for the Sven optimizer"
 readme = "REBUTTALS.md"
 requires-python = ">=3.12"
 
-# Pinned to the working cu128 GPU environment on the cluster. torch/torchvision
-# come from the PyTorch cu128 index (see [tool.uv.sources] + [[tool.uv.index]]).
+# Pinned to the working cu128 GPU environment on the Linux cluster; on macOS the
+# same versions come from PyPI (CPU/MPS wheels) — see the platform-marked
+# [tool.uv.sources] below, which route torch/torchvision to the cu128 index only
+# on Linux and fall back to the default index everywhere else.
 dependencies = [
     "sven",
     "torch==2.9.1",
@@ -27,9 +29,11 @@ dependencies = [
 [tool.uv.sources]
 # The Sven package lives in ./sven and is developed in-tree: editable install.
 sven = { path = "sven", editable = true }
-# GPU builds of torch/torchvision from the PyTorch cu128 wheel index.
-torch = { index = "pytorch-cu128" }
-torchvision = { index = "pytorch-cu128" }
+# GPU builds of torch/torchvision from the PyTorch cu128 wheel index on Linux only;
+# on other platforms (macOS arm64, etc.) no source is selected, so uv resolves them
+# from the default index (PyPI), which ships CPU/MPS wheels.
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
 # K-FAC has no PyPI release with the API we use; pin the git revision.
 kfac-pytorch = { git = "https://github.com/gpauloski/kfac-pytorch", rev = "869cf110334e5a6e9ea054bafdc4558313a821e8" }
 
