@@ -30,3 +30,6 @@ sven_experiments/
 
 # one-off validation scripts
 scratch_*.py
+
+# local dataset caches (downloaded on demand)
+torch_datasets/
