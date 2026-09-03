@@ -50,23 +50,12 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
     )
 
 def load_results_jsonl(name, results_root='../experiment_results'):
-    """Load experiment results from a single JSONL file.
-
-    This is the old storage format, where all runs are stored in a single
-    ``{name}.jsonl`` file.  Returns a :class:`pd.DataFrame`.
+    """Back-compat shim. Results are now stored per-run in a ``{name}/`` directory
+    (the fresh Gram-backend runs); the old single ``{name}.jsonl`` file is gone.
+    Delegates to :func:`load_results`, which handles both layouts, so existing
+    notebooks that call this keep working against the new paths.
     """
-    jsonl_path = Path(results_root) / f'{name}.jsonl'
-    if not jsonl_path.is_file():
-        raise FileNotFoundError(f"No results found for '{name}': {jsonl_path} does not exist")
-
-    records: list[dict] = []
-    with open(jsonl_path) as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-    print(f"Loaded {len(records)} runs from {jsonl_path}")
-    return pd.DataFrame(records)
+    return load_results(name, results_root=results_root)
 
 # Scalar quantity columns added by add_derived_columns — excluded from auto-detected config cols.
 _DERIVED_QUANTITY_COLS = {
