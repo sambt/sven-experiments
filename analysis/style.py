@@ -1,22 +1,64 @@
 import json
+import pickle
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# The bulk of every SVD result file is diagnostics the analysis rarely needs:
+# svd_info.svs (~2.4 MB/file, the per-step singular values) plus the per-BATCH
+# arrays in losses (another ~0.5 MB). Together ~98% of the bytes. `slim=True`
+# drops them so a scan loads (and, cached, reloads) in a fraction of the time;
+# only the sv-spectra / batch-wise notebooks need them (pass slim=False there).
+_DROP_TOP = ('svd_info',)
+_DROP_LOSSES = ('batch_times_train', 'batch_times_val', 'train_batch', 'val_batch')
 
-def load_results(name, results_root='../experiment_results', selection_fn=None):
-    """Load experiment results, supporting both old and new storage formats.
 
-    Old format: a single ``{name}.jsonl`` file with one JSON object per line.
-    New format: a directory ``{name}/`` containing one ``.jsonl`` file per run.
+def _slim_record(r):
+    for k in _DROP_TOP:
+        r.pop(k, None)
+    L = r.get('losses')
+    if isinstance(L, dict):
+        for k in _DROP_LOSSES:
+            L.pop(k, None)
+    return r
 
-    The function tries the directory format first, then falls back to the
-    single-file format.  Returns a :class:`pd.DataFrame`.
+
+def _dir_signature(files):
+    """(count, latest mtime) — cheap cache-invalidation key for a scan dir."""
+    return (len(files), max((f.stat().st_mtime_ns for f in files), default=0))
+
+
+def load_results(name, results_root='../experiment_results', selection_fn=None,
+                 slim=True, use_cache=True):
+    """Load experiment results into a DataFrame (new per-run directory format,
+    with a fallback to the legacy single ``{name}.jsonl`` file).
+
+    slim (default True): drop the heavy diagnostics (``svd_info`` and the per-batch
+        arrays) — ~98% of the bytes, unused by most notebooks. Pass ``slim=False``
+        for the sv-spectra / batch-wise analyses that need them.
+    use_cache (default True): for a slim, unfiltered load, cache the result to
+        ``{results_root}/_cache/{name}.slim.pkl`` and reuse it while the scan dir
+        is unchanged (keyed by file count + latest mtime). First build still reads
+        every file once; subsequent loads are near-instant.
     """
     root = Path(results_root)
     scan_dir = root / name
+    cacheable = slim and use_cache and selection_fn is None and scan_dir.is_dir()
+
+    if cacheable:
+        files = sorted(scan_dir.glob('*.jsonl'))
+        cache = root / '_cache' / f'{name}.slim.pkl'
+        sig = _dir_signature(files)
+        if cache.is_file():
+            try:
+                blob = pickle.loads(cache.read_bytes())
+                if blob.get('sig') == sig:
+                    print(f"Loaded {len(blob['df'])} runs from {cache} (slim cache)")
+                    return blob['df']
+            except Exception:
+                pass  # stale/corrupt cache -> rebuild
 
     records: list[dict] = []
 
@@ -29,10 +71,16 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
                 for line in fh:
                     line = line.strip()
                     if line:
-                        records.append(json.loads(line))
+                        rec = json.loads(line)
+                        records.append(_slim_record(rec) if slim else rec)
         if records:
-            print(f"Loaded {len(records)} runs from {scan_dir}/ (directory format)")
-            return pd.DataFrame(records)
+            print(f"Loaded {len(records)} runs from {scan_dir}/ (directory format"
+                  f"{', slim' if slim else ''})")
+            df = pd.DataFrame(records)
+            if cacheable:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_bytes(pickle.dumps({'sig': _dir_signature(files), 'df': df}))
+            return df
 
     # Old format: single JSONL file
     jsonl_path = root / f'{name}.jsonl'
@@ -41,7 +89,8 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
             for line in fh:
                 line = line.strip()
                 if line:
-                    records.append(json.loads(line))
+                    rec = json.loads(line)
+                    records.append(_slim_record(rec) if slim else rec)
         print(f"Loaded {len(records)} runs from {jsonl_path} (single-file format)")
         return pd.DataFrame(records)
 
@@ -49,13 +98,12 @@ def load_results(name, results_root='../experiment_results', selection_fn=None):
         f"No results found for '{name}': tried {scan_dir}/ and {jsonl_path}"
     )
 
-def load_results_jsonl(name, results_root='../experiment_results'):
+def load_results_jsonl(name, results_root='../experiment_results', slim=True):
     """Back-compat shim. Results are now stored per-run in a ``{name}/`` directory
     (the fresh Gram-backend runs); the old single ``{name}.jsonl`` file is gone.
-    Delegates to :func:`load_results`, which handles both layouts, so existing
-    notebooks that call this keep working against the new paths.
+    Delegates to :func:`load_results` (which handles both layouts + the slim cache).
     """
-    return load_results(name, results_root=results_root)
+    return load_results(name, results_root=results_root, slim=slim)
 
 # Scalar quantity columns added by add_derived_columns — excluded from auto-detected config cols.
 _DERIVED_QUANTITY_COLS = {
