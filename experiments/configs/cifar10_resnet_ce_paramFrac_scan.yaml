@@ -13,7 +13,7 @@ batch_size: 128
 loss: ce
 use_gram: true
 use_rmsprop: false
-gram_capture: chunked
+gram_capture: hooks
 
 k_values: 128
 lrs: 0.1

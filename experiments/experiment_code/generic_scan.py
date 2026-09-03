@@ -197,6 +197,12 @@ def scan(cfg):
             # or "chunked" (exact for any architecture, e.g. conv-nets with custom
             # BatchNorm). Default "hooks" for the MLP suite; CIFAR/ResNet uses "chunked".
             gram_capture = rcfg.get("gram_capture", "hooks")
+            # Parameter-fraction mask structure (param_fraction < 1 only):
+            # "elementwise" (default, matches the paper: random individual weights),
+            # "rows" (whole output neurons/channels — coarse, and cannot split
+            # BatchNorm so it needs capture="chunked"), or "tensor". Elementwise
+            # runs on the fast hooks path for Linear/Conv2d/_NormBase.
+            svd_mask_mode = rcfg.get("mask_mode", "elementwise")
 
             for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
                 k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
@@ -251,12 +257,16 @@ def scan(cfg):
                             model, loss_fn_svd, device,
                             kappa=kappa,
                             microbatch_size=mb, param_fraction=pf,
-                            mask_mode=("rows" if pf < 1.0 else None),
+                            mask_mode=(svd_mask_mode if pf < 1.0 else None),
                             capture=gram_capture,
                         )
                         optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=True)
                     else:
-                        train_model = SvenWrapper(model, loss_fn_svd, device, kappa=kappa, microbatch_size=mb, param_fraction=pf)
+                        train_model = SvenWrapper(
+                            model, loss_fn_svd, device, kappa=kappa,
+                            microbatch_size=mb, param_fraction=pf,
+                            mask_mode=(svd_mask_mode if pf < 1.0 else None),
+                        )
                         optimizer = Sven(
                             train_model, lr=lr, k=k, rtol=rtol,
                             track_svd_info=True, svd_mode=svd_mode,
@@ -296,6 +306,7 @@ def scan(cfg):
                         "variable_k": variable_k,
                         "use_gram": use_gram,
                         "gram_capture": gram_capture if use_gram else None,
+                        "mask_mode": (svd_mask_mode if param_fraction is not None and param_fraction < 1.0 else None),
                         "kappa": kappa,
                         "losses": losses,
                         "svd_info": getattr(optimizer, "svd_info", {})
