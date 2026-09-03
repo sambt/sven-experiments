@@ -25,9 +25,23 @@ def _slim_record(r):
     return r
 
 
+_CACHE_VERSION = 2  # bump when the slim schema / signature scheme changes
+
+
 def _dir_signature(files):
-    """(count, latest mtime) — cheap cache-invalidation key for a scan dir."""
-    return (len(files), max((f.stat().st_mtime_ns for f in files), default=0))
+    """Content-sensitive cache key over ALL files: a hash of each file's
+    (name, size, mtime_ns). Unlike a (count, max-mtime) key, this also detects
+    an in-place overwrite of an existing run_id (re-running a config that
+    regenerates the same filename) — count and max-mtime can both be unchanged
+    there, but that file's size/mtime moves, so the hash changes.
+    """
+    import hashlib
+    h = hashlib.blake2b(digest_size=16)
+    h.update(str(_CACHE_VERSION).encode())
+    for f in files:  # files must be pre-sorted for a stable hash
+        st = f.stat()
+        h.update(f'{f.name}\0{st.st_size}\0{st.st_mtime_ns}\0'.encode())
+    return (len(files), h.hexdigest())
 
 
 def load_results(name, results_root='../experiment_results', selection_fn=None,
@@ -40,15 +54,20 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
         for the sv-spectra / batch-wise analyses that need them.
     use_cache (default True): for a slim, unfiltered load, cache the result to
         ``{results_root}/_cache/{name}.slim.pkl`` and reuse it while the scan dir
-        is unchanged (keyed by file count + latest mtime). First build still reads
-        every file once; subsequent loads are near-instant.
+        is unchanged. The cache key is content-sensitive (see :func:`_dir_signature`),
+        so it invalidates on new files, removed files, AND in-place re-runs of an
+        existing run_id. First build reads every file once; reloads are near-instant.
     """
     root = Path(results_root)
     scan_dir = root / name
     cacheable = slim and use_cache and selection_fn is None and scan_dir.is_dir()
 
+    # Glob ONCE and reuse the same file list for the signature and the load, so
+    # the cached signature always matches the data actually loaded (no race
+    # between a check-glob and a load-glob while a job is still writing files).
+    files = sorted(scan_dir.glob('*.jsonl')) if scan_dir.is_dir() else []
+
     if cacheable:
-        files = sorted(scan_dir.glob('*.jsonl'))
         cache = root / '_cache' / f'{name}.slim.pkl'
         sig = _dir_signature(files)
         if cache.is_file():
@@ -63,9 +82,9 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
     records: list[dict] = []
 
     # New format: directory of per-run JSONL files
-    if scan_dir.is_dir():
-        for f in sorted(scan_dir.glob('*.jsonl')):
-            if selection_fn is not None and not selection_fn(str(f).split("/")[-1]):
+    if files:
+        for f in files:
+            if selection_fn is not None and not selection_fn(f.name):
                 continue
             with open(f) as fh:
                 for line in fh:
@@ -79,7 +98,11 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
             df = pd.DataFrame(records)
             if cacheable:
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_bytes(pickle.dumps({'sig': _dir_signature(files), 'df': df}))
+                # Re-signature from the same `files` list (unchanged since the glob),
+                # written atomically so a concurrent reader never sees a partial pickle.
+                tmp = cache.with_suffix('.pkl.tmp')
+                tmp.write_bytes(pickle.dumps({'sig': sig, 'df': df}))
+                tmp.replace(cache)
             return df
 
     # Old format: single JSONL file
