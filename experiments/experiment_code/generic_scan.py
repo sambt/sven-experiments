@@ -216,6 +216,8 @@ def scan(cfg):
                     run_id += f"_mb{microbatch_size}"
                 if param_fraction is not None:
                     run_id += f"_pf{param_fraction}"
+                    if param_fraction < 1.0:
+                        run_id += f"_{svd_mask_mode}"  # elementwise vs rows -> distinct runs
                 if use_rmsprop:
                     run_id += f"_RMSpropAlpha{alpha_rmsprop}"
                 if variable_k:
