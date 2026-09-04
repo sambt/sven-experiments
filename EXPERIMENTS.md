@@ -162,6 +162,41 @@ capped at B. k = B/2 so the rank scales with the batch.*
 
 ---
 
+## Baseline caveat — K-FAC failures (caught & skipped)
+
+K-FAC (part of the **FULL** optimizer set) fails at a subset of grid points and those
+runs are **permanently absent** from the results — this is expected, not a harness bug.
+
+- **What happens.** At some points K-FAC's Kronecker-factored Fisher is rank-deficient, so
+  the `torch.linalg.eigh` that inverts it is ill-conditioned and raises. The scan wraps every
+  standard-optimizer run in a `try/except`, prints `[error] KFAC run failed: ...`, and moves
+  on **without writing a result file**. Re-submitting retries the point and it fails again
+  (the conditioning is deterministic for a given seed/data), so the gap is stable.
+- **Why (and why it's on-message).** The failures cluster in exactly the regimes the paper
+  is about: over-parametrized / small-data, where the Fisher is singular. K-FAC only "exists"
+  there via damping (a biased, non-min-norm update) — the point made in the R3 response. So
+  these are a property of K-FAC, not of our setup.
+- **Where K-FAC even runs.** Only the FULL-suite configs include it. **CORE** (headline / κ /
+  micro-batch / all CIFAR configs) does **not** include K-FAC, so none of those are affected.
+
+Caught-failure counts (runs missing vs. the full K-FAC sub-grid), as measured:
+
+| Config | K-FAC runs missing |
+|---|---|
+| `rebuttal_baselines_toy_1d_scan` | ~6 |
+| `rebuttal_baselines_polynomial_scan` | ~10 |
+| `rebuttal_baselines_mnist_scan` | ~20 |
+| `rebuttal_batchsize_polynomial_scan` | ~15 |
+| `rebuttal_overparam_mnist_scan` | ~44 |
+| `rebuttal_overparam_toy_1d_scan`, `rebuttal_overparam_polynomial_scan` | 0 (full-batch synthetic Fisher stays well-conditioned) |
+
+K-FAC's best-config numbers are still recovered from the surviving points; only the
+ill-conditioned corners are absent, and the analysis notebooks simply plot what survived.
+(The same `try/except` also catches the occasional Shampoo NaN, but those are rare and not
+systematic.)
+
+---
+
 ## Not re-run
 
 Present in the repo but excluded from the fresh Gram suite:
