@@ -24,6 +24,8 @@ dependencies = [
     # Reviewer-requested baseline optimizers:
     "torch-optimizer==0.3.0",   # Shampoo (pulls pytorch-ranger)
     "kfac-pytorch",             # K-FAC (git; see [tool.uv.sources])
+    "tiktoken>=0.14.0",
+    "datasets>=5.0.1",
 ]
 
 [dependency-groups]
