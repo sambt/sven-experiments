@@ -4,7 +4,7 @@
 # NOTE: batch_size is a placeholder pending the GPU probe (lm_head=768x50304 is the
 # Gram memory bottleneck); tune before launch.
 defaults:
-  - dataset: openwebtext
+  - dataset: fineweb_edu
   - model: gpt2_small
   - _self_
 

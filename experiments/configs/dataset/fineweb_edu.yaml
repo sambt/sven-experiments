@@ -1,7 +1,7 @@
-# GPT-2 BPE token stream (uint16 .bin, nanoGPT layout) produced by
+# GPT-2 BPE token stream (FineWeb-edu sample-10BT), 250M train / 8M val tokens.
 # experiments/data_prep/prepare_tokens.py. vocab_size padded to 50304.
 _target_: experiments.datasets.TokenBinDataset
-ROOT: /n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/openwebtext_gpt2
+ROOT: /n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/fineweb_edu_gpt2
 block_size: 1024
 n_train_blocks: null   # null = use the whole train.bin (one pass = the token budget)
 val_blocks: 200
