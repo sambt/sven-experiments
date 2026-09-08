@@ -3,7 +3,10 @@
 Every experiment run for the paper, grouped by purpose. All optimizer runs now use the
 exact **Gram-trick** backend; the hyperparameter columns give the full swept grid.
 
-**31 experiments · 11 families · 3 tiers · 6 architectures · params 593 → 11.18M**
+**28 experiments · 10 families · 3 tiers · 6 architectures · params 593 → 11.18M**
+
+*(The extra-baseline scans have been consolidated into the headline convergence configs —
+those now run the full optimizer suite. See "Headline convergence" and the note below.)*
 
 ## Shared conventions
 
@@ -43,10 +46,10 @@ than first- and second-order baselines. Full data.*
 
 | Experiment | Dataset (loss) | Model · params | Hyperparameter scan | Optimizers |
 |---|---|---|---|---|
-| `toy_1d_scan` | Toy 1-D (MSE) | Toy-1D MLP · 593 | k∈{1,2,4,8,16,32}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds, 20 ep | Sven-Gram + CORE |
-| `polynomial_scan` | Random polynomial (MSE) | Poly MLP · 673 | k∈{1,2,4,8,16,32}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds, 20 ep | Sven-Gram + CORE |
-| `mnist_scan_labelRegression` | MNIST (label-reg MSE) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + CORE |
-| `mnist_scan_ce` | MNIST (cross-entropy) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + CORE |
+| `toy_1d_scan` | Toy 1-D (MSE) | Toy-1D MLP · 593 | k∈{1,2,4,8,16,32}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds, 20 ep | Sven-Gram + FULL |
+| `polynomial_scan` | Random polynomial (MSE) | Poly MLP · 673 | k∈{1,2,4,8,16,32}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds, 20 ep | Sven-Gram + FULL |
+| `mnist_scan_labelRegression` | MNIST (label-reg MSE) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + FULL |
+| `mnist_scan_ce` | MNIST (cross-entropy) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + FULL |
 | `cifar10_resnet_scan_labelRegression` | CIFAR-10 (label-reg) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 1 seed, 20 ep · **[hooks]** | Sven-Gram + CORE |
 | `cifar10_resnet_ce_scan` | CIFAR-10 (cross-entropy) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 1 seed, 20 ep · **[hooks]** | Sven-Gram + CORE |
 
@@ -91,15 +94,15 @@ implementation that avoids NaNs.*
 New experiments answering the NeurIPS reviews — the requested baselines, and the
 dataset-overparam regime the theory actually targets.
 
-### Extra baselines (R1 / R2)
-*The full modern optimizer suite the reviewers asked for, to show the wider comparison doesn't
-change the story. Full data.*
-
-| Experiment | Dataset (loss) | Model · params | Hyperparameter scan | Optimizers |
-|---|---|---|---|---|
-| `rebuttal_baselines_toy_1d_scan` | Toy 1-D (MSE) | Toy-1D MLP · 593 | k∈{1…32, 6 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds | Sven-Gram + FULL |
-| `rebuttal_baselines_polynomial_scan` | Random polynomial (MSE) | Poly MLP · 673 | k∈{1…32, 6 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds | Sven-Gram + FULL |
-| `rebuttal_baselines_mnist_scan` | MNIST (label-reg) | MNIST MLP · 27,562 | k∈{16,32,48,64}, lr∈{.1,.5,1}, rtol∈{1e-3,1e-2}, 5 seeds | Sven-Gram + FULL |
+### Extra baselines (R1 / R2) — consolidated into the headline scans
+*The reviewer-requested full optimizer suite (AdamW, Muon, SOAP, Shampoo, K-FAC on top of
+CORE) has been **folded into the headline convergence configs** above — `toy_1d_scan`,
+`polynomial_scan`, and `mnist_scan_labelRegression` now run Sven-Gram + FULL. Their result
+directories hold the union of the original CORE runs and the added baselines; for polynomial
+and MNIST that union spans two loader seeds / LBFGS grids (the added-baseline runs used a
+different loader seed and, for MNIST, a reduced k/lr/rtol×5-seed sub-grid), so the directory
+documents all runs rather than a single reproducible Cartesian grid. The former
+`rebuttal_baselines_*` configs and dirs are archived under `_backup_2026-08-31/…__premerge`.*
 
 ### Dataset-overparam, P > N (R1 crux)
 *The decisive rebuttal experiment: subsample the training set to trace performance across the
@@ -180,9 +183,9 @@ Caught-failure counts, as measured:
 
 | Config | K-FAC runs missing |
 |---|---|
-| `rebuttal_baselines_toy_1d_scan` | ~6 |
-| `rebuttal_baselines_polynomial_scan` | ~10 |
-| `rebuttal_baselines_mnist_scan` | ~20 |
+| `toy_1d_scan` (headline) | ~6 |
+| `polynomial_scan` (headline) | ~10 |
+| `mnist_scan_labelRegression` (headline) | ~20 |
 | `rebuttal_batchsize_polynomial_scan` | ~15 |
 | `rebuttal_overparam_mnist_scan` | ~44 |
 | `rebuttal_overparam_toy_1d_scan`, `rebuttal_overparam_polynomial_scan` | 0 (full-batch synthetic Fisher stays well-conditioned) |
@@ -190,7 +193,7 @@ Caught-failure counts, as measured:
 **2. SOAP — high-LR hang.** At `lr = 0.1` (~30× SOAP's sane LR) SOAP diverges and *deadlocks*
 a CUDA op (rather than raising), which hangs the whole scan process. Confirmed deterministic
 (hangs identically at NPROC=1, so not GPU contention). Affected the MNIST FULL-suite configs
-(`rebuttal_baselines_mnist`, `rebuttal_overparam_mnist`); ~3 SOAP points each are absent. SOAP
+(`mnist_scan_labelRegression`, `rebuttal_overparam_mnist`); ~3 SOAP points each are absent. SOAP
 is present and valid at its lower LRs. (Because a hang blocks the shard, the standard runs
 queued *after* it were recovered by re-running that phase with SOAP excluded.)
 
