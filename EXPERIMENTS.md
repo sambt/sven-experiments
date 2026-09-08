@@ -162,24 +162,21 @@ capped at B. k = B/2 so the rank scales with the batch.*
 
 ---
 
-## Baseline caveat — K-FAC failures (caught & skipped)
+## Caught numerical failures at aggressive settings (expected; not harness bugs)
 
-K-FAC (part of the **FULL** optimizer set) fails at a subset of grid points and those
-runs are **permanently absent** from the results — this is expected, not a harness bug.
+A handful of runs are **permanently absent** because the optimizer blows up or hits a
+singular matrix at aggressive/degenerate hyperparameters. Every such run is caught by a
+`try/except`, logged as `[error] … failed`, and skipped **without writing a result file**;
+the failure is deterministic for a given (seed, data), so re-submitting reproduces it. In
+every case the *converging* grid points are present — only the divergent/singular corners
+are missing, and the analysis notebooks simply plot what survived. Three sources:
 
-- **What happens.** At some points K-FAC's Kronecker-factored Fisher is rank-deficient, so
-  the `torch.linalg.eigh` that inverts it is ill-conditioned and raises. The scan wraps every
-  standard-optimizer run in a `try/except`, prints `[error] KFAC run failed: ...`, and moves
-  on **without writing a result file**. Re-submitting retries the point and it fails again
-  (the conditioning is deterministic for a given seed/data), so the gap is stable.
-- **Why (and why it's on-message).** The failures cluster in exactly the regimes the paper
-  is about: over-parametrized / small-data, where the Fisher is singular. K-FAC only "exists"
-  there via damping (a biased, non-min-norm update) — the point made in the R3 response. So
-  these are a property of K-FAC, not of our setup.
-- **Where K-FAC even runs.** Only the FULL-suite configs include it. **CORE** (headline / κ /
-  micro-batch / all CIFAR configs) does **not** include K-FAC, so none of those are affected.
-
-Caught-failure counts (runs missing vs. the full K-FAC sub-grid), as measured:
+**1. K-FAC — singular Kronecker-factored Fisher.** In the over-parametrized / small-data
+regimes the Fisher is rank-deficient, so the `torch.linalg.eigh` that inverts it fails to
+converge. This is on-message: K-FAC only "exists" there via damping (a biased, non-min-norm
+update) — the point made in the R3 response. Only the **FULL**-suite configs include K-FAC;
+**CORE** (headline / κ / micro-batch / all CIFAR configs) does not, so those are unaffected.
+Caught-failure counts, as measured:
 
 | Config | K-FAC runs missing |
 |---|---|
@@ -190,10 +187,21 @@ Caught-failure counts (runs missing vs. the full K-FAC sub-grid), as measured:
 | `rebuttal_overparam_mnist_scan` | ~44 |
 | `rebuttal_overparam_toy_1d_scan`, `rebuttal_overparam_polynomial_scan` | 0 (full-batch synthetic Fisher stays well-conditioned) |
 
-K-FAC's best-config numbers are still recovered from the surviving points; only the
-ill-conditioned corners are absent, and the analysis notebooks simply plot what survived.
-(The same `try/except` also catches the occasional Shampoo NaN, but those are rare and not
-systematic.)
+**2. SOAP — high-LR hang.** At `lr = 0.1` (~30× SOAP's sane LR) SOAP diverges and *deadlocks*
+a CUDA op (rather than raising), which hangs the whole scan process. Confirmed deterministic
+(hangs identically at NPROC=1, so not GPU contention). Affected the MNIST FULL-suite configs
+(`rebuttal_baselines_mnist`, `rebuttal_overparam_mnist`); ~3 SOAP points each are absent. SOAP
+is present and valid at its lower LRs. (Because a hang blocks the shard, the standard runs
+queued *after* it were recovered by re-running that phase with SOAP excluded.)
+
+**3. Sven (Gram) — `eigh` non-convergence at high LR or low κ.** Sven's own `torch.linalg.eigh`
+on the `B×B` Gram fails when training diverges and the (masked) Gram goes NaN / ill-conditioned.
+Two triggers, both expected: **high LR** — `mnist_paramfrac_labelreg` (~34), `mnist_paramfrac_ce`
+(~12), `polynomial_paramfrac` (~19) missing, all at `lr = 0.5 / 1.0`; and **low κ** —
+`cifar10_resnet_ce_kappaScan` missing κ = 1 and 1.5 (the κ=1 theory value is the numerically
+unstable one that κ=2 exists to avoid — exactly the κ=1-vs-κ=2 tradeoff the paper discusses).
+
+The same `try/except` also catches the occasional Shampoo NaN (rare, not systematic).
 
 ---
 
