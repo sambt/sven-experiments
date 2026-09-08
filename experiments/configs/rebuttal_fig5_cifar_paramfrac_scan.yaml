@@ -18,10 +18,10 @@ batch_size: 128
 loss: label_regression
 
 use_gram: true
-# chunked capture: exact for any architecture and the ONLY Gram mode that can apply
-# param-fraction masking to a conv-net (hooks-rows cannot split BatchNorm affine params;
-# CPU-smoke-tested). Memory bounded by chunk_numel; ~11M-param ResNet18 = a few groups.
-gram_capture: chunked
+# hooks capture with elementwise masking (the default mask_mode) reproduces the paper's
+# random-parameter-subset Fig-5 exactly and runs on the fast path: BatchNorm is fine under
+# elementwise (only "rows" mode can't split it). O(B*n_active) per layer, fraction-scaling.
+gram_capture: hooks
 
 k_values: [128]
 lrs: [0.1]
