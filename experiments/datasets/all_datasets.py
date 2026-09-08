@@ -213,3 +213,40 @@ class CharTextDataset:
 
         self.train_dataset = TensorDataset(xtr, ytr)
         self.val_dataset = TensorDataset(xva, yva)
+
+
+class _BlockDataset(torch.utils.data.Dataset):
+    """Lazy fixed-block view over a memmapped uint16 token array (next-token LM)."""
+    def __init__(self, data, block_size, n_blocks=None):
+        self.data = data
+        self.bs = block_size
+        max_blocks = (len(data) - 1) // block_size
+        self.n = min(n_blocks, max_blocks) if n_blocks else max_blocks
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, i):
+        s = i * self.bs
+        x = torch.from_numpy(self.data[s:s + self.bs].astype("int64"))
+        y = torch.from_numpy(self.data[s + 1:s + self.bs + 1].astype("int64"))
+        return x, y
+
+
+class TokenBinDataset:
+    """Token-level LM dataset over nanoGPT-style uint16 .bin shards.
+
+    Reads ``{ROOT}/train.bin`` and ``{ROOT}/val.bin`` (uint16 GPT-2 BPE token ids,
+    as written by experiments/data_prep/prepare_tokens.py), memmaps them, and
+    serves non-overlapping ``block_size`` (input, target) pairs. One pass over
+    train.bin = the full token budget. ``n_train_blocks`` optionally caps it.
+    """
+    def __init__(self,
+                 ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/openwebtext_gpt2",
+                 block_size=1024, n_train_blocks=None, val_blocks=200, vocab_size=50304):
+        self.block_size = block_size
+        self.vocab_size = vocab_size
+        tr = np.memmap(os.path.join(ROOT, "train.bin"), dtype=np.uint16, mode="r")
+        va = np.memmap(os.path.join(ROOT, "val.bin"), dtype=np.uint16, mode="r")
+        self.train_dataset = _BlockDataset(tr, block_size, n_train_blocks)
+        self.val_dataset = _BlockDataset(va, block_size, val_blocks)

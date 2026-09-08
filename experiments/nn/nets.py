@@ -56,10 +56,10 @@ class CausalSelfAttention(nn.Module):
         q = self.q(x).view(B, T, h, C // h).transpose(1, 2)  # (B, h, T, d)
         k = self.k(x).view(B, T, h, C // h).transpose(1, 2)
         v = self.v(x).view(B, T, h, C // h).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
-        y = att @ v                                     # (B, h, T, d)
+        # Fused causal attention (memory-efficient at long context). Parameter-free,
+        # so the Gram hooks (which capture the q/k/v/proj Linear grad-outputs) are
+        # unaffected; mathematically identical to explicit softmax attention.
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         return self.proj(y)
 

@@ -1,3 +1,3 @@
-from .all_datasets import Toy1DRegressionDataset, MNISTDataset, CIFAR10Dataset, RandomPolynomialDataset, CharTextDataset
+from .all_datasets import Toy1DRegressionDataset, MNISTDataset, CIFAR10Dataset, RandomPolynomialDataset, CharTextDataset, TokenBinDataset
 
-__all__ = ["Toy1DRegressionDataset","MNISTDataset","CIFAR10Dataset","RandomPolynomialDataset","CharTextDataset"]
+__all__ = ["Toy1DRegressionDataset", "MNISTDataset", "CIFAR10Dataset", "RandomPolynomialDataset", "CharTextDataset", "TokenBinDataset"]

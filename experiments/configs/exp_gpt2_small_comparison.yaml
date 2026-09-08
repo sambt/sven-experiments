@@ -1,0 +1,33 @@
+# GPT-2 small (untied, dropout-0) optimizer comparison — Sven-Gram vs the modern set,
+# all training the identical model (fair head-to-head). Fixed token budget (one pass
+# over train.bin). Report val loss -> perplexity vs steps and wall-time.
+# NOTE: batch_size is a placeholder pending the GPU probe (lm_head=768x50304 is the
+# Gram memory bottleneck); tune before launch.
+defaults:
+  - dataset: openwebtext
+  - model: gpt2_small
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 1                 # one pass over train.bin = the token budget
+batch_size: 16                # <-- set from the probe
+loss: lm_ce
+
+use_gram: true
+use_rmsprop: false
+gram_capture: hooks           # untied + dropout-0 keeps the fast path
+
+k_fractions: [1.0]            # k = B (full Gram rank, soft-truncated by rtol)
+lrs: [0.1, 0.5, 1.0]
+rtol: [1e-3]
+svd_mode: [torch]
+
+optimizers_standard: [AdamW, Muon, SOAP]     # Sophia = follow-up (needs Hessian-update integration)
+lrs_standard: [3e-4, 1e-3, 3e-3, 1e-2]       # spans AdamW..Muon/SOAP ranges; bad ones diverge (caught)
+
+loader_seed: 51159
+model_seeds: [8000]           # single seed (keep the job count bounded)
