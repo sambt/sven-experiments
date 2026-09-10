@@ -18,13 +18,11 @@ k_values: [128]
 lrs: [100.0]
 rtol: [1e-2]
 svd_mode: [torch]
-use_rmsprop: true
-alpha_rmsProp: 0.99
 microbatch_sizes: [1, 2, 4, 16, 32, 64, 128]
 param_fractions: [1]
 
 lrs_standard: [1e-3]
 optimizers_standard: [Adam, SGD, RMSprop]
 
-loader_seed: 51159
-model_seeds: [47612]
+loader_seed: 3000
+model_seeds: [3000]

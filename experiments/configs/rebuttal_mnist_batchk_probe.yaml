@@ -16,6 +16,7 @@ print_config: false
 n_data: 10000            # overparam: P/N ~ 2.8 (P=27,562)
 dataset:
   n_train: ${n_data}
+  subsample_seed: ${data_seed}
 
 num_epochs: 40           # more epochs so large-batch runs still get enough steps
 batch_size: [64, 128, 256, 512, 1024]   # <-- swept axis; max k scales with this
@@ -29,8 +30,6 @@ k_fractions: [0.5, 1.0]
 lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]
-use_rmsprop: true
-alpha_rmsProp: 0.99
 variable_k: false
 
 # Reference baseline only (Adam is batch-robust); keep the probe cheap.
@@ -38,5 +37,6 @@ optimizers_standard: [Adam]
 lrs_standard: [1e-3, 1e-2, 1e-1]
 weight_decays: [0.0]
 
-loader_seed: 51159
+loader_seed: 3000
 model_seeds: [3000, 3001, 3002]
+data_seed: 3000

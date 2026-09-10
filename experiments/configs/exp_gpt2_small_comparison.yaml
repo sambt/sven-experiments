@@ -18,7 +18,6 @@ batch_size: 16                # <-- set from the probe
 loss: lm_ce
 
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks           # untied + dropout-0 keeps the fast path
 
 k_fractions: [1.0]            # k = B (full Gram rank, soft-truncated by rtol)
@@ -29,5 +28,5 @@ svd_mode: [torch]
 optimizers_standard: [AdamW, Muon, SOAP]     # Sophia = follow-up (needs Hessian-update integration)
 lrs_standard: [3e-4, 1e-3, 3e-3, 1e-2]       # spans AdamW..Muon/SOAP ranges; bad ones diverge (caught)
 
-loader_seed: 51159
-model_seeds: [8000]           # single seed (keep the job count bounded)
+loader_seed: 6000
+model_seeds: [6000]           # single seed (keep the job count bounded)

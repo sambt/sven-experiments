@@ -1,5 +1,5 @@
 #!/bin/bash
-# Re-run the full PAPER suite on the Gram backend (no rmsprop), same footing as
+# Re-run the full PAPER suite on the Gram backend, same footing as
 # the rebuttal suite. Old results already moved to _backup_2026-08-31/.
 # SLURM queues these under the per-user cap; run_id dedup => re-submittable.
 set -u

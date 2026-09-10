@@ -16,7 +16,6 @@ batch_size: [8, 16, 32, 64, 128, 256]
 loss: lm_ce
 
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks
 
 k_fractions: [0.5]           # k = B/2, scales with batch
@@ -27,5 +26,5 @@ svd_mode: [torch]
 optimizers_standard: [AdamW]
 lrs_standard: [3e-4, 1e-3, 3e-3]
 
-loader_seed: 51159
-model_seeds: [8100, 8101]
+loader_seed: 5000
+model_seeds: [5000, 5001]

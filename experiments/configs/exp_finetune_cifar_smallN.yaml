@@ -18,6 +18,7 @@ print_config: true
 n_data: 500
 dataset:
   n_train: ${n_data}
+  subsample_seed: ${data_seed}
 result_id_fields: [n_data]
 
 num_epochs: 30
@@ -25,7 +26,6 @@ batch_size: 64
 loss: label_regression
 
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks          # pretrained BN is _NormBase -> frozen-stats hooks (validated)
 track_param_norm: true       # min-norm claim
 
@@ -37,5 +37,6 @@ svd_mode: [torch]
 optimizers_standard: [AdamW, SGD, Muon]
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
 
-loader_seed: 51159
-model_seeds: [9000, 9001, 9002]
+loader_seed: 7000
+model_seeds: [7000, 7001, 7002]
+data_seed: 7000

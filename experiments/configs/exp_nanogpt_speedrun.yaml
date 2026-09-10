@@ -16,7 +16,6 @@ batch_size: 64
 loss: lm_ce
 
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks
 
 k_values: [32, 64]           # k <= B; Sven update lives in a <=B-dim subspace
@@ -28,5 +27,5 @@ svd_mode: [torch]            # irrelevant under Gram
 optimizers_standard: [AdamW, Muon, SOAP]
 lrs_standard: [1e-4, 3e-4, 1e-3, 3e-3]
 
-loader_seed: 51159
-model_seeds: [8000, 8001, 8002]
+loader_seed: 5000
+model_seeds: [5000, 5001, 5002]

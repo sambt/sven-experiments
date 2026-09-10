@@ -15,7 +15,6 @@ batch_size: [8, 16, 32, 64, 128, 256, 512]
 loss: label_regression
 
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks
 
 k_fractions: [0.5]
@@ -26,5 +25,5 @@ svd_mode: [torch]
 optimizers_standard: [AdamW]
 lrs_standard: [1e-3, 1e-2, 1e-1]
 
-loader_seed: 51159
-model_seeds: [8200, 8201]
+loader_seed: 3000
+model_seeds: [3000, 3001]

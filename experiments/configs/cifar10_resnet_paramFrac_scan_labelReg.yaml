@@ -12,7 +12,6 @@ num_epochs: 20
 batch_size: 128
 loss: label_regression
 use_gram: true
-use_rmsprop: false
 gram_capture: hooks
 
 k_values: 128
@@ -21,5 +20,5 @@ rtol: 1e-4
 svd_mode: [randomized_v2]
 param_fractions: [0.05, 0.1, 0.25, 0.5, 1.0]
 
-loader_seed: 51159
-model_seeds: [7310]
+loader_seed: 4000
+model_seeds: [4000]

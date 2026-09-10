@@ -184,15 +184,13 @@ def scan(cfg):
             )
 
             loss_fn_svd = SVD_LOSS_FNS[loss_key]
-            use_rmsprop = rcfg.get("use_rmsprop", False)
-            alpha_rmsprop = rcfg.get("alpha_rmsProp", 0.99)
             variable_k = rcfg.get("variable_k", False)
             # Gram-trick backend: same exact update, ~400x faster / far less memory
             # (eigendecomposes B x B G = J J^T instead of materializing the B x P Jacobian).
-            # Incompatible with variable_k and pre-pseudoinverse RMSProp.
+            # Incompatible with variable_k.
             use_gram = rcfg.get("use_gram", False)
-            if use_gram and (variable_k or use_rmsprop):
-                raise ValueError("use_gram is incompatible with variable_k / use_rmsprop (pre-pinv)")
+            if use_gram and variable_k:
+                raise ValueError("use_gram is incompatible with variable_k")
             # Gram capture backend: "hooks" (fast, per-sample-decoupled layers only)
             # or "chunked" (exact for any architecture, e.g. conv-nets with custom
             # BatchNorm). Default "hooks" for the MLP suite; CIFAR/ResNet uses "chunked".
@@ -218,8 +216,6 @@ def scan(cfg):
                     run_id += f"_pf{param_fraction}"
                     if param_fraction < 1.0:
                         run_id += f"_{svd_mask_mode}"  # elementwise vs rows -> distinct runs
-                if use_rmsprop:
-                    run_id += f"_RMSpropAlpha{alpha_rmsprop}"
                 if variable_k:
                     run_id += "_variablek"
                 if use_gram:
@@ -240,8 +236,6 @@ def scan(cfg):
                     print(f", pf={param_fraction}", end="")
                 if kappa != 2.0:
                     print(f", kappa={kappa}", end="")
-                if use_rmsprop:
-                    print(f", rmsprop_alpha={alpha_rmsprop}", end="")
                 if variable_k:
                     print(f", variable_k=True", end="")
                 print()
@@ -272,7 +266,6 @@ def scan(cfg):
                         optimizer = Sven(
                             train_model, lr=lr, k=k, rtol=rtol,
                             track_svd_info=True, svd_mode=svd_mode,
-                            use_rmsprop=use_rmsprop, alpha_rmsprop=alpha_rmsprop,
                             variable_k=variable_k,
                         )
 
@@ -301,8 +294,6 @@ def scan(cfg):
                         "model_seed": model_seed,
                         "loader_seed": loader_seed,
                         "svd_mode": svd_mode,
-                        "rmsProp": use_rmsprop,
-                        "alpha_rmsProp": alpha_rmsprop,
                         "microbatch_size": microbatch_size,
                         "param_fraction": param_fraction,
                         "variable_k": variable_k,

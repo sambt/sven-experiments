@@ -25,6 +25,7 @@ print_config: true
 n_data: 5000
 dataset:
   n_train: ${n_data}
+  subsample_seed: ${data_seed}
 
 num_epochs: 20
 batch_size: 64
@@ -37,8 +38,6 @@ k_values: [16, 32, 48, 64]
 lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3, 1e-2]
 svd_mode: [torch]
-use_rmsprop: false
-alpha_rmsProp: 0.99
 variable_k: false
 use_gram: true            # Gram-trick backend: exact same update, ~400x faster
 
@@ -46,9 +45,10 @@ lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
 optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 weight_decays: [0.0, 0.01]
 lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1, 2]
+lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [10]
+lbfgs_history_size: [5]
 
-loader_seed: 51159
+loader_seed: 3000
 model_seeds: [3000, 3001, 3002, 3003, 3004]
+data_seed: 3000

@@ -14,7 +14,7 @@ those now run the full optimizer suite. See "Headline convergence" and the note 
   Gram matrix `G = JJᵀ`, an identical update to the classic truncated-SVD pipeline. Capture is
   `hooks` (one weighted backward) unless a row is marked **[chunked]** (required only to mask a
   conv-net's BatchNorm). The update rank is capped at the (micro)batch size: `k ≤ B`. Default
-  `κ = 2`; no RMSProp variant anywhere.
+  `κ = 2`.
 - **Scans.** Each experiment sweeps the full Cartesian product of the listed hyperparameters ×
   seeds. `k` = SVD truncation rank (absolute, or a fraction of `B`); `rtol` = singular-value
   cutoff; `pf` = parameter fraction; `mb` = micro-batch size; `κ` = residual exponent.
@@ -212,7 +212,7 @@ The same `try/except` also catches the occasional Shampoo NaN (rare, not systema
 
 Present in the repo but excluded from the fresh Gram suite:
 
-- `mnist_scan`, `mnist_microbatch_scan` — legacy RMSProp-variant configs (large LRs up to 100),
-  incompatible with the Gram backend and superseded by `mnist_scan_ce` and the label-regression
+- `mnist_scan`, `mnist_microbatch_scan` — legacy configs (large LRs up to 100), superseded by
+  `mnist_scan_ce` and the label-regression
   micro-batch scan.
 - `rebuttal_mnist_batchk_probe` — a one-off batch/k diagnostic that already served its purpose.
