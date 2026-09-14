@@ -29,9 +29,9 @@ lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
 # directory documents all runs rather than being a single reproducible Cartesian grid.
 optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1, 2]
+lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: [2, 5, 10]
 
 loader_seed: 3000
-model_seeds: [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009]
+model_seeds: [3000, 3001, 3002, 3003, 3004]

@@ -13,13 +13,15 @@ batch_size: 64
 mlp_width: 32
 result_id_fields: [mlp_width]
 loss: label_regression
+
 use_gram: true
+gram_capture: hooks
 
 k_values: 64
 lrs: 0.5
 rtol: 1e-4
 svd_mode: [torch]
-kappa: [1, 1.5, 2, 2.5, 3]
+kappa: [1, 2, 3]
 
 loader_seed: 3000
-model_seeds: [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009]
+model_seeds: [3000, 3001, 3002, 3003, 3004]

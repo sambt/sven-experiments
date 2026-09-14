@@ -30,6 +30,7 @@ k_fractions: [0.5, 1.0]
 lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]
+use_gram: true
 variable_k: false
 
 # Reference baseline only (Adam is batch-robust); keep the probe cheap.

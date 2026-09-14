@@ -128,7 +128,14 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     return output
 
 def _compute_acc(ypred, yb):
-    """Compute mean accuracy, handling both (B, C) and (num_models, B, C) outputs."""
+    """Compute mean accuracy, handling both (B, C) and (num_models, B, C) outputs.
+
+    ``ypred`` are raw network outputs (logits). Softmax preserves the ordering
+    within each row (exp is strictly increasing and the per-row normaliser is
+    shared), so argmax -- and hence accuracy -- is the same with or without
+    it; it is deliberately not applied here for any loss (CE,
+    label_regression, brier). Raw argmax is also the
+    numerically safer choice: float32 softmax can collapse near-tied logits."""
     if ypred.dim() == 3:
         preds = torch.argmax(ypred, dim=2)  # (M, B)
         acc = (preds == yb.unsqueeze(0)).float().mean().item()

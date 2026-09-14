@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=iaifi_gpu_priority
+#SBATCH --partition=iaifi_gpu_priority,iaifi_gpu,gpu
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -20,6 +20,9 @@ set -u
 REPO=/n/home11/sambt/iaifi/sv3
 PY=$REPO/.venv/bin/python
 cd "$REPO"
+# One thread per shard: the cluster already exports OMP_NUM_THREADS=1, but be
+# explicit so N shards never oversubscribe the 8 allotted cores.
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 config=$1
 config_name=$(basename "$config" .yaml)

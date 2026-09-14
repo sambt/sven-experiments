@@ -12,21 +12,22 @@ num_epochs: 20
 batch_size: 128
 loss: ce
 use_gram: true
-gram_capture: hooks
+gram_capture: chunked           # BN with batch statistics needs chunked (hooks would be silently wrong)
+gram_freeze_norm_stats: false    # frozen running stats never update from init -> Sven collapsed to ~28% acc (probe 2026-09-12)
 
 # SVD optimizer sweep
 k_values: [64,128]
 lrs: [0.1,0.5,1.0]
 rtol: [1e-4,1e-3,1e-2]
-svd_mode: [randomized_v2]
+svd_mode: [torch]   # irrelevant under use_gram: exact eigh of the BxB Gram, no randomized SVD
 kappa: 2
 
 lrs_standard: [1e-4,1e-3,1e-2,1e-1]
 optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
 lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1,2,5,10]
+lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: [2, 5, 10]
 
 # Jacobian Descent (torchjd) hyperparameters
 aggregators_jd: [UPGrad]
@@ -38,4 +39,4 @@ lrs_hig: [0.05, 0.1, 0.5, 1.0]
 tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
 
 loader_seed: 4000
-model_seeds: [4000]
+model_seeds: [4000, 4001, 4002, 4003, 4004]

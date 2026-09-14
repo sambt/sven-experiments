@@ -25,7 +25,102 @@ def _slim_record(r):
     return r
 
 
-_CACHE_VERSION = 2  # bump when the slim schema / signature scheme changes
+_CACHE_VERSION = 3  # bump when the slim schema / signature scheme changes
+
+
+# ---------------------------------------------------------------------------
+# Light / heavy result files
+# ---------------------------------------------------------------------------
+# New-format runs are split by generic_scan._write_run into a light
+# {run_id}.jsonl (epoch curves + a per-epoch `svd_summary`) and a heavy
+# diag/{run_id}.npz (per-batch arrays, Sven spectra). Old-format files carry
+# everything inline. `load_results(slim=False)` re-attaches the heavy arrays to
+# each record in the old inline layout, so notebook code that reads
+# row['svd_info']['svs'] / ['num_nonzero_svs'] / row['losses']['train_batch']
+# works unchanged on both layouts. NOTE: for new-format runs `svs` holds only
+# every `svd_summary['spectra_every']`-th step (default 20); `svs_step` gives
+# the step index of each saved spectrum.
+_DIAG_LOSS_KEYS = ('train_batch', 'val_batch', 'batch_times_train',
+                   'batch_times_val', 'train_batch_per_model')
+
+
+def load_diagnostics(row, name=None, results_root='../experiment_results'):
+    """Heavy per-batch diagnostics for one run, as a dict of numpy arrays.
+
+    ``row`` is a record/Series from :func:`load_results`. New-format runs are
+    read from ``{results_root}/{name}/diag/{run_id}.npz`` (``name`` defaults to
+    ``row['_scan']``, set by load_results); legacy inline runs are re-read from
+    their JSONL. Keys (when present): train_batch, val_batch, batch_times_train,
+    batch_times_val, num_nonzero_svs, sv_max, sv_min, svs (2-D, NaN-padded),
+    svs_step, k_used, variable_k_substep_losses.
+    """
+    name = name or row.get('_scan')
+    if name is None:
+        raise ValueError("pass name= (scan directory name) or use a row from load_results")
+    scan_dir = Path(results_root) / name
+    diag_file = row.get('diag_file')
+    if diag_file:
+        with np.load(scan_dir / diag_file) as z:
+            return {k: z[k] for k in z.files}
+    # Legacy inline layout: re-read the full JSONL for this run.
+    f = scan_dir / f"{row['run_id']}.jsonl"
+    if not f.is_file():
+        return {}
+    with open(f) as fh:
+        rec = json.loads(fh.readline())
+    out = {}
+    L = rec.get('losses') or {}
+    for k in _DIAG_LOSS_KEYS:
+        if k in L:
+            out[k] = np.asarray(L[k], dtype=np.float32)
+    si = rec.get('svd_info') or {}
+    if si.get('num_nonzero_svs'):
+        out['num_nonzero_svs'] = np.asarray(si['num_nonzero_svs'], dtype=np.int32)
+    if si.get('svs'):
+        rows = [np.asarray(r, dtype=np.float32) for r in si['svs']]
+        w = max(len(r) for r in rows)
+        svs = np.full((len(rows), w), np.nan, dtype=np.float32)
+        for i, r in enumerate(rows):
+            svs[i, :len(r)] = r
+        out['svs'], out['svs_step'] = svs, np.arange(len(rows), dtype=np.int32)
+    if si.get('k_used'):
+        out['k_used'] = np.asarray(si['k_used'], dtype=np.int32)
+    return out
+
+
+def spectra_list(diag):
+    """``diag['svs']`` as a list of 1-D arrays with the NaN padding stripped
+    (the shape notebook code expects from the old inline ``svd_info['svs']``)."""
+    svs = diag.get('svs')
+    if svs is None:
+        return []
+    return [r[~np.isnan(r)] for r in svs]
+
+
+def _attach_diagnostics(rec, scan_dir):
+    """Rebuild the legacy inline layout on a new-format light record."""
+    if not rec.get('diag_file'):
+        return rec  # legacy record (inline) or no diagnostics written
+    with np.load(scan_dir / rec['diag_file']) as z:
+        d = {k: z[k] for k in z.files}
+    L = rec.setdefault('losses', {})
+    for k in _DIAG_LOSS_KEYS:
+        if k in d:
+            L[k] = d[k].tolist()
+    if rec.get('svd_summary') is not None:
+        si = {'num_nonzero_svs': d['num_nonzero_svs'].tolist() if 'num_nonzero_svs' in d else [],
+              'svs': spectra_list(d),
+              'svs_step': d['svs_step'].tolist() if 'svs_step' in d else [],
+              'k_used': d['k_used'].tolist() if 'k_used' in d else [],
+              'variable_k_substep_losses': (d['variable_k_substep_losses'].tolist()
+                                            if 'variable_k_substep_losses' in d else [])}
+        for k in ('sv_max', 'sv_min'):
+            if k in d:
+                si[k] = d[k].tolist()
+        rec['svd_info'] = si
+    else:
+        rec['svd_info'] = None
+    return rec
 
 
 def _dir_signature(files):
@@ -51,7 +146,10 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
 
     slim (default True): drop the heavy diagnostics (``svd_info`` and the per-batch
         arrays) — ~98% of the bytes, unused by most notebooks. Pass ``slim=False``
-        for the sv-spectra / batch-wise analyses that need them.
+        for the sv-spectra / batch-wise analyses that need them: for new-format
+        (light + diag/*.npz) runs they are then read from the npz and attached in
+        the old inline layout (see :func:`load_diagnostics`). Every record gets a
+        ``_scan`` column (the scan name) for :func:`load_diagnostics`.
     use_cache (default True): for a slim, unfiltered load, cache the result to
         ``{results_root}/_cache/{name}.slim.pkl`` and reuse it while the scan dir
         is unchanged. The cache key is content-sensitive (see :func:`_dir_signature`),
@@ -91,7 +189,9 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
                     line = line.strip()
                     if line:
                         rec = json.loads(line)
-                        records.append(_slim_record(rec) if slim else rec)
+                        rec['_scan'] = name
+                        records.append(_slim_record(rec) if slim
+                                       else _attach_diagnostics(rec, scan_dir))
         if records:
             print(f"Loaded {len(records)} runs from {scan_dir}/ (directory format"
                   f"{', slim' if slim else ''})")

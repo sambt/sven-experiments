@@ -21,6 +21,27 @@ those now run the full optimizer suite. See "Headline convergence" and the note 
 - **Optimizer sets.** **Sven-Gram** is the method under test. **CORE** = Adam, SGD, PolyakSGD,
   RMSprop, LBFGS. **FULL** = CORE + AdamW, Muon, SOAP, Shampoo, K-FAC. Standard baselines sweep
   `lr ∈ {1e-4 … 1e-1}`. Rows with no baseline set are Sven-only (`mode: svd`).
+- **Losses.** `(label-reg)` rows use `loss: label_regression` — the paper's raw-output squared
+  error `||f(x) − onehot(y)||²` (no softmax; Sec. 4). A separate `brier` key
+  (the Brier score on softmax probabilities) exists in the registry with its own config
+  (`mnist_scan_brier`); it is a different objective, its numbers are not
+  comparable with the label-reg rows, and no experiment in the tables below uses it.
+- **Output files.** Each run = light `<run_id>.jsonl` (epoch curves, per-epoch SVD summary) +
+  `diag/<run_id>.npz` (per-batch arrays; Sven spectra every `svd_spectra_every`=20 steps by
+  default, `svd_info: full`). Scans predating this split (everything run before 2026-09-10)
+  carry the full spectra inline in the JSONL; `analysis/style.py` reads both layouts.
+- **BatchNorm under Gram (CIFAR).** `gram_freeze_norm_stats: false` + `gram_capture: chunked` for every
+  ResNet config since 2026-09-12: with frozen running stats (the hooks-capture requirement) the stats
+  never update from their init, the net is effectively un-normalised, and Sven collapsed to ~28% val
+  accuracy (vs 74.5% on the pre-Gram classic path and 74% for Adam). Batch-statistics BN restores the
+  classic trajectory (probe `bench/cifar_bn_probe_46165376.jsonl`). Run IDs carry `_bnbatch`.
+- **Signed residuals (scalar regression).** For `mse` on one-output models (toy-1D, polynomial)
+  Sven's rows are the signed residual `sign(r)|r|^κ` rather than `loss^(κ/2)` for every κ
+  (`signed_residual: true`, the default since 2026-09-11); the per-row sign cancels in the
+  pseudo-inverse, so the update is the paper's. The update is identical wherever the
+  old rows were finite; the difference is that `κ < 2` no longer NaNs at `r = 0` (the paper's
+  κ=1 instability). Multi-output losses (label-reg, Brier, CE) have no scalar signed residual
+  and keep the `loss^(κ/2)` rows. The result row records `signed_residual`.
 
 ### Architectures & parameter counts
 
@@ -50,8 +71,8 @@ than first- and second-order baselines. Full data.*
 | `polynomial_scan` | Random polynomial (MSE) | Poly MLP · 673 | k∈{1,2,4,8,16,32}, lr∈{.05,.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, 10 seeds, 20 ep | Sven-Gram + FULL |
 | `mnist_scan_labelRegression` | MNIST (label-reg MSE) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + FULL |
 | `mnist_scan_ce` | MNIST (cross-entropy) | MNIST MLP · 27,562 | k∈{1…64, 8 vals}, lr∈{.05,.1,.5,1}, rtol∈{1e-4…1e-1}, 10 seeds, 20 ep | Sven-Gram + FULL |
-| `cifar10_resnet_scan_labelRegression` | CIFAR-10 (label-reg) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 1 seed, 20 ep · **[hooks]** | Sven-Gram + CORE |
-| `cifar10_resnet_ce_scan` | CIFAR-10 (cross-entropy) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 1 seed, 20 ep · **[hooks]** | Sven-Gram + CORE |
+| `cifar10_resnet_scan_labelRegression` | CIFAR-10 (label-reg) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 5 seeds, 20 ep · **[chunked, batch-stat BN]** | Sven-Gram + CORE |
+| `cifar10_resnet_ce_scan` | CIFAR-10 (cross-entropy) | CIFAR ResNet18 · 11.18M | k∈{64,128}, lr∈{.1,.5,1}, rtol∈{1e-4,1e-3,1e-2}, κ=2, 5 seeds, 20 ep · **[chunked, batch-stat BN]** | Sven-Gram + CORE |
 
 ### Micro-batch scaling
 *Aggregating samples into micro-batches shrinks the Gram row dimension M — the memory / update-rank
@@ -84,8 +105,8 @@ implementation that avoids NaNs.*
 | Experiment | Dataset (loss) | Model · params | Hyperparameter scan | Optimizers |
 |---|---|---|---|---|
 | `mnist_kappaScan_labelRegression` | MNIST (label-reg) | MNIST MLP · 27,562 | κ∈{1,1.5,2,2.5,3}, k=64, lr .5, rtol 1e-4, 10 seeds | Sven-Gram |
-| `cifar10_resnet_kappaScan_labelReg` | CIFAR-10 (label-reg) | CIFAR ResNet18 · 11.18M | κ∈{1,1.5,2,2.5,3}, k=128, lr .1, rtol 1e-4, 1 seed · **[hooks]** | Sven-Gram |
-| `cifar10_resnet_ce_kappaScan` | CIFAR-10 (cross-entropy) | CIFAR ResNet18 · 11.18M | κ∈{1,1.5,2,2.5,3}, k=128, lr .1, rtol 1e-4, 1 seed · **[hooks]** | Sven-Gram |
+| `cifar10_resnet_kappaScan_labelReg` | CIFAR-10 (label-reg) | CIFAR ResNet18 · 11.18M | κ∈{1,1.5,2,2.5,3}, k=128, lr .1, rtol 1e-3, 1 seed · **[chunked, batch-stat BN]** | Sven-Gram |
+| `cifar10_resnet_ce_kappaScan` | CIFAR-10 (cross-entropy) | CIFAR ResNet18 · 11.18M | κ∈{1,1.5,2,2.5,3}, k=128, lr .1, rtol 1e-3, 1 seed · **[chunked, batch-stat BN]** | Sven-Gram |
 
 ---
 

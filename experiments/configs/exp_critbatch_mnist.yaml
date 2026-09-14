@@ -17,12 +17,12 @@ loss: label_regression
 use_gram: true
 gram_capture: hooks
 
-k_fractions: [0.5]
+k_fractions: [1.0]
 lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]
 
-optimizers_standard: [AdamW]
+optimizers_standard: [Adam]
 lrs_standard: [1e-3, 1e-2, 1e-1]
 
 loader_seed: 3000

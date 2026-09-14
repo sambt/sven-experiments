@@ -21,11 +21,12 @@ use_gram: true
 # hooks capture with elementwise masking (the default mask_mode) reproduces the paper's
 # random-parameter-subset Fig-5 exactly and runs on the fast path: BatchNorm is fine under
 # elementwise (only "rows" mode can't split it). O(B*n_active) per layer, fraction-scaling.
-gram_capture: hooks
+gram_capture: chunked           # BN with batch statistics needs chunked (hooks would be silently wrong)
+gram_freeze_norm_stats: false    # frozen running stats never update from init -> Sven collapsed to ~28% acc (probe 2026-09-12)
 
-k_values: [128]
-lrs: [0.1]
-rtol: [1e-4]
+k_values: [64]    # tentative, see kappa/paramfrac configs
+lrs: [1.0]
+rtol: [1e-3]
 svd_mode: [torch]     # irrelevant under Gram (eig of G replaces the SVD of J)
 param_fractions: [0.05, 0.1, 0.25, 0.5, 1.0]
 

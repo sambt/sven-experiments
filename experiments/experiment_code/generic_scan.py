@@ -23,11 +23,62 @@ from sven.nn import SvenWrapper, GramSvenWrapper
 # ---------------------------------------------------------------------------
 # Loss function registries
 # ---------------------------------------------------------------------------
+
+def _one_hot_like(pred, y):
+    """One-hot targets (B, C) in ``pred``'s dtype/device; broadcasts against
+    (B, C) or multi-model (M, B, C) predictions."""
+    return F.one_hot(y.to(torch.long), num_classes=pred.shape[-1]).to(pred)
+
+
+def _label_regression(pred, y):
+    """Per-sample squared error between the RAW network outputs and the one-hot
+    label, L_i = ||f(x_i) - y_i||^2. This is exactly the paper's Sec. 4
+    definition (no softmax) -- the standard "square loss for classification"
+    (Hui & Belkin, ICLR 2021) -- and the definition behind every
+    label-regression result on disk. Accuracy is argmax over ``pred``, which
+    is invariant under softmax, so no probabilities are needed anywhere."""
+    return (pred - _one_hot_like(pred, y)).pow(2).sum(dim=-1)
+
+
+def _brier(pred, y):
+    """Per-sample squared error between softmax PROBABILITIES and the one-hot
+    label, L_i = ||softmax(f(x_i)) - y_i||^2 -- the multiclass Brier score
+    (a.k.a. label regression on softmax outputs).
+    A different objective from ``label_regression``: bounded in [0, 2] and
+    non-convex in the logits, with gradients that vanish once the softmax
+    saturates -- for confidently-WRONG samples too (the classic softmax+MSE
+    plateau), where a Gauss-Newton step is badly linearised and overshoots.
+    Two Sven-specific consequences: (i) in float32 the loss hits exactly 0
+    once the correct-class margin exceeds ~50, so ``kappa < 2`` (residual
+    ``loss**(kappa/2)``, infinite slope at 0) NaNs out -- keep ``kappa = 2``;
+    (ii) saturated samples contribute ~0 rows to the Gram matrix, so the
+    ``rtol``/``lr`` that were best for ``label_regression`` do not transfer
+    (expect to need a smaller ``lr``). Kept as a separate registry key, not a
+    redefinition: results are not comparable across the two keys, the run_id
+    carries a ``_loss{key}`` suffix for every non-legacy key, and every result
+    row records its ``loss`` key."""
+    return (F.softmax(pred, dim=-1) - _one_hot_like(pred, y)).pow(2).sum(dim=-1)
+
+
+# Signed scalar residual r per sample for losses of the form loss = r**2 (scalar
+# outputs only). When available and `signed_residual: true` (default), Sven's
+# Jacobian rows are sign(r)|r|^kappa instead of loss^(kappa/2) = |r|^kappa for
+# every kappa. The rows and their Jacobian both pick up the same per-row sign
+# D = diag(sign r), and D cancels in the pseudo-inverse (M' = DM has the same
+# singular values, M'^+ = M^+ D, so M'^+ R' = M^+ D D R = M^+ R): the SAME update
+# up to rounding, but with a finite gradient at r = 0, which removes the
+# kappa < 2 NaN of the fractional power. Multi-output losses (label_regression,
+# brier, ce) have no scalar signed residual and stay on the loss path.
+SVD_RESIDUAL_FNS = {
+    "mse": lambda pred, y: pred - y,
+}
+
 # SVD loss must return per-sample losses (reduction='none')
 SVD_LOSS_FNS = {
     "ce": lambda pred, y: F.cross_entropy(pred, y, reduction='none'),
     "mse": lambda pred, y: ((pred - y) ** 2).sum(dim=-1),
-    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1),
+    "label_regression": _label_regression,
+    "brier": _brier,
     # language modeling: logits (B, T, V), targets (B, T) -> per-sample mean CE (B,)
     "lm_ce": lambda pred, y: F.cross_entropy(
         pred.reshape(-1, pred.shape[-1]), y.reshape(-1), reduction='none'
@@ -38,7 +89,8 @@ SVD_LOSS_FNS = {
 STANDARD_LOSS_FNS = {
     "ce": nn.CrossEntropyLoss(),
     "mse": nn.MSELoss(),
-    "label_regression": lambda pred, y: (pred - F.one_hot(y.to(torch.long),num_classes=pred.shape[-1]).to(pred)).pow(2).sum(dim=1).mean(),
+    "label_regression": lambda pred, y: _label_regression(pred, y).mean(),
+    "brier": lambda pred, y: _brier(pred, y).mean(),
     "lm_ce": lambda pred, y: F.cross_entropy(pred.reshape(-1, pred.shape[-1]), y.reshape(-1)),
 }
 
@@ -72,6 +124,113 @@ def _write_result(jsonl_path, result):
 
 
 # ---------------------------------------------------------------------------
+# Light / heavy result split
+# ---------------------------------------------------------------------------
+# A run is written as TWO files:
+#   {scan}/{run_id}.jsonl      "light": hparams, per-EPOCH curves, timings and a
+#                              per-epoch SVD summary -- a few KB, all the loss-
+#                              curve notebooks need (also the dedup marker, so it
+#                              is written last).
+#   {scan}/diag/{run_id}.npz   "heavy": per-BATCH arrays (batch losses/times) and
+#                              the Sven spectra, compressed float32. Loaded on
+#                              demand by analysis.style.load_diagnostics /
+#                              load_results(slim=False).
+# Previously the spectra alone were ~85% of a 7-25 MB JSON file per Sven run.
+_DIAG_LOSS_KEYS = ('train_batch', 'val_batch', 'batch_times_train',
+                   'batch_times_val', 'train_batch_per_model')
+SVD_INFO_MODES = ('none', 'summary', 'full')
+
+
+def _pad_ragged(rows, dtype=np.float32):
+    """Stack variable-length 1-D rows into a NaN-padded 2-D array."""
+    rows = [np.asarray(r, dtype=dtype).reshape(-1) for r in rows]
+    width = max((len(r) for r in rows), default=0)
+    out = np.full((len(rows), width), np.nan, dtype=dtype)
+    for i, r in enumerate(rows):
+        out[i, :len(r)] = r
+    return out
+
+
+def _epoch_mean(per_batch, n_epochs):
+    """Per-epoch means of a per-batch series (tolerates a non-divisible tail)."""
+    a = np.asarray(per_batch, dtype=np.float64)
+    if n_epochs <= 0 or a.size == 0:
+        return []
+    return [float(c.mean()) if c.size else float('nan')
+            for c in np.array_split(a, n_epochs)]
+
+
+def _split_diagnostics(result, svd_info_mode="full", svd_spectra_every=20):
+    """Split a result dict into (light, diag).
+
+    ``light`` is ``result`` minus the per-batch arrays and ``svd_info``, plus a
+    small per-epoch ``svd_summary``. ``diag`` maps array names to numpy arrays:
+    the per-batch loss/time series, ``num_nonzero_svs`` (per step), ``sv_max`` /
+    ``sv_min`` (per step, ``summary`` and ``full``) and, for ``full``, the
+    spectra ``svs`` (NaN-padded, one row per saved step) with their step
+    indices ``svs_step`` -- every ``svd_spectra_every``-th step, starting at 0.
+    """
+    assert svd_info_mode in SVD_INFO_MODES, svd_info_mode
+    every = max(1, int(svd_spectra_every))
+    light = dict(result)
+    losses = dict(light.get('losses') or {})
+    diag = {}
+    for key in _DIAG_LOSS_KEYS:
+        if key in losses:
+            v = losses.pop(key)
+            diag[key] = (_pad_ragged(v) if key == 'train_batch_per_model'
+                         else np.asarray(v, dtype=np.float32))
+    light['losses'] = losses
+    n_epochs = len(losses.get('train') or [])
+
+    si = light.pop('svd_info', None)
+    summary = None
+    if isinstance(si, dict):
+        nnz = np.asarray(si.get('num_nonzero_svs') or [], dtype=np.int32)
+        svs = si.get('svs') or []
+        summary = {
+            'mode': svd_info_mode,
+            'n_steps': int(len(nnz)),
+            'num_nonzero_svs_epoch': _epoch_mean(nnz, n_epochs),
+            'spectra_every': every if svd_info_mode == 'full' else None,
+            'spectra_saved': 0,
+        }
+        if len(nnz):
+            diag['num_nonzero_svs'] = nnz
+        if len(svs) and svd_info_mode != 'none':
+            sv_max = np.array([np.max(x) if np.size(x) else np.nan for x in svs], np.float32)
+            sv_min = np.array([np.min(x) if np.size(x) else np.nan for x in svs], np.float32)
+            diag['sv_max'], diag['sv_min'] = sv_max, sv_min
+            summary['sv_max_epoch'] = _epoch_mean(sv_max, n_epochs)
+            summary['sv_min_epoch'] = _epoch_mean(sv_min, n_epochs)
+            if svd_info_mode == 'full':
+                idx = np.arange(0, len(svs), every)
+                diag['svs'] = _pad_ragged([svs[i] for i in idx])
+                diag['svs_step'] = idx.astype(np.int32)
+                summary['spectra_saved'] = int(len(idx))
+        if si.get('k_used'):
+            diag['k_used'] = np.asarray(si['k_used'], dtype=np.int32)
+        if si.get('variable_k_substep_losses'):
+            diag['variable_k_substep_losses'] = _pad_ragged(
+                [[float(t) for t in row] for row in si['variable_k_substep_losses']])
+    light['svd_summary'] = summary
+    return light, diag
+
+
+def _write_run(scan_dir, run_id, result, svd_info_mode="full", svd_spectra_every=20):
+    """Write the heavy diagnostics (npz) first, then the light JSONL (the dedup
+    marker), so a run is only ever counted as done once both files exist."""
+    light, diag = _split_diagnostics(result, svd_info_mode, svd_spectra_every)
+    light['diag_file'] = None
+    if diag:
+        diag_dir = os.path.join(scan_dir, 'diag')
+        os.makedirs(diag_dir, exist_ok=True)
+        np.savez_compressed(os.path.join(diag_dir, run_id + '.npz'), **diag)
+        light['diag_file'] = os.path.join('diag', run_id + '.npz')
+    _write_result(os.path.join(scan_dir, run_id + '.jsonl'), light)
+
+
+# ---------------------------------------------------------------------------
 # Scan logic
 # ---------------------------------------------------------------------------
 
@@ -93,7 +252,14 @@ def scan(cfg):
 
     The config should contain:
       - mode: "svd", "standard", or "both" (default: "both")
-      - loss: key into SVD_LOSS_FNS / STANDARD_LOSS_FNS (e.g. "ce", "mse")
+      - loss: key into SVD_LOSS_FNS / STANDARD_LOSS_FNS ("ce", "mse",
+        "label_regression", "brier", "lm_ce")
+      - signed_residual: bool (default true) -- scalar-output regression only;
+        Sven rows sign(r)|r|^kappa instead of loss^(kappa/2), any kappa (same
+        update, no NaN at r = 0). Ignored for other losses and microbatch_size > 1.
+      - svd_info: none | summary | full (default full); svd_spectra_every: int
+        (default 20) -- see _split_diagnostics. Each run writes {run_id}.jsonl
+        (light) + diag/{run_id}.npz (per-batch arrays, spectra).
       - result_id_fields: list of config keys to include in output filenames
       - seeds: list of model seeds to sweep over (optional; falls back to model_seed)
       - All hparams consumed by process_hparam_config()
@@ -105,9 +271,36 @@ def scan(cfg):
     assert mode in ("svd", "standard", "both"), f"Unknown mode: {mode}"
 
     loss_key = rcfg.get("loss", "ce")
-    track_acc = loss_key == "ce" or ("label_regression" in loss_key) # only track accuracy for classification
+    if loss_key not in SVD_LOSS_FNS or loss_key not in STANDARD_LOSS_FNS:
+        raise KeyError(f"Unknown loss key {loss_key!r}; known: {sorted(SVD_LOSS_FNS)}")
+    # The legacy keys keep their historical (unsuffixed) run_ids so dedup against
+    # the existing result files is unaffected. Any other key (e.g.
+    # brier) is encoded in the run_id, so a `loss=` override
+    # on an existing config name can never dedup against -- or be mistaken for --
+    # that config's original-loss results. Every result row also records `loss`.
+    _LEGACY_LOSS_KEYS = ("ce", "mse", "label_regression", "lm_ce")
+    loss_suffix = "" if loss_key in _LEGACY_LOSS_KEYS else f"_loss{loss_key}"
+    # Only track accuracy for classification (CE, label regression, Brier).
+    track_acc = loss_key in ("ce", "brier") or ("label_regression" in loss_key)
     is_lm = loss_key == "lm_ce"  # language modeling: 3D logits, no classification accuracy
     track_param_norm = rcfg.get("track_param_norm", False)
+
+    # How much Sven SVD diagnostics to keep (see _split_diagnostics):
+    #   none    -- nothing recorded (track_svd_info=False);
+    #   summary -- per-step rank + largest/smallest kept singular value only;
+    #   full    -- also the spectrum itself, every `svd_spectra_every`-th step.
+    # Default full/20: ~1/20th of the spectra, which is all the notebooks sample.
+    # Set svd_spectra_every: 1 to keep every step (heavy: k floats per step).
+    svd_info_mode = rcfg.get("svd_info", "full")
+    if svd_info_mode not in SVD_INFO_MODES:
+        raise ValueError(f"svd_info must be one of {SVD_INFO_MODES}, got {svd_info_mode!r}")
+    svd_spectra_every = int(rcfg.get("svd_spectra_every", 20))
+
+    # Signed-residual rows for scalar-output regression (see SVD_RESIDUAL_FNS).
+    # Not encoded in the run_id: the update is identical to the loss path
+    # wherever the latter is finite; the flag is recorded in the result row.
+    signed_residual = bool(rcfg.get("signed_residual", True)) and loss_key in SVD_RESIDUAL_FNS
+    residual_fn_svd = SVD_RESIDUAL_FNS[loss_key] if signed_residual else None
 
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
     scan_name = HydraConfig.get().job.config_name
@@ -172,6 +365,16 @@ def scan(cfg):
             k_scan_values = hparams.get('k_fractions', hparams.get('k_values'))
             use_k_values = 'k_values' in hparams
 
+            # Under the Gram backend the SVD of J is replaced by an exact eigh of
+            # the B x B Gram matrix, so `svd_mode` selects nothing. Collapse it to
+            # the single canonical token "torch" so (a) a list of modes cannot
+            # multiply the grid into duplicate runs and (b) the run_id never
+            # advertises a randomized SVD that was not used.
+            if rcfg.get("use_gram", False) and list(hparams['svd_mode']) != ['torch']:
+                print(f"  [note] use_gram: ignoring svd_mode={hparams['svd_mode']} "
+                      "(exact Gram eigendecomposition); run_ids use 'torch'")
+                hparams['svd_mode'] = ['torch']
+
             svd_grid = product(
                 hparams['batch_size'],
                 k_scan_values,
@@ -195,6 +398,14 @@ def scan(cfg):
             # or "chunked" (exact for any architecture, e.g. conv-nets with custom
             # BatchNorm). Default "hooks" for the MLP suite; CIFAR/ResNet uses "chunked".
             gram_capture = rcfg.get("gram_capture", "hooks")
+            # BatchNorm handling under Gram. True (default): norm layers run in eval
+            # mode (running stats) during every wrapper pass -- required by hooks
+            # capture, but the running stats are then never updated from their init,
+            # so a BN net is effectively un-normalised. False: batch statistics, as in
+            # the classic jacrev path / the paper; needs capture="chunked".
+            gram_freeze_norm_stats = bool(rcfg.get("gram_freeze_norm_stats", True))
+            if use_gram and not gram_freeze_norm_stats and gram_capture != "chunked":
+                raise ValueError("gram_freeze_norm_stats=false requires gram_capture: chunked")
             # Parameter-fraction mask structure (param_fraction < 1 only):
             # "elementwise" (default, matches the paper: random individual weights),
             # "rows" (whole output neurons/channels — coarse, and cannot split
@@ -220,8 +431,11 @@ def scan(cfg):
                     run_id += "_variablek"
                 if use_gram:
                     run_id += "_gram"
+                    if not gram_freeze_norm_stats:
+                        run_id += "_bnbatch"  # batch-statistics BatchNorm (distinct from frozen-stats runs)
                 if kappa != 2.0:
                     run_id += f"_kappa{kappa}"
+                run_id += loss_suffix
 
                 if _shard_skip():
                     continue
@@ -246,6 +460,7 @@ def scan(cfg):
 
                     mb = microbatch_size if microbatch_size is not None else 1
                     pf = param_fraction if param_fraction is not None else 1.0
+                    use_residual = signed_residual and mb == 1  # any kappa
                     if use_gram:
                         # Gram trick: exact same update via B x B G = J J^T (no B x P Jacobian).
                         # svd_mode is irrelevant (eigendecomposition of G replaces the SVD of J).
@@ -255,17 +470,20 @@ def scan(cfg):
                             microbatch_size=mb, param_fraction=pf,
                             mask_mode=(svd_mask_mode if pf < 1.0 else None),
                             capture=gram_capture,
+                            freeze_norm_stats=gram_freeze_norm_stats,
+                            residual_fn=(residual_fn_svd if use_residual else None),
                         )
-                        optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=True)
+                        optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=(svd_info_mode != "none"))
                     else:
                         train_model = SvenWrapper(
                             model, loss_fn_svd, device, kappa=kappa,
                             microbatch_size=mb, param_fraction=pf,
                             mask_mode=(svd_mask_mode if pf < 1.0 else None),
+                            residual_fn=(residual_fn_svd if use_residual else None),
                         )
                         optimizer = Sven(
                             train_model, lr=lr, k=k, rtol=rtol,
-                            track_svd_info=True, svd_mode=svd_mode,
+                            track_svd_info=(svd_info_mode != "none"), svd_mode=svd_mode,
                             variable_k=variable_k,
                         )
 
@@ -286,6 +504,7 @@ def scan(cfg):
                     result = {
                         "run_id": run_id,
                         "optimizer": "SVD",
+                        "loss": loss_key,
                         "batch_size": batch_size,
                         "k_fraction": k / batch_size,
                         "k": k,
@@ -294,20 +513,24 @@ def scan(cfg):
                         "model_seed": model_seed,
                         "loader_seed": loader_seed,
                         "svd_mode": svd_mode,
+                        # exact eigh of G (Gram) vs the SVD algorithm named by svd_mode
+                        "decomposition": "gram_eigh" if use_gram else f"svd_{svd_mode}",
                         "microbatch_size": microbatch_size,
                         "param_fraction": param_fraction,
                         "variable_k": variable_k,
                         "use_gram": use_gram,
                         "gram_capture": gram_capture if use_gram else None,
+                        "gram_freeze_norm_stats": gram_freeze_norm_stats if use_gram else None,
                         "mask_mode": (svd_mask_mode if param_fraction is not None and param_fraction < 1.0 else None),
                         "kappa": kappa,
+                        "signed_residual": bool(use_residual),
                         "losses": losses,
                         "svd_info": getattr(optimizer, "svd_info", {})
                     }
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
 
                 except Exception as e:
                     print(f"  [error] Training failed: {e}")
@@ -346,7 +569,7 @@ def scan(cfg):
                     run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}"
                     if weight_decay != 0.0:
                         run_id += f"_wd{weight_decay}"
-                    run_id += seed_str
+                    run_id += seed_str + loss_suffix
 
                     if _shard_skip():
                         continue
@@ -381,6 +604,7 @@ def scan(cfg):
                         result = {
                             "run_id": run_id,
                             "optimizer": optim_name,
+                            "loss": loss_key,
                             "batch_size": batch_size,
                             "k_fraction": None,
                             "k": None,
@@ -396,7 +620,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
                     except Exception as e:
                         print(f"  [error] {optim_name} run failed: {e}")
                         if torch.cuda.is_available():
@@ -416,6 +640,7 @@ def scan(cfg):
                     run_id = (
                         f"std_bs{batch_size}{id_str}_lr{lr}_optimLBFGS"
                         f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
+                        f"{loss_suffix}"
                     )
 
                     if _shard_skip():
@@ -455,6 +680,7 @@ def scan(cfg):
                         result = {
                             "run_id": run_id,
                             "optimizer": "LBFGS",
+                            "loss": loss_key,
                             "batch_size": batch_size,
                             "k_fraction": None,
                             "k": None,
@@ -472,7 +698,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
                     except Exception as e:
                         print(f"  [error] LBFGS run failed: {e}")
                         if torch.cuda.is_available():
@@ -491,6 +717,7 @@ def scan(cfg):
                     run_id = (
                         f"std_bs{batch_size}{id_str}_optimPolyakSGD"
                         f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
+                        f"{loss_suffix}"
                     )
 
                     if _shard_skip():
@@ -525,6 +752,7 @@ def scan(cfg):
                         result = {
                             "run_id": run_id,
                             "optimizer": "PolyakSGD",
+                            "loss": loss_key,
                             "batch_size": batch_size,
                             "k_fraction": None,
                             "k": None,
@@ -542,7 +770,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_result(os.path.join(scan_dir, run_id + ".jsonl"), result)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
                     except Exception as e:
                         print(f"  [error] PolyakSGD run failed: {e}")
                         if torch.cuda.is_available():
