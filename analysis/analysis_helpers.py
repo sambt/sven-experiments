@@ -10,7 +10,12 @@ import pandas as pd
 
 
 def loss_curve(row, which='val'):
-    """The per-epoch curve `which` ('train'|'val'|'val_acc'|'train_acc') or None."""
+    """The per-epoch curve `which` ('train'|'val'|'val_acc'|'train_acc') or None.
+
+    Per-BATCH series ('train_batch', 'val_batch', 'batch_times_*') are no longer
+    in `losses`: they live in `{scan}/diag/{run_id}.npz`. Read them with
+    `sv_diagnostics.batch_curve(row, ...)` / `style.load_diagnostics(row)`.
+    """
     L = row.get('losses')
     if not isinstance(L, dict):
         return None
