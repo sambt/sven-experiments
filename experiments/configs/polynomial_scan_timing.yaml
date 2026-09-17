@@ -1,0 +1,8 @@
+# Standalone-timing companion of polynomial_scan: identical settings/seeds (inherited
+# below), but each job runs ONE (optimizer, best-setting) pair alone on a GPU
+# (NPROC=1) so wall times are not inflated by shard contention. Results land in
+# experiment_results/polynomial_scan_timing/ with the SAME run_ids as the scan, so
+# analysis.scan_analysis.attach_standalone_times can join them onto scan rows.
+defaults:
+  - polynomial_scan
+  - _self_

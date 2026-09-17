@@ -1,0 +1,23 @@
+# Memory / step-time profile for mnist_width (see experiments/optimizer_profile.py). Inherits the
+# dataset, model, loss and seeds of `mnist_scan_labelRegression`; the scan grids in it are ignored here.
+#   PYTHONPATH=. python -m experiments.optimizer_profile --config-name profile_mnist_width
+defaults:
+  - mnist_scan_labelRegression
+  - _self_
+
+arch: mnist_width
+profile:
+  warmup_steps: 10
+  num_steps: 50
+  min_steps: 10          # always measure at least this many steps ...
+  max_seconds: 120       # ... but stop early once this much measured time has elapsed
+  max_warmup_seconds: 120
+  staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
+  output_dir: profile_results_v2
+base: {batch_size: 64, k_fraction: 1.0, lr: 0.5, rtol: 1e-4}   # k = number of rows; lr/rtol do not affect cost
+# Model-size scaling: 3-hidden-layer MNIST MLP, P from 27.6k (width 32) to ~10M (width 2048).
+studies:
+  width:
+    key: mlp_width
+    values: [32, 64, 128, 256, 512, 1024, 2048]
+    methods: [gram_hooks, gram_full, classic, Adam, AdamW, SGD, Muon, SOAP, Shampoo, KFAC, LBFGS1, JD, HIG]

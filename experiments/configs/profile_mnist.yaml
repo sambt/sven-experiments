@@ -1,0 +1,26 @@
+# Memory / step-time profile for mnist (see experiments/optimizer_profile.py). Inherits the
+# dataset, model, loss and seeds of `mnist_scan_labelRegression`; the scan grids in it are ignored here.
+#   PYTHONPATH=. python -m experiments.optimizer_profile --config-name profile_mnist
+defaults:
+  - mnist_scan_labelRegression
+  - _self_
+
+arch: mnist
+profile:
+  warmup_steps: 10
+  num_steps: 50
+  min_steps: 10          # always measure at least this many steps ...
+  max_seconds: 120       # ... but stop early once this much measured time has elapsed
+  max_warmup_seconds: 120
+  staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
+  output_dir: profile_results_v2
+base: {batch_size: 64, k_fraction: 1.0, lr: 0.5, rtol: 1e-4}   # k = number of rows; lr/rtol do not affect cost
+baselines: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, PolyakSGD, LBFGS1, LBFGS3, JD, HIG]
+sven_variants: [gram_hooks, gram_full, gram_chunked, classic]
+studies:
+  methods: {}
+  batch_size: {values: [16, 32, 64, 128, 256, 512], methods: [gram_hooks, gram_full, classic, Adam, SGD, HIG]}
+  chunk_fraction: {values: [1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125]}
+  param_fraction: {values: [0.05, 0.1, 0.25, 0.5, 0.75], mask_modes: [elementwise, rows, tensor], variants: [gram_hooks, gram_full, classic]}
+  microbatch: {values: [1, 2, 4, 8, 16, 32, 64], variants: [gram_hooks, gram_full, classic]}
+  k: {values: [0.0625, 0.125, 0.25, 0.5, 1.0], variants: [gram_hooks, gram_full, classic]}

@@ -66,6 +66,23 @@ diagnostics: `svd_info: none | summary | full` (default `full`) and `svd_spectra
 residual `pred − y` (`signed_residual: true`, default) instead of `loss^(κ/2)`, for every `κ`. The update is the
 same; the `κ < 2` NaN at zero residual is gone. Multi-output losses keep the `loss^(κ/2)` rows.
 
+## Memory / step-time profiling
+
+`experiments/optimizer_profile.py` measures peak GPU memory and steady-state step time for every
+baseline and every Sven variant (Gram/hooks, Gram/full-Jacobian, Gram/chunked, classic randomized-SVD)
+on each architecture, one `profile_<arch>.yaml` per architecture. It is study-based, not a grid: a
+set point plus single-axis sweeps (methods, batch size, chunk fraction, parameter fraction,
+micro-batch, rank, model width). Out-of-memory is recorded as a result. Run it on one exclusively
+reserved node:
+
+```bash
+sbatch bench/profile_serial.sbatch                      # all architectures, serially, resumable
+PROFILE_CONFIGS="profile_mnist" sbatch bench/profile_serial.sbatch
+```
+
+Results land in `profile_results_v2/<config>/<run_id>.json`; `analysis/profile_helpers.py` flattens
+them into one table and the `analysis/profile_*.ipynb` notebooks produce the tables and figures.
+
 ## Analysis
 
 Analysis notebooks are in `analysis/`. They load experiment results and produce plots. The shared style configuration is in `analysis/style.py`.

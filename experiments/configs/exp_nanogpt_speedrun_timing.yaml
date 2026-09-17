@@ -1,0 +1,8 @@
+# Standalone-timing companion of exp_nanogpt_speedrun: identical settings/seeds (inherited
+# below), but each job runs ONE (optimizer, best-setting) pair alone on a GPU
+# (NPROC=1) so wall times are not inflated by shard contention. Results land in
+# experiment_results/exp_nanogpt_speedrun_timing/ with the SAME run_ids as the scan, so
+# analysis.scan_analysis.attach_standalone_times can join them onto scan rows.
+defaults:
+  - exp_nanogpt_speedrun
+  - _self_

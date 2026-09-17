@@ -1,0 +1,8 @@
+# Standalone-timing companion of toy_1d_scan: identical settings/seeds (inherited
+# below), but each job runs ONE (optimizer, best-setting) pair alone on a GPU
+# (NPROC=1) so wall times are not inflated by shard contention. Results land in
+# experiment_results/toy_1d_scan_timing/ with the SAME run_ids as the scan, so the
+# analysis can join standalone times onto scan rows by run_id.
+defaults:
+  - toy_1d_scan
+  - _self_

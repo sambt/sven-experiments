@@ -33,3 +33,4 @@ scratch_*.py
 
 # local dataset caches (downloaded on demand)
 torch_datasets/
+profile_results_v2/

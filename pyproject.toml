@@ -26,6 +26,7 @@ dependencies = [
     "kfac-pytorch",             # K-FAC (git; see [tool.uv.sources])
     "tiktoken>=0.14.0",
     "datasets>=5.0.1",
+    "torchjd[quadprog-projector]>=0.17.0",
 ]
 
 [dependency-groups]

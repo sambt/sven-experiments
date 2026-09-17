@@ -40,7 +40,8 @@ DEEP = ['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B3',
 
 # Hyperparameters that jointly identify one configuration, per optimizer family.
 SVEN_CONFIG = ['k', 'lr', 'rtol']
-BASELINE_CONFIG = ['optimizer', 'lr', 'lbfgs_max_iter', 'lbfgs_history_size']
+BASELINE_CONFIG = ['optimizer', 'lr', 'lbfgs_max_iter', 'lbfgs_history_size',
+                   'tau', 'aggregator', 'inner_optimizer']  # HIG tau; JD aggregator/inner
 
 
 def method_colors(baselines, colors=None, sven='k'):
@@ -100,7 +101,7 @@ def seed_curve(rows, which='val'):
     return stacked.mean(axis=0), stacked.std(axis=0, ddof=ddof)
 
 
-def epoch_axis(rows, curve, which='val', versus='epoch'):
+def epoch_axis(rows, curve, which='val', versus='epoch', time_key='epoch_times'):
     """x-values for a seed-averaged epoch curve.
 
     ``val``/``val_acc`` are recorded once before training starts, so they are one
@@ -113,7 +114,7 @@ def epoch_axis(rows, curve, which='val', versus='epoch'):
     n_ep = 0 if train is None else len(train)
     pre_training = len(curve) == n_ep + 1
     if versus == 'time':
-        times, _ = seed_curve(rows, 'epoch_times')
+        times, _ = seed_curve(rows, time_key)
         if times is None:
             return np.arange(len(curve))
         x = np.cumsum(times)
@@ -304,11 +305,14 @@ def load_scan(name, title, plot_dir, results_root=RESULTS_ROOT, drop_diverged=Tr
 # Loss / convergence
 # ---------------------------------------------------------------------------
 def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
-                     colors=None, band=True, sven_kw=None, **plot_kw):
+                     colors=None, band=True, sven_kw=None, time_key='epoch_times', **plot_kw):
     """Best Sven vs the best of each baseline, seed-averaged, with a seed band.
 
     ``which``   -- ``'train'``, ``'val'``, ``'val_acc'``, ...
     ``versus``  -- ``'epoch'`` or ``'time'`` (cumulative epoch wall time).
+    ``time_key`` -- which per-epoch time series to use for ``versus='time'``:
+                 ``'epoch_times'`` (the scan's own, shard-inflated) or
+                 ``'epoch_times_standalone'`` (after :func:`attach_standalone_times`).
 
     Returns the dict of configurations plotted, keyed by label.
     """
@@ -320,7 +324,7 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
         mean, std = seed_curve(rows, which)
         if mean is None:
             return
-        x = epoch_axis(rows, mean, which, versus)
+        x = epoch_axis(rows, mean, which, versus, time_key)
         mean, std = mean[:len(x)], (None if std is None else std[:len(x)])
         ax.plot(x, mean, color=color, lw=lw, label=label, zorder=zorder, **plot_kw)
         if band and std is not None and len(rows) > 1:
@@ -502,6 +506,120 @@ def plot_time_summary(scan, ax, quantity='total_time', baselines=None, **bar_kw)
     ax.set_xticklabels(labels, rotation=45, ha='right')
     ax.set_ylabel(quantity if isinstance(quantity, str) else quantity.__name__)
     return dict(zip(labels, values)), bars
+
+
+STANDALONE_QUANTITIES = ('total_time', 'avg_epoch_time', 'avg_batch_time_train',
+                         'avg_batch_time_val', 'peak_gpu_mem_mb')
+
+
+def attach_standalone_times(scan, name=None, results_root=None, verbose=True):
+    """Join standalone (one-run-per-GPU) timings onto the scan's rows, by ``run_id``.
+
+    The scans run several trainings per GPU (``NPROC`` shards), which inflates
+    every wall time by contention.  ``submit_timing_runs.sh`` re-runs the best
+    (optimizer, setting) of each method alone on a GPU, with the same seeds, into
+    ``experiment_results/{scan}_timing/`` -- same run_ids, honest times.  This
+    adds, on ``scan.df`` / ``scan.sven`` / ``scan.baseline``:
+
+    * ``standalone_<q>`` for each ``q`` in :data:`STANDALONE_QUANTITIES`, plus
+      ``standalone_time_excl_first_epoch`` (NaN where no standalone run exists);
+    * ``losses['epoch_times_standalone']`` on each matched row, so
+      :func:`plot_best_curves` can draw loss-vs-time with ``time_key=
+      'epoch_times_standalone'``.
+
+    It also checks that the standalone runs reproduced the scan's trajectories
+    (same seeds => same init and data order; GPU kernels are not bit-exact) and
+    returns a small report dict: matched rows, and the max / median relative
+    deviation of the final validation loss.  Returns None if the timing directory
+    does not exist yet.
+    """
+    name = name or f'{scan.name}_timing'
+    root = results_root or scan.results_root
+    try:
+        t = load_results(name, results_root=root)
+    except FileNotFoundError:
+        if verbose:
+            print(f'[standalone] no results yet in {root}/{name}/')
+        return None
+    t = t.drop_duplicates('run_id').set_index('run_id')
+    tl = t['losses']
+    cols = {f'standalone_{q}': tl.apply(lambda L, q=q: L.get(q, np.nan)) for q in STANDALONE_QUANTITIES}
+    cols['standalone_time_excl_first_epoch'] = t.apply(time_excl_first_epoch, axis=1)
+    fin_stand = t.apply(lambda r: final(curve_of(r, 'val')), axis=1)
+    et_stand = tl.apply(lambda L: L.get('epoch_times'))
+
+    devs = []
+    for df in (scan.df, scan.sven, scan.baseline):
+        for c, series in cols.items():
+            df[c] = df['run_id'].map(series)
+        for i, r in df.iterrows():
+            et = et_stand.get(r['run_id'])
+            if et is not None and isinstance(r['losses'], dict):
+                r['losses']['epoch_times_standalone'] = et  # dict is shared across the three frames
+    matched = scan.df['run_id'].isin(t.index)
+    for _, r in scan.df[matched].iterrows():
+        a, b = final(curve_of(r, 'val')), fin_stand.get(r['run_id'])
+        if np.isfinite(a) and np.isfinite(b):
+            devs.append(abs(a - b) / max(abs(a), 1e-30))
+    report = {'name': name, 'n_standalone': int(len(t)), 'n_matched': int(matched.sum()),
+              'max_rel_dev_final_val': float(np.max(devs)) if devs else np.nan,
+              'median_rel_dev_final_val': float(np.median(devs)) if devs else np.nan,
+              'unmatched_standalone': sorted(set(t.index) - set(scan.df['run_id']))}
+    if verbose:
+        print(f"[standalone] {report['n_standalone']} runs in {name}/, {report['n_matched']} joined; "
+              f"final-val-loss deviation vs scan: max {report['max_rel_dev_final_val']:.2e}, "
+              f"median {report['median_rel_dev_final_val']:.2e}")
+        if report['unmatched_standalone']:
+            print(f"[standalone] WARNING {len(report['unmatched_standalone'])} standalone run_ids not in the scan")
+    return report
+
+
+def plot_time_comparison(scan, ax, quantity='total_time', baselines=None, width=0.38,
+                         labels=('sharded scan', 'standalone'), **bar_kw):
+    """Grouped bars: the scan's (shard-inflated) timing vs the standalone timing,
+    for the best config of each method.  Requires :func:`attach_standalone_times`.
+
+    ``quantity`` is one of :data:`STANDALONE_QUANTITIES` or
+    ``'time_excl_first_epoch'``.  Methods without a standalone run get only the
+    scan bar.  Returns ``{method: (scan_value, standalone_value)}``.
+    """
+    baselines = baselines if baselines is not None else scan.baselines
+    cmap = method_colors(baselines)
+    scan_col = quantity if quantity in scan.df.columns else None
+    stand_col = f'standalone_{quantity}'
+    if stand_col not in scan.df.columns:
+        raise ValueError(f'{stand_col} missing -- call attach_standalone_times(scan) first')
+
+    def value(rows, col):
+        if col is None and quantity == 'time_excl_first_epoch':
+            return float(np.nanmean([time_excl_first_epoch(r) for _, r in rows.iterrows()]))
+        if col not in rows or not rows[col].notna().any():
+            return np.nan
+        return float(np.nanmean(rows[col]))
+
+    out = {}
+    cfg = scan.best_sven()
+    if cfg is not None:
+        rows = scan.sven_rows(**cfg)
+        out['Sven'] = (value(rows, scan_col), value(rows, stand_col))
+    for opt in baselines:
+        cfg = scan.best_baseline(opt)
+        if cfg is None:
+            continue
+        rows = scan.baseline_rows(cfg)
+        out[opt] = (value(rows, scan_col), value(rows, stand_col))
+
+    methods = list(out)
+    x = np.arange(len(methods))
+    ax.bar(x - width / 2, [out[m][0] for m in methods], width, color=[cmap[m] for m in methods],
+           alpha=0.35, hatch='//', label=labels[0], **bar_kw)
+    ax.bar(x + width / 2, [out[m][1] for m in methods], width, color=[cmap[m] for m in methods],
+           label=labels[1], **bar_kw)
+    ax.set_xticks(x)
+    ax.set_xticklabels(methods, rotation=45, ha='right')
+    ax.set_ylabel(quantity.replace('_', ' '))
+    ax.legend()
+    return out
 
 
 def plot_time_vs_k(scan, ax, quantity='total_time', **plot_kw):
