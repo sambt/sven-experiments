@@ -28,4 +28,4 @@ optimizers_standard: [AdamW, Muon, MuonW, SOAP]
 lrs_standard: [1e-4, 3e-4, 1e-3, 3e-3]
 
 loader_seed: 5000
-model_seeds: [5000, 5001, 5002]
+model_seeds: [5000, 5001, 5002, 5003, 5004]   # 5 seeds since 2026-09-17 (RERUNS_NEEDED 5: AdamW vs Sven was a tie at 3)

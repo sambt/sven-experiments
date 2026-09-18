@@ -24,4 +24,4 @@ rtol: [1e-1]   # CE: hierarchical spectrum, rtol 0.1 keeps the ~5 useful directi
 svd_mode: [torch]
 
 loader_seed: 3000
-model_seeds: [3000, 3001, 3002]
+model_seeds: [3000, 3001, 3002, 3003, 3004]   # 5 seeds since 2026-09-17 (RERUNS_NEEDED 5)

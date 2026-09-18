@@ -224,3 +224,30 @@ profile cache. If runs were replaced in place (item 1), nothing else needs clear
   baselines matters, they need a lower-lr grid at large B.
 * The scan-time inflation is uneven (Sven shared its GPU with LBFGS/KFAC shards): any new
   scan intended for timing should run `NPROC=1` from the start rather than be re-timed.
+
+---
+
+## Launch log -- 2026-09-17 (cluster), `submit_reruns_2026-09-17.sh`
+
+64 jobs (SLURM 46944006-46944091; full list in `slurm_logs/submit_reruns_2026-09-17.log`). Superseded
+runs were **moved aside, not deleted**: `<scan>/_adamw_wd0/` (the wd=0 AdamW files, items 0) and
+`<scan>/_spectra_truncated/` (the k = B Sven files, item 1), each with its `diag/`; the loader reads only
+top-level `*.jsonl`, so dedup re-runs them. Re-running the launcher is safe (dedup; move-asides idempotent).
+
+| item | what was launched |
+|---|---|
+| 0 | `mode=standard optimizers_standard=[AdamW,MuonW(,KFAC on toy/poly)]` on the 4 headline scans; nanoGPT `mode=standard` (config now 5 seeds, so AdamW/MuonW x 5 and Muon/SOAP seeds 5003-4); critbatch-nanoGPT `mode=standard` (AdamW x 5 seeds). Overparam / batch-size scans untouched (explicit wd sweep already there; no MuonW added -- decision left open). |
+| 1 | `mode=svd k_values=[B]` on the 4 headline scans (toy/poly one job each, MNIST per seed) with sven `ca8742b` (full-spectrum logging; editable install verified). |
+| 2 | `timing_serial_RERUNS` (46944091): exclusive node, `RESELECT=1` regenerates `bench/best_configs.json` with the current `scan_analysis` rule, then times every best config with dedup (only the changed ones actually run: MNIST-CE LBFGS mi=1, AdamW-wd / MuonW everywhere, nanoGPT seeds 5003-4). `--dependency=afterany` on the 20 headline + nanoGPT jobs. `timing_serial.sbatch` now passes `weight_decays=[wd]` for AdamW/Muon/MuonW. |
+| 4 | Audit against the cluster's files: the CIFAR label-reg "40 missing" and batch-size "24 missing" were a stale local sync (both grids are complete here); the real gaps are deterministic failures: KFAC 0/20 on both MNIST scans (eigh), 19/20 toy, 11/20 poly; HIG never finishes at lr >= 0.5 (toy, MNIST label-reg). Resubmitted only where a file can appear: KFAC on toy/poly, HIG at lr <= 0.1 on toy (5) and MNIST label-reg (1). JD is 20/20 everywhere. |
+| 5 | 5 seeds now in `exp_nanogpt_speedrun`, `exp_critbatch_nanogpt`, `exp_critbatch_mnist`, `mnist_microbatch_ce_scan`, `mnist_paramfrac_ce_scan` (configs edited; new seeds submitted, per seed for critbatch). |
+| 7 | CIFAR ablations submitted for the first time, one run per job at NPROC=1 (~2 h each, full-J capture): kappa label-reg (5), kappa CE (3), paramfrac label-reg (5), paramfrac CE (6), Fig-5 (15 = 5 fractions x 3 seeds). **CE set point re-derived** from the BN-fixed headline scan: k=128, lr=0.1, rtol=1e-2 (was the pre-Gram k=64 / 1.0 / 1e-3; label-reg's k=64 / 1.0 / 1e-3 was confirmed). Still 1 seed for kappa/paramfrac (the configs' choice; a 3-5 seed version is a one-line edit + resubmit). `exp_finetune_cifar_smallN` and GPT-2 not launched (separate decision). |
+
+Decided 2026-09-17 (user): **item 3 dropped** -- under the hooks-based Gram backend the eigenproblem is
+B x B whatever k is, so truncation does not change wall time; the flat plot is stated in text. **Item 8
+(held-out test evaluation) noted, deferred** -- needs a test-set pass at the end of the training loop for the
+best configs; not now. **Launched in part 2** (`submit_reruns_2026-09-17_part2.sh`): `exp_finetune_cifar_smallN`
+(4 N x {svd, standard}), MuonW at its default wd=0.1 in the three overparam scans and the batch-size scan
+(`weight_decays=[0.1]` explicit), and GPT-2-small via `./submit_gpt2.sh` (partitions widened). Still open:
+item 6 backfill, the lower-lr grid for paramfrac f <= 0.25.
+After everything finishes: sync `experiment_results/`, then `./make_plots.sh`.
