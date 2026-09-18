@@ -1,0 +1,243 @@
+# GATE 1 smoke matrix (CHANGES_NEEDED.md 4.2 "Gate 1"): the first time the integrated
+# campaign code touches a GPU.
+#
+#   tools/launch_campaign.py campaign/plan_smoke.yaml --snapshot <smoke snapshot> --phase P0
+#   tools/launch_campaign.py campaign/plan_smoke.yaml --snapshot <smoke snapshot> --phase P0 --submit --time 01:00:00
+#   tools/reconcile.py --all campaign/plan_smoke.yaml
+#   campaign/run_cpu_tests.sh .venv/bin/python campaign/verify_smoke.py
+#
+# WHAT THIS IS. Every item is a `plan_campaign.yaml` (config x mode x override)
+# combination, shrunk by Hydra overrides to a handful of runs: `num_epochs=2`, ONE model
+# seed (two on the one item that check (e) needs), one or two points per grid axis, and
+# for Sven always one `k < B` point AND one `k = B` point. Nothing else about a run
+# changes, so this exercises the production code path, the production run_ids and the
+# production record schema -- only shorter. The override STRINGS are deliberately the
+# same shape as the campaign's `_overrides` anchors (mode=svd / mode=standard with an
+# `optimizers_standard=[...]` subset / mode=jd / mode=hig), because a subset that names
+# an optimizer a config does not list is exactly what the launcher's `[warn]` catches.
+#
+# DELIBERATE DIVERGENCE is folded into the toy items as an extra grid point (`lr` 1e3,
+# and for PolyakSGD its own item with `polyak_f_star=-1e5`, since Polyak has no lr axis
+# and its step is capped by `polyak_max_lr`): one non-finite training batch per family
+# must produce a `diverged` record with partial curves and `diverged_at_step`, not a
+# crash and not a missing run. Folding them in rather than adding six more items matters
+# because each item costs one `import torch` per runner process.
+#
+# RESULTS ROOT is a fresh temp root, NOT `experiment_results`. The real campaign root
+# must stay empty until the campaign proper starts.
+#
+# NPROC is reduced from the probe table (campaign/stage0_reports/gpu.probe.md, the values
+# in plan_campaign.yaml): a Gate-1 item holds 1-11 runs, so 12 runner processes would pay
+# 12 cold `import torch` to do 2 runs. The per-lane MAPPING is what is under test here
+# (mig vs a100 pick different values), plus CIFAR Sven at its production NPROC=1, which
+# is the setting the step-time check (f) has to measure.
+version: 1
+plan: smoke
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_74987054
+
+lanes:
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    mem: 64G
+    time: "01:00:00"           # Gate-1 budget: no job may ask for more than 1 h
+    cpus_extra: 2
+  mig:
+    partition: gpu_test
+    gres: "gpu:4"
+    cpus: 32
+    mem: 128G
+    time: "01:00:00"
+    max_jobs: 2
+    note: "MLP work only; 4 slices x one pool each, so the claim queue is served by 4+ workers"
+
+# ---------------------------------------------------------------------------
+# Anchors (keys starting with `_` are ignored by the parser)
+# ---------------------------------------------------------------------------
+_nproc:
+  sven_mlp:    &np_sven_mlp    {a100: 6, mig: 3}
+  first_mlp:   &np_first_mlp   {a100: 6, mig: 3}
+  heavy_mlp:   &np_heavy_mlp   {a100: 3, mig: 2}
+  nanogpt:     &np_nanogpt     {a100: 2, mig: 1}
+  cifar_sven:  &np_cifar_sven  {a100: 1, mig: 1}   # production value; check (f) measures here
+  cifar_first: &np_cifar_first {a100: 2, mig: 1}
+  cifar_heavy: &np_cifar_heavy {a100: 2, mig: 1}
+
+# The shrink every MLP item shares. `model_seeds=[...]` is per config (the seed bases
+# differ), so only the epoch count is common.
+_shrink: &SHRINK "num_epochs=2"
+
+_items:
+  # ----- the four headline MLP scans, every family -------------------------
+  # toy_1d_scan (B=32, seeds 1000..): the cheapest scan, so this is where the
+  # divergent points and the second model seed live.
+  smoke_mlp: &items_smoke_mlp
+    # TWO model seeds here and nowhere else: check (e) needs a same-seed /
+    # different-seed pair of effective_loader_seeds. 2 k x 2 lr x 2 seeds = 8 runs,
+    # 4 of which (lr 1e3) must diverge.
+    - {config: toy_1d_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[1000,1001] k_values=[8,32] lrs=[0.5,1000.0] rtol=[1e-3]"}
+    # O_FIRST shape (PolyakSGD rides along in the campaign's FIRST item and is its own
+    # family in the grid): 5 std optimizers x 2 lr + 1 polyak = 11 runs, 5 divergent.
+    - {config: toy_1d_scan, nproc: *np_first_mlp,
+       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGDm,Muon,MuonW,PolyakSGD] num_epochs=2 model_seeds=[1000] lrs_standard=[0.01,1000.0]"}
+    # PolyakSGD has no lr axis, so its divergent run needs its own item: the step is
+    # (f - f_star)/||g||^2 capped at polyak_max_lr, so a hugely negative f_star with a
+    # large cap is how a Polyak step is made to blow up.
+    # (`+` because neither key is in the config: the dry run's `cannot compose` warning
+    # is what caught the plain `polyak_f_star=` spelling.)
+    - {config: toy_1d_scan, nproc: *np_first_mlp, note: "the polyak family's divergent run",
+       overrides: "mode=standard optimizers_standard=[PolyakSGD] num_epochs=2 model_seeds=[1000] +polyak_f_star=[-100000.0] +polyak_max_lr=[1000.0]"}
+    - {config: toy_1d_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] num_epochs=2 model_seeds=[1000] lrs_standard=[0.01]"}
+    - {config: toy_1d_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[LBFGS] num_epochs=2 model_seeds=[1000] lrs_lbfgs=[0.5,1000.0] lbfgs_max_iter=[2] lbfgs_history_size=[5]"}
+    - {config: toy_1d_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=jd num_epochs=2 model_seeds=[1000] lrs_jd=[0.001,1000.0]"}
+    - {config: toy_1d_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=hig num_epochs=2 model_seeds=[1000] lrs_hig=[0.05,1000.0] tau_hig=[1e-2]"}
+
+    # polynomial_scan (B=32, seeds 2000..)
+    - {config: polynomial_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[2000] k_values=[8,32] lrs=[0.5] rtol=[1e-3]"}
+    - {config: polynomial_scan, nproc: *np_first_mlp,
+       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGDm,Muon,MuonW,PolyakSGD] num_epochs=2 model_seeds=[2000] lrs_standard=[0.01]"}
+    - {config: polynomial_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] num_epochs=2 model_seeds=[2000] lrs_standard=[0.01]"}
+    - {config: polynomial_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[LBFGS] num_epochs=2 model_seeds=[2000] lrs_lbfgs=[0.5] lbfgs_max_iter=[2] lbfgs_history_size=[5]"}
+    - {config: polynomial_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=jd num_epochs=2 model_seeds=[2000] lrs_jd=[0.001]"}
+    - {config: polynomial_scan, nproc: *np_heavy_mlp,
+       overrides: "mode=hig num_epochs=2 model_seeds=[2000] lrs_hig=[0.05] tau_hig=[1e-2]"}
+
+    # mnist_scan_labelRegression (B=64, seeds 3000..)
+    - {config: mnist_scan_labelRegression, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[3000] k_values=[32,64] lrs=[0.5] rtol=[1e-3]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_first_mlp,
+       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGDm,Muon,MuonW,PolyakSGD] num_epochs=2 model_seeds=[3000] lrs_standard=[0.001]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] num_epochs=2 model_seeds=[3000] lrs_standard=[0.001]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[LBFGS] num_epochs=2 model_seeds=[3000] lrs_lbfgs=[0.5] lbfgs_max_iter=[2] lbfgs_history_size=[5]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_heavy_mlp,
+       overrides: "mode=jd num_epochs=2 model_seeds=[3000] lrs_jd=[0.001]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_heavy_mlp,
+       overrides: "mode=hig num_epochs=2 model_seeds=[3000] lrs_hig=[0.05] tau_hig=[1e-2]"}
+
+    # mnist_scan_ce (B=64, seeds 3000..): the classification scan, so this is where
+    # check (b)'s "test accuracy present" has to hold.
+    - {config: mnist_scan_ce, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[3000] k_values=[32,64] lrs=[0.5] rtol=[1e-3]"}
+    - {config: mnist_scan_ce, nproc: *np_first_mlp,
+       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGDm,Muon,MuonW,PolyakSGD] num_epochs=2 model_seeds=[3000] lrs_standard=[0.001]"}
+    - {config: mnist_scan_ce, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] num_epochs=2 model_seeds=[3000] lrs_standard=[0.001]"}
+    - {config: mnist_scan_ce, nproc: *np_heavy_mlp,
+       overrides: "mode=standard optimizers_standard=[LBFGS] num_epochs=2 model_seeds=[3000] lrs_lbfgs=[0.5] lbfgs_max_iter=[2] lbfgs_history_size=[5]"}
+    - {config: mnist_scan_ce, nproc: *np_heavy_mlp,
+       overrides: "mode=jd num_epochs=2 model_seeds=[3000] lrs_jd=[0.001]"}
+    - {config: mnist_scan_ce, nproc: *np_heavy_mlp,
+       overrides: "mode=hig num_epochs=2 model_seeds=[3000] lrs_hig=[0.05] tau_hig=[1e-2]"}
+
+    # ----- the Sven knob sweeps (P3 shape): masked, micro-batch, kappa ------
+    # pf 0.5 AND pf 1.0: the masked run must record actual_param_fraction ~ 0.5 and its
+    # run_id must carry `_pf0.5_{mask_mode}`, while pf 1.0 is the unmasked control (and
+    # the pair is what check (i) re-executes at a different num_epochs).
+    - {config: toy_1d_paramfrac_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[1000] param_fractions=[0.5,1.0] k_values=[32] lrs=[0.5] rtol=[1e-3]"}
+    # microbatch 4 with B=32 => M = B/microbatch = 8 rows in the Gram, so check (c)'s
+    # "svs has width B OR B/microbatch" has a case where the two differ; k=8 = M.
+    - {config: toy_1d_microbatch_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[1000] microbatch_sizes=[4] k_values=[8] lrs=[0.5] rtol=[1e-3]"}
+    # kappa=1 (C-X1): k=32 < B=64 is the slice where truncation binds, k=64 = B the one
+    # where it does not. MEMORY: kappa<2 NaNs under softmax, hence label_regression here.
+    - {config: mnist_kappaScan_labelRegression, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[3000] kappa=[1] k_values=[32,64] lrs=[0.5] rtol=1e-4"}
+
+    # ----- P1 rebuttal shapes ------------------------------------------------
+    # overparam: smallest n_data per dataset. toy/poly are FULL BATCH (B = N = n_data,
+    # num_epochs == number of gradient steps), so k_fractions 0.5 / 1.0 give k < B and
+    # k = B, and 2 epochs is 2 steps.
+    - {config: rebuttal_overparam_toy_1d_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd n_data=150 num_epochs=2 model_seeds=[1000] k_fractions=[0.5,1.0] lrs=[0.5] rtol=[1e-3]"}
+    - {config: rebuttal_overparam_polynomial_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd n_data=170 num_epochs=2 model_seeds=[2000] k_fractions=[0.5,1.0] lrs=[0.5] rtol=[1e-4]"}
+    - {config: rebuttal_overparam_mnist_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd n_data=2500 num_epochs=2 model_seeds=[3000] k_values=[32,64] lrs=[0.5] rtol=[1e-4]"}
+    # the top point of the scan IS the whole MNIST train part (scope update: n_train
+    # above 50,000 must RAISE, never clamp) -- 1 epoch, because this is the one item
+    # that touches all 50,000 training images.
+    - {config: rebuttal_overparam_mnist_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd n_data=50000 num_epochs=1 model_seeds=[3000] k_values=[64] lrs=[0.5] rtol=[1e-4]"}
+    # batch size is the swept axis of this config, and B is in the run_id: two values, so
+    # a k_fraction of 1.0 gives k=B=32 and k=B=128 in one item.
+    - {config: rebuttal_batchsize_polynomial_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[2000] batch_size=[32,128] k_fractions=[1.0] lrs=[0.5] rtol=[1e-3]"}
+
+  # The A100 overflow subset: the SAME override strings as four of the items above, so
+  # the two jobs claim from the same scans at the same time (check (j)) and the per-lane
+  # NPROC mapping is exercised on both sides. Identical strings matter: `grid.run_hash`
+  # would otherwise not have to agree, and a mismatch is the C-R3 _stale/ ping-pong.
+  smoke_mlp_a100: &items_smoke_mlp_a100
+    - {config: toy_1d_scan, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[1000,1001] k_values=[8,32] lrs=[0.5,1000.0] rtol=[1e-3]"}
+    - {config: mnist_scan_ce, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[3000] k_values=[32,64] lrs=[0.5] rtol=[1e-3]"}
+    - {config: mnist_scan_ce, nproc: *np_first_mlp,
+       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGDm,Muon,MuonW,PolyakSGD] num_epochs=2 model_seeds=[3000] lrs_standard=[0.001]"}
+    - {config: mnist_scan_labelRegression, nproc: *np_sven_mlp,
+       overrides: "mode=svd num_epochs=2 model_seeds=[3000] k_values=[32,64] lrs=[0.5] rtol=[1e-3]"}
+
+work_lists:
+  - name: smoke_mlp_mig
+    phase: P0
+    lane: mig
+    n_jobs: 1
+    note: "every family x every headline MLP scan, plus the masked / micro-batch / kappa /
+           overparam / batch-size shapes; 4 MIG slices serve one claim queue"
+    items: *items_smoke_mlp
+
+  - name: smoke_mlp_a100
+    phase: P0
+    lane: a100
+    n_jobs: 1
+    note: "four of the same items at A100 NPROC, concurrently with the MIG job (check (j))"
+    items: *items_smoke_mlp_a100
+
+  - name: smoke_cifar
+    phase: P0
+    lane: a100
+    n_jobs: 1
+    note: "ResNet18/CIFAR-10, bn_mode=batch, gram_capture=full: the Sven step-time and
+           BatchNorm-buffer checks ((f)) plus one run of every optimizer family the
+           CIFAR headline configs list"
+    items:
+      # Sven, full capture, batch-stat BN, k = B = 128: the run check (f) times.
+      - {config: cifar10_resnet_scan_labelRegression, nproc: *np_cifar_sven,
+         overrides: "mode=svd num_epochs=2 model_seeds=[4000] k_values=[128] lrs=[1.0] rtol=[1e-3]"}
+      - {config: cifar10_resnet_ce_scan, nproc: *np_cifar_sven,
+         overrides: "mode=svd num_epochs=2 model_seeds=[4000] k_values=[128] lrs=[1.0] rtol=[1e-3]"}
+      # Adam / SGDm / Muon (the vendored MuonConv path on the conv kernels, never run on
+      # a ResNet before) / SOAP -- one lr each.
+      - {config: cifar10_resnet_scan_labelRegression, nproc: *np_cifar_first,
+         overrides: "mode=standard optimizers_standard=[Adam,SGDm,Muon,SOAP] num_epochs=2 model_seeds=[4000] lrs_standard=[0.001]"}
+      - {config: cifar10_resnet_scan_labelRegression, nproc: *np_cifar_heavy,
+         overrides: "mode=standard optimizers_standard=[LBFGS] num_epochs=2 model_seeds=[4000] lrs_lbfgs=[0.5] lbfgs_max_iter=[2] lbfgs_history_size=[5]"}
+      - {config: cifar10_resnet_scan_labelRegression, nproc: *np_cifar_first,
+         overrides: "mode=standard optimizers_standard=[PolyakSGD] num_epochs=2 model_seeds=[4000]"}
+      # Fig-5 param fraction on the ResNet: a masked CIFAR run (pf 0.25).
+      - {config: rebuttal_fig5_cifar_paramfrac_scan, nproc: *np_cifar_sven,
+         overrides: "mode=svd num_epochs=2 model_seeds=[4000] param_fractions=[0.25] k_values=[64] lrs=[1.0] rtol=[1e-3]"}
+
+  - name: smoke_nanogpt
+    phase: P0
+    lane: a100
+    n_jobs: 1
+    note: "the one language-model workload: token-weighted eval, injected vocab_size in
+           the hashed model config, `epochs` checkpoint policy"
+    items:
+      - {config: exp_nanogpt_speedrun, nproc: *np_nanogpt,
+         overrides: "mode=svd num_epochs=2 model_seeds=[5000] k_values=[64] lrs=[0.5] rtol=[1e-3]"}
+      - {config: exp_nanogpt_speedrun, nproc: *np_nanogpt,
+         overrides: "mode=standard optimizers_standard=[AdamW,Muon] num_epochs=2 model_seeds=[5000] lrs_standard=[0.001]"}
