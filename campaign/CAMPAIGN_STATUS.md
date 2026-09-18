@@ -78,3 +78,11 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 * 09-18 ~21:05 — **STANDING GO from the user:** run the Gate-1 smoke tests as soon as Stage 1 is committed; once they
   pass, launch the six headline scans together (toy_1d_scan + polynomial_scan double as the pilot; the user reviews
   their tables while MNIST/CIFAR run). This go covers the HEADLINE scans only - nanoGPT and P1-P3 still need a go.
+* 09-18 ~21:15 — **STANDING GO widened by the user:** nanoGPT counts as headline; after a green smoke matrix queue
+  EVERYTHING that does not depend on scan results, headline + nanoGPT first in every work list. Independent (queue
+  immediately, in this order): six headline scans + exp_nanogpt_speedrun -> rebuttal_overparam_{toy_1d,polynomial,mnist},
+  rebuttal_fig5_cifar_paramfrac_scan, rebuttal_batchsize_polynomial_scan -> mnist_kappaScan, toy/MNIST micro-batch and
+  param-fraction scans, exp_finetune_cifar_smallN (these use set points fixed in their configs from the legacy
+  headline results: if the fresh headline optimum moves materially, rerun them - cheap, hash dedup handles it).
+  Result-dependent (WAIT): standalone timing of best configs, diagnostics (log checkpoints + dense spectra) and
+  confirmation seeds of selected configs, polynomial data-seed replicates of selected configs.
