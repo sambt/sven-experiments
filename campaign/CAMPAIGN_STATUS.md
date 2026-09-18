@@ -88,3 +88,11 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   confirmation seeds of selected configs, polynomial data-seed replicates of selected configs.
 * 09-18 ~21:30 — User: CIFAR fine-tune -> extension phase (out of the launch plan); MNIST kappa stays. Standing go
   reconfirmed: after Stage 1 commit + green smoke, queue all result-independent scans, headline + nanoGPT first.
+* 09-18 18:35 EDT — **Stage 1 committed**: configs 0ac47a3, launcher 334e14a, runner integration 28abad5 (sv3 full
+  suite 723 passed; sven 198 passed). Gate-1 smoke workflow launched (wn486mfkz: deploy snapshot -> smoke matrix via the
+  real launcher on gpu_test + one A100 into `.../sv3_campaign_scratch/smoke_<sha>/` -> verification (a)-(j) -> fixes
+  if needed -> independent audit with GO/NO-GO). The smoke agent may commit bug fixes on robustness-campaign.
+  NEXT (standing go): on GO -> consolidate the MIG work into ONE ordered list (headline -> overparam/batch-size ->
+  kappa/microbatch/paramfrac; gpu_test allows only 2 jobs), enable Fig-5 at k=64/lr=1/rtol=1e-3, commit, re-deploy,
+  `tools/launch_campaign.py campaign/plan_campaign.yaml` dry run, then `--submit` P0 first, then P1, P3.
+  Interactive job ends 22:19 EDT: MIG jobs last 12 h and need ONE resubmit tomorrow morning (same command).
