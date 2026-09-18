@@ -17,6 +17,20 @@
 # concurrently and an item whose runs are all finished returns in seconds. Adding
 # jobs to a lane therefore never duplicates work -- it only adds throughput.
 #
+# ONE SNAPSHOT PER LIST. The MLP work is launched twice (the MIG lane and its A100
+# overflow list run the SAME items), and those are two invocations of the launcher. Both
+# must use the SAME deploy snapshot: `grid.run_hash` covers the resolved dataset, model,
+# num_epochs, loss and the eval settings, so two snapshots whose configs differ in any of
+# them give every run of the scan a different hash8 -- and the C-R3 rule then has each
+# lane move the other's finished results to `_stale/` and re-run them. The launcher
+# stamps the snapshot into the items file and refuses a list that is live from another
+# one, but after a re-deploy the right move is to let the old jobs finish (or cancel
+# them) before launching the second lane from the new snapshot.
+#
+# `campaign/grid_counts.md` is the ground truth for how many runs each scan describes;
+# `tests/test_tools_launch.py` asserts that the enabled items of this plan cover exactly
+# those numbers, family by family, so a config edit cannot silently leave work unlaunched.
+#
 # NPROC values are the measured GPU probe table (campaign/stage0_reports/gpu.probe.md,
 # CONTRACTS.md "Stage 1 contracts"): A100 -- MLP Sven 12, first-order MLP 12,
 # LBFGS/HIG/Shampoo 4, nanoGPT 3, CIFAR Sven 1, CIFAR baselines 4; MIG slice -- MLP
@@ -76,6 +90,7 @@ _overrides:
   # (c) expects their lr grid to need extending downwards.
   cifar_first:  &O_CIFAR_FIRST  "mode=standard optimizers_standard=[Adam,SGD,SGDm,RMSprop,PolyakSGD]"
   cifar_muon:   &O_CIFAR_MUON   "mode=standard optimizers_standard=[AdamW,Muon,MuonW]"
+  cifar_second: &O_CIFAR_SECOND "mode=standard optimizers_standard=[SOAP]"
   nanogpt_std:  &O_NANOGPT_STD  "mode=standard optimizers_standard=[AdamW,Muon,MuonW,SOAP]"
 
 # P0 MLP work: identical items for the MIG lane and its A100 overflow list, with the
@@ -203,7 +218,15 @@ work_lists:
     phase: P0
     lane: mig
     n_jobs: 2                 # the gpu_test cap: 2 jobs x 4 slices = the 8-GPU TRES cap
-    chain: true               # `--chain` makes ONE of these renew itself at 12 h
+    # `chain: true` is a note to the operator: this list is long-lived enough to be worth
+    # `--chain`, which submits ONE self-renewing job instead of n_jobs. The renewal
+    # happens BEFORE the 12 h wall (the pool starts no item within 15 min of
+    # $SLURM_JOB_END_TIME and the job traps `--signal=B:USR1@900`), and it needs a free
+    # slot at that moment because MaxSubmit=2 counts this still-running job -- so the
+    # launcher keeps one of the two slots free whenever a chain is in the selection.
+    # Two plain jobs (n_jobs: 2) use the lane fully but stop at 12 h; one chain keeps
+    # going unattended. Do not mix: two chains cannot renew at all.
+    chain: true
     note: "toy/poly/MNIST headline MLP work on MIG slices; 0 s queue wait, ~0.5-0.8x an A100 per slice"
     items: *items_p0_mlp
 
@@ -237,6 +260,10 @@ work_lists:
       - {config: cifar10_resnet_ce_scan,              overrides: *O_LBFGS,       nproc: *np_cifar_heavy}
       - {config: cifar10_resnet_scan_labelRegression, overrides: *O_CIFAR_MUON,  nproc: *np_cifar_first}
       - {config: cifar10_resnet_ce_scan,              overrides: *O_CIFAR_MUON,  nproc: *np_cifar_first}
+      # SOAP is the only second-order baseline the CIFAR configs list; NPROC 2 is
+      # inferred (its preconditioner state is unmeasured on an 11 M-param ResNet)
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_CIFAR_SECOND, nproc: *np_cifar_heavy}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_CIFAR_SECOND, nproc: *np_cifar_heavy}
 
   - name: p0_nanogpt
     phase: P0
@@ -252,7 +279,7 @@ work_lists:
     phase: P1
     lane: mig
     n_jobs: 2
-    chain: true
+    chain: true               # with --chain: ONE self-renewing job (see p0_mlp_mig)
     note: "overparam P>N (R1 crux) + batch-size sweep (R2 Q1); one item per n_data"
     items: *items_p1_mlp
 
@@ -289,7 +316,7 @@ work_lists:
     phase: P3
     lane: mig
     n_jobs: 2
-    chain: true
+    chain: true               # with --chain: ONE self-renewing job (see p0_mlp_mig)
     note: "kappa retune + micro-batch / param-fraction MLP sweeps"
     items: *items_p3_mlp
 
@@ -304,17 +331,20 @@ work_lists:
     phase: P3
     lane: a100
     n_jobs: 2
-    note: "R2 Q3, pretrained ResNet18 on small N; bn_mode=frozen everywhere (O2).
-           The existing 240 records in this scan dir are F3-contaminated -- fresh root only"
+    note: "OUT OF THE LAUNCH PLAN (user, 2026-09-18 ~21:30): exp_finetune_cifar_smallN moves
+           to the EXTENSION phase, after the campaign. The items stay here, complete and
+           parked, so the extension is one `enabled: true` away. (R2 Q3, pretrained ResNet18
+           on small N, bn_mode=frozen everywhere per O2; the 240 legacy records of this scan
+           are F3-contaminated, so it must run in the fresh root.)"
     items:
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=250",  nproc: *np_resnet_ft}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=500",  nproc: *np_resnet_ft}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=1000", nproc: *np_resnet_ft}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=2000", nproc: *np_resnet_ft}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=250",  nproc: *np_cifar_first}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=500",  nproc: *np_cifar_first}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=1000", nproc: *np_cifar_first}
-      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=2000", nproc: *np_cifar_first}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=250",  nproc: *np_resnet_ft, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=500",  nproc: *np_resnet_ft, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=1000", nproc: *np_resnet_ft, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=2000", nproc: *np_resnet_ft, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=250",  nproc: *np_cifar_first, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=500",  nproc: *np_cifar_first, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=1000", nproc: *np_cifar_first, enabled: false}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=2000", nproc: *np_cifar_first, enabled: false}
 
   - name: p3_cifar_jd_hig
     phase: P3
@@ -363,6 +393,13 @@ timing:
     the 2026-09-17 `timing_serial_RERUNS` job sat in QOSMaxNodePerUserLimit for 13 h.
   depends_on:
     - P0/P1 reconciled and best_configs.json re-derived from the FRESH results root
-    - two CIFAR `*_timing` configs, which do not exist yet (grid_inventory.md §1)
+      (`tools/reconcile.py <scan>` prints the per-method best config the selection needs)
   scans: [toy_1d_scan_timing, polynomial_scan_timing, mnist_scan_labelRegression_timing,
-          mnist_scan_ce_timing, exp_nanogpt_speedrun_timing]
+          mnist_scan_ce_timing, exp_nanogpt_speedrun_timing,
+          cifar10_resnet_ce_scan_timing, cifar10_resnet_scan_labelRegression_timing]
+  note: >
+    All seven companions now exist (the configs track added the two CIFAR ones). Each
+    inherits its parent and overrides nothing, so it describes the parent's FULL grid under
+    the parent's run_ids in its own results directory: a timing pass is a launcher
+    SELECTION of the per-method best configs (~13 methods x 5 seeds per scan), never a run
+    of the whole timing config. That selection is why these are not work items here.
