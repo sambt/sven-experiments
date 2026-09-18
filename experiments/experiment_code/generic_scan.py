@@ -1,7 +1,6 @@
 import copy
 import json
 import os
-from itertools import product
 
 import numpy as np
 import torch
@@ -14,7 +13,11 @@ from hydra.core.hydra_config import HydraConfig
 
 from .experiment_utils import (
     train_loop_svd, train_loop_standard, train_loop_hig, train_loop_jd, set_seed,
-    process_hparam_config, build_standard_optimizer, resolve_weight_decay,
+    build_standard_optimizer,
+)
+from .grid import (
+    LOSS_KEYS, SIGNED_RESIDUAL_LOSS_KEYS, SVD_INFO_MODES,
+    expand_grid, mode_flags, resolve_scan_settings, resolve_svd_settings, shard,
 )
 from sven.opt import Sven, SvenGram
 from sven.nn import SvenWrapper, GramSvenWrapper
@@ -147,7 +150,10 @@ def _write_result(jsonl_path, result):
 # Previously the spectra alone were ~85% of a 7-25 MB JSON file per Sven run.
 _DIAG_LOSS_KEYS = ('train_batch', 'val_batch', 'batch_times_train',
                    'batch_times_val', 'train_batch_per_model')
-SVD_INFO_MODES = ('none', 'summary', 'full')
+# SVD_INFO_MODES now lives in grid.py (torch-free) and is imported above; grid.py
+# also mirrors the loss-registry keys so it can validate `loss` without torch.
+assert set(LOSS_KEYS) == set(SVD_LOSS_FNS) == set(STANDARD_LOSS_FNS)
+assert set(SIGNED_RESIDUAL_LOSS_KEYS) == set(SVD_RESIDUAL_FNS)
 
 
 def _pad_ragged(rows, dtype=np.float32):
@@ -262,24 +268,283 @@ def _scan_facts(model, dataset):
 
 
 # ---------------------------------------------------------------------------
-# Scan logic
+# Scan logic: expand_grid (grid.py) -> shard -> dedup -> execute
 # ---------------------------------------------------------------------------
+# `grid.expand_grid` enumerates the whole grid up front as RunSpecs (see grid.py:
+# torch-free, byte-identical run_ids and order to the six inline product() loops
+# this replaced), `grid.shard` takes this worker's slice and `execute` runs one
+# spec. Per-family code therefore exists exactly once.
 
-def _build_id_string(cfg):
-    """Build a model-identifier string from config-specified fields."""
-    fields = cfg.get("result_id_fields", [])
-    if not fields:
-        return ""
-    return "_" + "_".join(f"{f}{cfg[f]}" for f in fields)
+_FAMILY_BANNER = {
+    "svd": "Running SVD optimizer scan",
+    "standard": "Running standard optimizer scan",
+    "lbfgs": "Running standard optimizer scan",
+    "polyak": "Running standard optimizer scan",
+    "jd": "Running Jacobian Descent scan",
+    "hig": "Running Half-Inverse Gradients scan",
+}
+
+# The exception message each family printed before the refactor ("standard" is
+# the optimizer's own name).
+_FAMILY_ERROR = {
+    "svd": "Training failed",
+    "lbfgs": "LBFGS run failed",
+    "polyak": "PolyakSGD run failed",
+    "jd": "JD run failed",
+    "hig": "HIG run failed",
+}
+
+# Families whose model is moved to the device by the runner; the svd and hig
+# wrappers do it themselves.
+_TO_DEVICE_FAMILIES = ("standard", "lbfgs", "polyak", "jd")
+
+
+class _ScanContext:
+    """Everything :func:`execute` needs that does not vary across grid points.
+
+    Also owns the per-seed initial state: one base model per model seed, whose
+    ``state_dict`` every run of that seed starts from (the legacy per-seed
+    preamble). Only the current seed is kept, which is what the legacy loop held
+    too -- ``expand_grid`` is seed-major, so nothing older is ever needed.
+    """
+
+    def __init__(self, cfg, rcfg, dataset, scan_dir, settings, svd_settings):
+        self.cfg = cfg
+        self.rcfg = rcfg
+        self.device = rcfg["device"]
+        self.dataset = dataset
+        self.scan_dir = scan_dir
+        self.svd = svd_settings
+        self.loss_key = settings["loss_key"]
+        self.track_acc = settings["track_acc"]
+        self.is_lm = settings["is_lm"]
+        self.track_param_norm = settings["track_param_norm"]
+        self.svd_info_mode = settings["svd_info_mode"]
+        self.svd_spectra_every = settings["svd_spectra_every"]
+        self.loss_fn_svd = SVD_LOSS_FNS[self.loss_key]            # per-sample (svd/jd/hig)
+        self.loss_fn_standard = STANDARD_LOSS_FNS[self.loss_key]  # scalar
+        self.residual_fn_svd = (SVD_RESIDUAL_FNS[self.loss_key]
+                                if settings["signed_residual"] else None)
+        self._seed = None
+        self._init_state = None
+        self._common = None
+
+    def seed_state(self, model_seed):
+        """``(init_state, common)`` for a model seed, built once per seed."""
+        if self._seed != model_seed:
+            set_seed(model_seed)
+            base_model = instantiate(self.cfg.model)
+            self._seed = model_seed
+            self._init_state = copy.deepcopy(base_model.state_dict())
+            # n_params / n_train / n_val, on every record
+            self._common = _scan_facts(base_model, self.dataset)
+            del base_model
+        return self._init_state, self._common
+
+    def loaders(self, spec, drop_last=False):
+        """Train / val loaders for one run (val batch size = train batch size)."""
+        train_loader = DataLoader(
+            self.dataset.train_dataset, batch_size=spec.batch_size, shuffle=True,
+            generator=torch.Generator().manual_seed(spec.loader_seed),
+            drop_last=drop_last,
+        )
+        val_loader = DataLoader(self.dataset.val_dataset, batch_size=spec.batch_size,
+                                shuffle=False)
+        return train_loader, val_loader
+
+
+def _describe(spec, ctx):
+    """The one-line "what is running now" message of the legacy blocks."""
+    hp, bs = spec.hparams, spec.batch_size
+    if spec.family == "svd":
+        msg = (f"SVD: bs={bs}, k={hp['k']}, lr={hp['lr']}, rtol={hp['rtol']}, "
+               f"svd_mode={hp['svd_mode']}")
+        if hp["microbatch_size"] is not None:
+            msg += f", mb={hp['microbatch_size']}"
+        if hp["param_fraction"] is not None:
+            msg += f", pf={hp['param_fraction']}"
+        if hp["kappa"] != 2.0:
+            msg += f", kappa={hp['kappa']}"
+        if ctx.svd["variable_k"]:
+            msg += ", variable_k=True"
+        return msg
+    if spec.family == "standard":
+        wd_str = f", wd={hp['weight_decay']}" if hp["weight_decay"] != 0.0 else ""
+        return f"Standard: bs={bs}, lr={hp['lr']}, optim={hp['optim_name']}{wd_str}"
+    if spec.family == "lbfgs":
+        return (f"LBFGS: bs={bs}, lr={hp['lr']}, max_iter={hp['max_iter']}, "
+                f"history_size={hp['history_size']}, line_search={hp['line_search_fn']}")
+    if spec.family == "polyak":
+        return (f"PolyakSGD: bs={bs}, f_star={hp['f_star']}, "
+                f"max_lr={hp['max_lr']}, eps={hp['eps']}")
+    if spec.family == "jd":
+        return (f"JD: bs={bs}, lr={hp['lr']}, aggregator={hp['aggregator']}, "
+                f"inner={hp['inner_optimizer']}")
+    return f"HIG: bs={bs}, lr={hp['lr']}, tau={hp['tau']}"
+
+
+def execute(spec, ctx):
+    """Run one grid point and write its record.
+
+    The single copy of what used to be six near-identical blocks: build the model
+    from the seed's initial state, build the optimizer (and wrapper) for the
+    family, build the loaders, call the family's training loop, assemble the
+    record and write it. Exceptions are printed and swallowed, as before (C-R1
+    turns them into records; not this change).
+    """
+    rcfg, cfg, device = ctx.rcfg, ctx.cfg, ctx.device
+    hp = spec.hparams
+    init_state, common = ctx.seed_state(spec.model_seed)
+
+    print(f"\n{_describe(spec, ctx)}")
+    optimizer = None
+    try:
+        model = instantiate(cfg.model)
+        model.load_state_dict(init_state)
+        if spec.family in _TO_DEVICE_FAMILIES:
+            model = model.to(device)
+
+        if spec.family == "svd":
+            sv = ctx.svd
+            mb = hp["microbatch_size"] if hp["microbatch_size"] is not None else 1
+            pf = hp["param_fraction"] if hp["param_fraction"] is not None else 1.0
+            # signed residual rows: scalar regression, microbatch 1 only (any kappa)
+            use_residual = spec.record_extra["signed_residual"]
+            if sv["use_gram"]:
+                # Gram trick: exact same update via B x B G = J J^T (no B x P Jacobian).
+                # svd_mode is irrelevant (eigendecomposition of G replaces the SVD of J).
+                train_model = GramSvenWrapper(
+                    model, ctx.loss_fn_svd, device,
+                    kappa=hp["kappa"],
+                    microbatch_size=mb, param_fraction=pf,
+                    mask_mode=(sv["mask_mode"] if pf < 1.0 else None),
+                    capture=sv["gram_capture"],
+                    freeze_norm_stats=sv["gram_freeze_norm_stats"],
+                    chunk_numel=sv["gram_chunk_numel"],
+                    residual_fn=(ctx.residual_fn_svd if use_residual else None),
+                )
+                optimizer = SvenGram(train_model, lr=hp["lr"], k=hp["k"], rtol=hp["rtol"],
+                                     track_svd_info=(ctx.svd_info_mode != "none"))
+            else:
+                train_model = SvenWrapper(
+                    model, ctx.loss_fn_svd, device, kappa=hp["kappa"],
+                    microbatch_size=mb, param_fraction=pf,
+                    mask_mode=(sv["mask_mode"] if pf < 1.0 else None),
+                    residual_fn=(ctx.residual_fn_svd if use_residual else None),
+                )
+                optimizer = Sven(
+                    train_model, lr=hp["lr"], k=hp["k"], rtol=hp["rtol"],
+                    track_svd_info=(ctx.svd_info_mode != "none"), svd_mode=hp["svd_mode"],
+                    variable_k=sv["variable_k"],
+                )
+            train_loader, val_loader = ctx.loaders(
+                spec, drop_last=(hp["microbatch_size"] is not None))
+            train_model, losses, optimizer = train_loop_svd(
+                train_model, optimizer, ctx.loss_fn_svd,
+                train_loader, val_loader,
+                rcfg["num_epochs"], device, track_acc=ctx.track_acc,
+                track_param_norm=ctx.track_param_norm, is_lm=ctx.is_lm,
+            )
+
+        elif spec.family == "standard":
+            optimizer = build_standard_optimizer(model, hp["optim_name"], hp["lr"],
+                                                 weight_decay=hp["weight_decay"])
+            train_loader, val_loader = ctx.loaders(spec)
+            model, losses = train_loop_standard(
+                model, optimizer, ctx.loss_fn_standard,
+                train_loader, val_loader,
+                rcfg["num_epochs"], device, track_acc=ctx.track_acc,
+                track_param_norm=ctx.track_param_norm, is_lm=ctx.is_lm,
+            )
+
+        elif spec.family == "lbfgs":
+            lbfgs_kwargs = {
+                "max_iter": hp["max_iter"],
+                "history_size": hp["history_size"],
+                "line_search_fn": (hp["line_search_fn"]
+                                   if hp["line_search_fn"] != "none" else None),
+            }
+            optimizer = build_standard_optimizer(model, "LBFGS", hp["lr"], **lbfgs_kwargs)
+            train_loader, val_loader = ctx.loaders(spec)
+            model, losses = train_loop_standard(
+                model, optimizer, ctx.loss_fn_standard,
+                train_loader, val_loader,
+                rcfg["num_epochs"], device, track_acc=ctx.track_acc,
+                is_lm=ctx.is_lm,
+            )
+
+        elif spec.family == "polyak":
+            polyak_kwargs = {"f_star": hp["f_star"], "max_lr": hp["max_lr"],
+                             "eps": hp["eps"]}
+            optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None,
+                                                 **polyak_kwargs)
+            train_loader, val_loader = ctx.loaders(spec)
+            model, losses = train_loop_standard(
+                model, optimizer, ctx.loss_fn_standard,
+                train_loader, val_loader,
+                rcfg["num_epochs"], device, track_acc=ctx.track_acc,
+                is_lm=ctx.is_lm,
+            )
+
+        elif spec.family == "jd":
+            aggregator = _JD_AGGREGATORS[hp["aggregator"]]()
+            optimizer = build_standard_optimizer(model, hp["inner_optimizer"], hp["lr"])
+            train_loader, val_loader = ctx.loaders(spec)
+            model, losses = train_loop_jd(
+                model, optimizer, aggregator, ctx.loss_fn_svd,
+                train_loader, val_loader, rcfg["num_epochs"], device,
+                track_acc=ctx.track_acc, track_param_norm=ctx.track_param_norm,
+            )
+
+        elif spec.family == "hig":
+            train_model = HIGWrapper(model, ctx.loss_fn_svd, device)
+            optimizer = HIGOptimizer(train_model, lr=hp["lr"], tau=hp["tau"])
+            train_loader, val_loader = ctx.loaders(spec)
+            train_model, losses = train_loop_hig(
+                train_model, optimizer, ctx.loss_fn_svd,
+                train_loader, val_loader, rcfg["num_epochs"], device,
+                track_acc=ctx.track_acc, track_param_norm=ctx.track_param_norm,
+            )
+
+        else:
+            # A family added to grid.FAMILIES must get a branch here; without this
+            # it would silently run under the wrong wrapper and write a record.
+            raise AssertionError(f"execute: unhandled family {spec.family!r}")
+
+        result = {"run_id": spec.run_id, **spec.record_extra, "losses": losses}
+        if spec.family == "svd":
+            result["svd_info"] = getattr(optimizer, "svd_info", {})
+        for f in rcfg.get("result_id_fields", []):
+            result[f] = rcfg[f]
+
+        _write_run(ctx.scan_dir, spec.run_id, result, ctx.svd_info_mode,
+                   ctx.svd_spectra_every, common)
+
+    except Exception as e:
+        # "standard" is the only family whose message uses the optimizer's own name
+        # (the .get keeps the unhandled-family raise above from turning into a KeyError).
+        label = _FAMILY_ERROR.get(spec.family) or f"{hp.get('optim_name', spec.family)} run failed"
+        print(f"  [error] {label}: {e}")
+        if spec.family != "svd" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    finally:
+        if spec.family == "svd":
+            torch.compiler.reset()
 
 
 def scan(cfg):
     """
     Unified hyperparameter scan supporting both SVD and standard optimizers.
 
-    Results are stored as JSONL (one JSON object per line, one file per scan).
-    Each result row includes a 'run_id' string for deduplication — if a run_id
-    already exists in the file, that run is skipped.
+    The grid itself lives in :mod:`grid`: ``expand_grid(rcfg)`` returns one
+    ``RunSpec`` per run (family, run_id, seeds, batch size, hyperparameters and
+    the record scaffold), seed-major and in the legacy enumeration order. This
+    function builds the shared context, takes its shard of the specs, skips the
+    ones already on disk and calls :func:`execute` on the rest.
+
+    Results are stored as JSONL (one file per run) inside
+    ``experiment_results/{scan_name}/``; ``{run_id}.jsonl`` is also the dedup
+    marker.
 
     The config should contain:
       - mode: "svd", "standard", "both" (= svd + standard, default), "jd", "hig"
@@ -294,51 +559,17 @@ def scan(cfg):
         (default 20) -- see _split_diagnostics. Each run writes {run_id}.jsonl
         (light) + diag/{run_id}.npz (per-batch arrays, spectra).
       - result_id_fields: list of config keys to include in output filenames
-      - seeds: list of model seeds to sweep over (optional; falls back to model_seed)
-      - All hparams consumed by process_hparam_config()
+      - model_seeds: list of model seeds to sweep over
+      - All hparams consumed by grid.process_hparam_config()
     """
     rcfg = OmegaConf.to_container(cfg, resolve=True)
-    device = rcfg["device"]
 
-    mode = rcfg.get("mode", "both")
-    _VALID_MODES = ("svd", "standard", "both", "jd", "hig", "all")
-    assert mode in _VALID_MODES, f"Unknown mode: {mode}. Choose from {_VALID_MODES}"
-    run_svd = mode in ("svd", "both", "all")
-    run_standard = mode in ("standard", "both", "all")
-    run_jd = mode in ("jd", "all") and ("lrs_jd" in rcfg or "aggregators_jd" in rcfg)
-    run_hig = mode in ("hig", "all") and ("lrs_hig" in rcfg or "tau_hig" in rcfg)
-
-    loss_key = rcfg.get("loss", "ce")
-    if loss_key not in SVD_LOSS_FNS or loss_key not in STANDARD_LOSS_FNS:
-        raise KeyError(f"Unknown loss key {loss_key!r}; known: {sorted(SVD_LOSS_FNS)}")
-    # The legacy keys keep their historical (unsuffixed) run_ids so dedup against
-    # the existing result files is unaffected. Any other key (e.g.
-    # brier) is encoded in the run_id, so a `loss=` override
-    # on an existing config name can never dedup against -- or be mistaken for --
-    # that config's original-loss results. Every result row also records `loss`.
-    _LEGACY_LOSS_KEYS = ("ce", "mse", "label_regression", "lm_ce")
-    loss_suffix = "" if loss_key in _LEGACY_LOSS_KEYS else f"_loss{loss_key}"
-    # Only track accuracy for classification (CE, label regression, Brier).
-    track_acc = loss_key in ("ce", "brier") or ("label_regression" in loss_key)
-    is_lm = loss_key == "lm_ce"  # language modeling: 3D logits, no classification accuracy
-    track_param_norm = rcfg.get("track_param_norm", False)
-
-    # How much Sven SVD diagnostics to keep (see _split_diagnostics):
-    #   none    -- nothing recorded (track_svd_info=False);
-    #   summary -- per-step rank + largest/smallest kept singular value only;
-    #   full    -- also the spectrum itself, every `svd_spectra_every`-th step.
-    # Default full/20: ~1/20th of the spectra, which is all the notebooks sample.
-    # Set svd_spectra_every: 1 to keep every step (heavy: k floats per step).
-    svd_info_mode = rcfg.get("svd_info", "full")
-    if svd_info_mode not in SVD_INFO_MODES:
-        raise ValueError(f"svd_info must be one of {SVD_INFO_MODES}, got {svd_info_mode!r}")
-    svd_spectra_every = int(rcfg.get("svd_spectra_every", 20))
-
-    # Signed-residual rows for scalar-output regression (see SVD_RESIDUAL_FNS).
-    # Not encoded in the run_id: the update is identical to the loss path
-    # wherever the latter is finite; the flag is recorded in the result row.
-    signed_residual = bool(rcfg.get("signed_residual", True)) and loss_key in SVD_RESIDUAL_FNS
-    residual_fn_svd = SVD_RESIDUAL_FNS[loss_key] if signed_residual else None
+    # Which families to enumerate, and the scan-level settings derived from the
+    # config (loss key + run_id suffix, accuracy/LM flags, diagnostics level,
+    # signed residuals). Both validate the config and raise as before.
+    flags = mode_flags(rcfg)
+    settings = resolve_scan_settings(rcfg)
+    svd_settings = resolve_svd_settings(rcfg) if flags["svd"] else None
 
     # Derive scan name from the Hydra config name (e.g. "mnist_scan")
     scan_name = HydraConfig.get().job.config_name
@@ -348,25 +579,13 @@ def scan(cfg):
     scan_dir = os.path.join(output_dir, scan_name)
     os.makedirs(scan_dir, exist_ok=True)
 
-    # Parse hparam grid
-    hparams = process_hparam_config(rcfg)
-    id_str = _build_id_string(rcfg)
-
-    # Seed list: use 'seeds' if provided, otherwise single 'model_seed'
-    seeds = rcfg.get("model_seeds")
-    loader_seed = rcfg["loader_seed"]
-
     # Optional work-sharding for intra-GPU parallelism: launch N processes with
     # n_shards=N and shard_id=0..N-1; each runs a disjoint 1/N slice of the runs.
-    # The counter advances before the dedup check so shard assignment is stable
-    # across resumes; disjoint shards write disjoint run_ids, so it is race-free.
+    # The slice is taken over the full grid, before dedup, so shard assignment is
+    # stable across resumes; disjoint shards write disjoint run_ids, so it is
+    # race-free. (Identical to the legacy modulo counter, see grid.shard.)
     n_shards = int(rcfg.get("n_shards", 1))
     shard_id = int(rcfg.get("shard_id", 0))
-    _run_idx = [0]
-    def _shard_skip():
-        take = (_run_idx[0] % n_shards) == shard_id
-        _run_idx[0] += 1
-        return not take
 
     # Dataset (shared across seeds — same data, different model inits)
     dataset = instantiate(cfg.dataset)
@@ -378,572 +597,33 @@ def scan(cfg):
         cfg.model.vocab_size = int(dataset.vocab_size)
         if hasattr(dataset, "block_size") and "block_size" in cfg.model:
             cfg.model.block_size = int(dataset.block_size)
+        # keep rcfg in step with the mutation: grid.run_hash must see the model
+        # config the run actually instantiates, not the un-injected one (C-R3).
+        rcfg["model"] = OmegaConf.to_container(cfg.model, resolve=True)
 
-    for model_seed in seeds:
-        print(f"\n{'#'*80}")
-        print(f"# Model seed: {model_seed}")
-        print(f"{'#'*80}")
+    specs = expand_grid(rcfg, has_torchjd=_HAS_TORCHJD,
+                        jd_aggregators=tuple(_JD_AGGREGATORS))
+    mine = shard(specs, n_shards, shard_id)
+    print(f"\nGrid: {len(specs)} runs; this shard ({shard_id + 1}/{n_shards}): {len(mine)}")
 
-        seed_str = f"_mseed{model_seed}_lseed{loader_seed}"
+    ctx = _ScanContext(cfg, rcfg, dataset, scan_dir, settings, svd_settings)
 
-        # Initialize model with this seed
-        set_seed(model_seed)
-        base_model = instantiate(cfg.model)
-        init_state = copy.deepcopy(base_model.state_dict())
-        common = _scan_facts(base_model, dataset)   # n_params / n_train / n_val, on every record
-        del base_model
-
-        # --------------------------------------------------------------
-        # SVD optimizer scan
-        # --------------------------------------------------------------
-        if run_svd:
+    seed, banner = None, None
+    for spec in mine:
+        if spec.model_seed != seed:
+            seed = spec.model_seed
+            banner = None
+            print(f"\n{'#'*80}")
+            print(f"# Model seed: {seed}")
+            print(f"{'#'*80}")
+        if _FAMILY_BANNER[spec.family] != banner:
+            banner = _FAMILY_BANNER[spec.family]
             print(f"\n{'='*80}")
-            print("Running SVD optimizer scan")
+            print(banner)
             print(f"{'='*80}")
-
-            k_scan_values = hparams.get('k_fractions', hparams.get('k_values'))
-            use_k_values = 'k_values' in hparams
-
-            # Under the Gram backend the SVD of J is replaced by an exact eigh of
-            # the B x B Gram matrix, so `svd_mode` selects nothing. Collapse it to
-            # the single canonical token "torch" so (a) a list of modes cannot
-            # multiply the grid into duplicate runs and (b) the run_id never
-            # advertises a randomized SVD that was not used.
-            if rcfg.get("use_gram", False) and list(hparams['svd_mode']) != ['torch']:
-                print(f"  [note] use_gram: ignoring svd_mode={hparams['svd_mode']} "
-                      "(exact Gram eigendecomposition); run_ids use 'torch'")
-                hparams['svd_mode'] = ['torch']
-
-            svd_grid = product(
-                hparams['batch_size'],
-                k_scan_values,
-                hparams['lrs'],
-                hparams['rtol'],
-                hparams['svd_mode'],
-                hparams['microbatch_sizes'],
-                hparams['param_fractions'],
-                hparams['kappas'],
-            )
-
-            loss_fn_svd = SVD_LOSS_FNS[loss_key]
-            variable_k = rcfg.get("variable_k", False)
-            # Gram-trick backend: same exact update, ~400x faster / far less memory
-            # (eigendecomposes B x B G = J J^T instead of materializing the B x P Jacobian).
-            # Incompatible with variable_k.
-            use_gram = rcfg.get("use_gram", False)
-            if use_gram and variable_k:
-                raise ValueError("use_gram is incompatible with variable_k")
-            # Gram capture backend: "hooks" (fast, per-sample-decoupled layers only),
-            # "chunked" (exact for any architecture; one jacrev per parameter group of
-            # <= gram_chunk_numel elements) or "full" (exact; ONE jacrev over all
-            # parameters = the full (B, P) Jacobian materialised once, B*P*4 bytes).
-            # Default "hooks" for the MLP suite; CIFAR/ResNet uses "full".
-            gram_capture = rcfg.get("gram_capture", "hooks")
-            # BatchNorm handling under Gram. True (default): norm layers run in eval
-            # mode (running stats) during every wrapper pass -- required by hooks
-            # capture, but the running stats are then never updated from their init,
-            # so a BN net is effectively un-normalised. False: batch statistics, as in
-            # the classic jacrev path / the paper; needs capture="chunked".
-            gram_freeze_norm_stats = bool(rcfg.get("gram_freeze_norm_stats", True))
-            # Chunked capture: parameters are split into groups of <= gram_chunk_numel
-            # elements, one jacrev per group per step. A cap above the parameter count
-            # gives ONE group = the full (B, P) Jacobian materialised once (B*P*4 bytes)
-            # and contracted into the Gram -- fewest passes, most memory.
-            gram_chunk_numel = int(rcfg.get("gram_chunk_numel", 2 ** 22))
-            if use_gram and not gram_freeze_norm_stats and gram_capture not in ("chunked", "full"):
-                raise ValueError("gram_freeze_norm_stats=false requires gram_capture: chunked or full")
-            # Parameter-fraction mask structure (param_fraction < 1 only):
-            # "elementwise" (default, matches the paper: random individual weights),
-            # "rows" (whole output neurons/channels — coarse, and cannot split
-            # BatchNorm so it needs capture="chunked"), or "tensor". Elementwise
-            # runs on the fast hooks path for Linear/Conv2d/_NormBase.
-            svd_mask_mode = rcfg.get("mask_mode", "elementwise")
-
-            for batch_size, k_item, lr, rtol, svd_mode, microbatch_size, param_fraction, kappa in svd_grid:
-                k = max(1, int(k_item * batch_size)) if not use_k_values else k_item
-
-                # Build run_id for deduplication
-                run_id = (
-                    f"svd_bs{batch_size}{id_str}"
-                    f"_k{k}_lr{lr}_rtol{rtol}_svd{svd_mode}{seed_str}"
-                )
-                if microbatch_size is not None:
-                    run_id += f"_mb{microbatch_size}"
-                if param_fraction is not None:
-                    run_id += f"_pf{param_fraction}"
-                    if param_fraction < 1.0:
-                        run_id += f"_{svd_mask_mode}"  # elementwise vs rows -> distinct runs
-                if variable_k:
-                    run_id += "_variablek"
-                if use_gram:
-                    run_id += "_gram"
-                    if not gram_freeze_norm_stats:
-                        run_id += "_bnbatch"  # batch-statistics BatchNorm (distinct from frozen-stats runs)
-                if kappa != 2.0:
-                    run_id += f"_kappa{kappa}"
-                run_id += loss_suffix
-
-                if _shard_skip():
-                    continue
-                if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                    print(f"  [skip] {run_id}")
-                    continue
-
-                print(f"\nSVD: bs={batch_size}, k={k}, lr={lr}, rtol={rtol}, svd_mode={svd_mode}", end="")
-                if microbatch_size is not None:
-                    print(f", mb={microbatch_size}", end="")
-                if param_fraction is not None:
-                    print(f", pf={param_fraction}", end="")
-                if kappa != 2.0:
-                    print(f", kappa={kappa}", end="")
-                if variable_k:
-                    print(f", variable_k=True", end="")
-                print()
-
-                try:
-                    model = instantiate(cfg.model)
-                    model.load_state_dict(init_state)
-
-                    mb = microbatch_size if microbatch_size is not None else 1
-                    pf = param_fraction if param_fraction is not None else 1.0
-                    use_residual = signed_residual and mb == 1  # any kappa
-                    if use_gram:
-                        # Gram trick: exact same update via B x B G = J J^T (no B x P Jacobian).
-                        # svd_mode is irrelevant (eigendecomposition of G replaces the SVD of J).
-                        train_model = GramSvenWrapper(
-                            model, loss_fn_svd, device,
-                            kappa=kappa,
-                            microbatch_size=mb, param_fraction=pf,
-                            mask_mode=(svd_mask_mode if pf < 1.0 else None),
-                            capture=gram_capture,
-                            freeze_norm_stats=gram_freeze_norm_stats,
-                            chunk_numel=gram_chunk_numel,
-                            residual_fn=(residual_fn_svd if use_residual else None),
-                        )
-                        optimizer = SvenGram(train_model, lr=lr, k=k, rtol=rtol, track_svd_info=(svd_info_mode != "none"))
-                    else:
-                        train_model = SvenWrapper(
-                            model, loss_fn_svd, device, kappa=kappa,
-                            microbatch_size=mb, param_fraction=pf,
-                            mask_mode=(svd_mask_mode if pf < 1.0 else None),
-                            residual_fn=(residual_fn_svd if use_residual else None),
-                        )
-                        optimizer = Sven(
-                            train_model, lr=lr, k=k, rtol=rtol,
-                            track_svd_info=(svd_info_mode != "none"), svd_mode=svd_mode,
-                            variable_k=variable_k,
-                        )
-
-                    train_loader = DataLoader(
-                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                        generator=torch.Generator().manual_seed(loader_seed),
-                        drop_last=(microbatch_size is not None),
-                    )
-                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-
-                    train_model, losses, optimizer = train_loop_svd(
-                        train_model, optimizer, loss_fn_svd,
-                        train_loader, val_loader,
-                        rcfg["num_epochs"], device, track_acc=track_acc,
-                        track_param_norm=track_param_norm, is_lm=is_lm,
-                    )
-
-                    result = {
-                        "run_id": run_id,
-                        "optimizer": "SVD",
-                        "loss": loss_key,
-                        "batch_size": batch_size,
-                        "k_fraction": k / batch_size,
-                        "k": k,
-                        "lr": lr,
-                        "rtol": rtol,
-                        "model_seed": model_seed,
-                        "loader_seed": loader_seed,
-                        "svd_mode": svd_mode,
-                        # exact eigh of G (Gram) vs the SVD algorithm named by svd_mode
-                        "decomposition": "gram_eigh" if use_gram else f"svd_{svd_mode}",
-                        "microbatch_size": microbatch_size,
-                        "param_fraction": param_fraction,
-                        "variable_k": variable_k,
-                        "use_gram": use_gram,
-                        "gram_capture": gram_capture if use_gram else None,
-                        "gram_freeze_norm_stats": gram_freeze_norm_stats if use_gram else None,
-                        "gram_chunk_numel": gram_chunk_numel if (use_gram and gram_capture == "chunked") else None,
-                        "mask_mode": (svd_mask_mode if param_fraction is not None and param_fraction < 1.0 else None),
-                        "kappa": kappa,
-                        "signed_residual": bool(use_residual),
-                        "losses": losses,
-                        "svd_info": getattr(optimizer, "svd_info", {})
-                    }
-                    for f in rcfg.get("result_id_fields", []):
-                        result[f] = rcfg[f]
-
-                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-
-                except Exception as e:
-                    print(f"  [error] Training failed: {e}")
-
-                torch.compiler.reset()
-
-        # --------------------------------------------------------------
-        # Standard optimizer scan
-        # --------------------------------------------------------------
-        if run_standard:
-            print(f"\n{'='*80}")
-            print("Running standard optimizer scan")
-            print(f"{'='*80}")
-
-            # Build the grid — LBFGS and PolyakSGD get their own dedicated scan blocks
-            has_lbfgs = "LBFGS" in hparams['optimizers_standard']
-            has_polyak = "PolyakSGD" in hparams['optimizers_standard']
-            non_lbfgs_optimizers = [o for o in hparams['optimizers_standard'] if o not in ("LBFGS", "PolyakSGD")]
-
-            loss_fn_standard = STANDARD_LOSS_FNS[loss_key]
-
-            # --- Non-LBFGS optimizers (original grid) ---
-            if non_lbfgs_optimizers:
-                standard_grid = product(
-                    hparams['batch_size'],
-                    hparams['lrs_standard'],
-                    non_lbfgs_optimizers,
-                    hparams['weight_decays'],
-                )
-
-                for batch_size, lr, optim_name, weight_decay in standard_grid:
-                    # None -> the optimizer's own default (AdamW 0.01), see resolve_weight_decay
-                    weight_decay = resolve_weight_decay(optim_name, weight_decay)
-                    # Non-zero weight decay is only meaningful for AdamW and Muon / MuonW
-                    if optim_name not in ("AdamW", "Muon", "MuonW") and weight_decay != 0.0:
-                        continue
-
-                    run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}"
-                    # AdamW / MuonW always carry their wd in the run_id, so the new default-wd
-                    # runs do not collide with (and get skipped as) the old wd=0 ones
-                    if weight_decay != 0.0 or optim_name in ("AdamW", "MuonW"):
-                        run_id += f"_wd{weight_decay}"
-                    run_id += seed_str + loss_suffix
-
-                    if _shard_skip():
-                        continue
-                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                        print(f"  [skip] {run_id}")
-                        continue
-
-                    wd_str = f", wd={weight_decay}" if weight_decay != 0.0 else ""
-                    print(f"\nStandard: bs={batch_size}, lr={lr}, optim={optim_name}{wd_str}")
-
-                    try:
-                        model = instantiate(cfg.model)
-                        model.load_state_dict(init_state)
-                        model = model.to(device)
-
-                        optimizer = build_standard_optimizer(model, optim_name, lr,
-                                                             weight_decay=weight_decay)
-
-                        train_loader = DataLoader(
-                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                            generator=torch.Generator().manual_seed(loader_seed),
-                        )
-                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-
-                        model, losses = train_loop_standard(
-                            model, optimizer, loss_fn_standard,
-                            train_loader, val_loader,
-                            rcfg["num_epochs"], device, track_acc=track_acc,
-                            track_param_norm=track_param_norm, is_lm=is_lm,
-                        )
-
-                        result = {
-                            "run_id": run_id,
-                            "optimizer": optim_name,
-                            "loss": loss_key,
-                            "batch_size": batch_size,
-                            "k_fraction": None,
-                            "k": None,
-                            "lr": lr,
-                            "rtol": None,
-                            "weight_decay": weight_decay,
-                            "model_seed": model_seed,
-                            "loader_seed": loader_seed,
-                            "svd_mode": None,
-                            "svd_info": None,
-                            "losses": losses,
-                        }
-                        for f in rcfg.get("result_id_fields", []):
-                            result[f] = rcfg[f]
-
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-                    except Exception as e:
-                        print(f"  [error] {optim_name} run failed: {e}")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-            # --- LBFGS optimizer (separate grid with LBFGS-specific params) ---
-            if has_lbfgs:
-                lbfgs_grid = product(
-                    hparams['batch_size'],
-                    hparams['lrs_lbfgs'],
-                    hparams['lbfgs_max_iter'],
-                    hparams['lbfgs_history_size'],
-                    hparams['lbfgs_line_search_fn'],
-                )
-
-                for batch_size, lr, max_iter, history_size, line_search_fn in lbfgs_grid:
-                    run_id = (
-                        f"std_bs{batch_size}{id_str}_lr{lr}_optimLBFGS"
-                        f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
-                        f"{loss_suffix}"
-                    )
-
-                    if _shard_skip():
-                        continue
-                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                        print(f"  [skip] {run_id}")
-                        continue
-
-                    print(f"\nLBFGS: bs={batch_size}, lr={lr}, max_iter={max_iter}, "
-                          f"history_size={history_size}, line_search={line_search_fn}")
-
-                    try:
-                        model = instantiate(cfg.model)
-                        model.load_state_dict(init_state)
-                        model = model.to(device)
-
-                        lbfgs_kwargs = {
-                            "max_iter": max_iter,
-                            "history_size": history_size,
-                            "line_search_fn": line_search_fn if line_search_fn != "none" else None,
-                        }
-                        optimizer = build_standard_optimizer(model, "LBFGS", lr, **lbfgs_kwargs)
-
-                        train_loader = DataLoader(
-                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                            generator=torch.Generator().manual_seed(loader_seed),
-                        )
-                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-
-                        model, losses = train_loop_standard(
-                            model, optimizer, loss_fn_standard,
-                            train_loader, val_loader,
-                            rcfg["num_epochs"], device, track_acc=track_acc,
-                            is_lm=is_lm,
-                        )
-
-                        result = {
-                            "run_id": run_id,
-                            "optimizer": "LBFGS",
-                            "loss": loss_key,
-                            "batch_size": batch_size,
-                            "k_fraction": None,
-                            "k": None,
-                            "lr": lr,
-                            "rtol": None,
-                            "model_seed": model_seed,
-                            "loader_seed": loader_seed,
-                            "svd_mode": None,
-                            "svd_info": None,
-                            "lbfgs_max_iter": max_iter,
-                            "lbfgs_history_size": history_size,
-                            "lbfgs_line_search_fn": line_search_fn,
-                            "losses": losses,
-                        }
-                        for f in rcfg.get("result_id_fields", []):
-                            result[f] = rcfg[f]
-
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-                    except Exception as e:
-                        print(f"  [error] LBFGS run failed: {e}")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-            # --- PolyakSGD optimizer (no LR sweep) ---
-            if has_polyak:
-                polyak_grid = product(
-                    hparams['batch_size'],
-                    hparams['polyak_f_star'],
-                    hparams['polyak_max_lr'],
-                    hparams['polyak_eps'],
-                )
-
-                for batch_size, f_star, max_lr, eps in polyak_grid:
-                    run_id = (
-                        f"std_bs{batch_size}{id_str}_optimPolyakSGD"
-                        f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
-                        f"{loss_suffix}"
-                    )
-
-                    if _shard_skip():
-                        continue
-                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                        print(f"  [skip] {run_id}")
-                        continue
-
-                    print(f"\nPolyakSGD: bs={batch_size}, f_star={f_star}, max_lr={max_lr}, eps={eps}")
-
-                    try:
-                        model = instantiate(cfg.model)
-                        model.load_state_dict(init_state)
-                        model = model.to(device)
-
-                        polyak_kwargs = {"f_star": f_star, "max_lr": max_lr, "eps": eps}
-                        optimizer = build_standard_optimizer(model, "PolyakSGD", lr=None, **polyak_kwargs)
-
-                        train_loader = DataLoader(
-                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                            generator=torch.Generator().manual_seed(loader_seed),
-                        )
-                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-
-                        model, losses = train_loop_standard(
-                            model, optimizer, loss_fn_standard,
-                            train_loader, val_loader,
-                            rcfg["num_epochs"], device, track_acc=track_acc,
-                            is_lm=is_lm,
-                        )
-
-                        result = {
-                            "run_id": run_id,
-                            "optimizer": "PolyakSGD",
-                            "loss": loss_key,
-                            "batch_size": batch_size,
-                            "k_fraction": None,
-                            "k": None,
-                            "lr": None,
-                            "rtol": None,
-                            "model_seed": model_seed,
-                            "loader_seed": loader_seed,
-                            "svd_mode": None,
-                            "svd_info": None,
-                            "polyak_f_star": f_star,
-                            "polyak_max_lr": max_lr,
-                            "polyak_eps": eps,
-                            "losses": losses,
-                        }
-                        for f in rcfg.get("result_id_fields", []):
-                            result[f] = rcfg[f]
-
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-                    except Exception as e:
-                        print(f"  [error] PolyakSGD run failed: {e}")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-        # --------------------------------------------------------------
-        # Jacobian Descent (torchjd) scan
-        # --------------------------------------------------------------
-        if run_jd:
-            if not _HAS_TORCHJD:
-                print("  [skip] torchjd not installed -- skipping JD scan")
-            else:
-                print(f"\n{'='*80}")
-                print("Running Jacobian Descent scan")
-                print(f"{'='*80}")
-                loss_fn_jd = SVD_LOSS_FNS[loss_key]  # per-sample losses
-                jd_grid = product(
-                    hparams['batch_size'], hparams['lrs_jd'],
-                    hparams['aggregators_jd'], hparams['inner_optimizers_jd'],
-                )
-                for batch_size, lr, aggregator_name, inner_optim_name in jd_grid:
-                    if aggregator_name not in _JD_AGGREGATORS:
-                        print(f"  [skip] Unknown JD aggregator: {aggregator_name}")
-                        continue
-                    run_id = (
-                        f"jd_bs{batch_size}{id_str}"
-                        f"_lr{lr}_agg{aggregator_name}_inner{inner_optim_name}{seed_str}{loss_suffix}"
-                    )
-                    if _shard_skip():
-                        continue
-                    if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                        print(f"  [skip] {run_id}")
-                        continue
-                    print(f"\nJD: bs={batch_size}, lr={lr}, aggregator={aggregator_name}, inner={inner_optim_name}")
-                    try:
-                        model = instantiate(cfg.model)
-                        model.load_state_dict(init_state)
-                        model = model.to(device)
-                        aggregator = _JD_AGGREGATORS[aggregator_name]()
-                        inner_optimizer = build_standard_optimizer(model, inner_optim_name, lr)
-                        train_loader = DataLoader(
-                            dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                            generator=torch.Generator().manual_seed(loader_seed),
-                        )
-                        val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-                        model, losses = train_loop_jd(
-                            model, inner_optimizer, aggregator, loss_fn_jd,
-                            train_loader, val_loader, rcfg["num_epochs"], device,
-                            track_acc=track_acc, track_param_norm=track_param_norm,
-                        )
-                        result = {
-                            "run_id": run_id,
-                            "optimizer": f"JD_{aggregator_name}",
-                            "loss": loss_key,
-                            "batch_size": batch_size,
-                            "lr": lr,
-                            "aggregator": aggregator_name,
-                            "inner_optimizer": inner_optim_name,
-                            "model_seed": model_seed,
-                            "loader_seed": loader_seed,
-                            "svd_info": None,
-                            "losses": losses,
-                        }
-                        for f in rcfg.get("result_id_fields", []):
-                            result[f] = rcfg[f]
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-                    except Exception as e:
-                        print(f"  [error] JD run failed: {e}")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-        # --------------------------------------------------------------
-        # Half-Inverse Gradients (HIG) scan
-        # --------------------------------------------------------------
-        if run_hig:
-            print(f"\n{'='*80}")
-            print("Running Half-Inverse Gradients scan")
-            print(f"{'='*80}")
-            loss_fn_hig = SVD_LOSS_FNS[loss_key]  # per-sample losses
-            hig_grid = product(hparams['batch_size'], hparams['lrs_hig'], hparams['tau_hig'])
-            for batch_size, lr, tau in hig_grid:
-                run_id = f"hig_bs{batch_size}{id_str}_lr{lr}_tau{tau}{seed_str}{loss_suffix}"
-                if _shard_skip():
-                    continue
-                if os.path.exists(os.path.join(scan_dir, run_id + ".jsonl")):
-                    print(f"  [skip] {run_id}")
-                    continue
-                print(f"\nHIG: bs={batch_size}, lr={lr}, tau={tau}")
-                try:
-                    model = instantiate(cfg.model)
-                    model.load_state_dict(init_state)
-                    train_model = HIGWrapper(model, loss_fn_hig, device)
-                    optimizer = HIGOptimizer(train_model, lr=lr, tau=tau)
-                    train_loader = DataLoader(
-                        dataset.train_dataset, batch_size=batch_size, shuffle=True,
-                        generator=torch.Generator().manual_seed(loader_seed),
-                    )
-                    val_loader = DataLoader(dataset.val_dataset, batch_size=batch_size, shuffle=False)
-                    train_model, losses = train_loop_hig(
-                        train_model, optimizer, loss_fn_hig,
-                        train_loader, val_loader, rcfg["num_epochs"], device,
-                        track_acc=track_acc, track_param_norm=track_param_norm,
-                    )
-                    result = {
-                        "run_id": run_id,
-                        "optimizer": "HIG",
-                        "loss": loss_key,
-                        "batch_size": batch_size,
-                        "lr": lr,
-                        "tau": tau,
-                        "model_seed": model_seed,
-                        "loader_seed": loader_seed,
-                        "svd_info": None,
-                        "losses": losses,
-                    }
-                    for f in rcfg.get("result_id_fields", []):
-                        result[f] = rcfg[f]
-                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
-                except Exception as e:
-                    print(f"  [error] HIG run failed: {e}")
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+        if os.path.exists(os.path.join(scan_dir, spec.run_id + ".jsonl")):
+            print(f"  [skip] {spec.run_id}")
+            continue
+        execute(spec, ctx)
 
     print(f"\nScan complete. Results in {scan_dir}/")

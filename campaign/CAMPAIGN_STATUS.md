@@ -49,3 +49,16 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 * 09-18 13:45 — branches created; scaffolding committed (558463c); Stage 0 workflow launched; cloud research
   agent launched. Probe results will land in
   `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/probe_results/`.
+* 09-18 ~16:30 — **GPU probe done** (jobs 47037513 A100-80, 47037629/47038158 MIG; report in the stage-0 workflow
+  journal, scripts in `bench/probe_campaign/`, results in `.../sv3_campaign_scratch/probe_results/`, one-command
+  table: `.venv/bin/python bench/probe_campaign/analyse.py`). Decisions: CIFAR Sven keeps `gram_capture: full` with
+  **`empty_cache=False` + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** = 186.7 ms/step (was 841; the per-step
+  `torch.cuda.empty_cache()` was the whole slowdown and all of the variance), 23.3 GB reserved, NPROC=1 (2 co-tenants
+  give T=0.98). `empty_cache=False` becomes the default for ALL runs. NPROC on A100-80: MLP Sven 12, cheap first-order
+  = cores, LBFGS 4-6, nanoGPT Sven 3, CIFAR baselines 4+. NPROC on a MIG slice: MLP Sven 6-8, Adam 6, LBFGS 6-8,
+  nanoGPT 1, CIFAR Sven 1 at chunked 0.5 (419 ms/step, 10 GB). MLP step time is set by host CPU load (1.13 ms on a
+  quiet gpu_test node vs 4.58 ms on a full iaifi node) -> timing runs must control for node load; use wall time, never
+  CUDA events, for co-tenancy decisions. CIFAR Sven run is now ~25-30 min -> headline CIFAR Sven ~80 GPU-h total.
+* 09-18 ~16:40 — Stage 0: all 10 implementers finished; adversarial reviews in progress (real catches so far: 0-d
+  device tensors in `svd_info` crash the runner on GPU; sparse `svs` vs per-step `_split_diagnostics` seam;
+  `n_train > 50,000` silently clamps -> overparam MNIST top point must become N=50000). Nothing committed yet.

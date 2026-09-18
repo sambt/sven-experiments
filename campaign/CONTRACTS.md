@@ -106,3 +106,9 @@ generators, targets normalised by pool mean/std, `n_train` subsamples the pool.
   `mnist_kappaScan_labelRegression` with per-kappa lr retune (C-X1), micro-batch / param-fraction MLP scans
   (toy + MNIST label-reg first), `exp_finetune_cifar_smallN`, diagnostics + confirmation seeds for headline
   scans, polynomial data-seed replicates.
+* **`empty_cache` default is now `False`** (probe 2026-09-18: the per-step `torch.cuda.empty_cache()` made CIFAR
+  Sven 4.5x slower, 841 -> 187 ms/step, and caused all of its step-time variance). Keep `empty_cache=True`
+  reachable for reproducing legacy runs. Launchers export `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+  CIFAR keeps `gram_capture: full`, NPROC=1.
+* MNIST train part is 50,000: `n_train` larger than the available pool must RAISE, never clamp silently; the top
+  point of `rebuttal_overparam_mnist_scan` becomes N=50000.
