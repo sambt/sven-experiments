@@ -86,3 +86,5 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   headline results: if the fresh headline optimum moves materially, rerun them - cheap, hash dedup handles it).
   Result-dependent (WAIT): standalone timing of best configs, diagnostics (log checkpoints + dense spectra) and
   confirmation seeds of selected configs, polynomial data-seed replicates of selected configs.
+* 09-18 ~21:30 — User: CIFAR fine-tune -> extension phase (out of the launch plan); MNIST kappa stays. Standing go
+  reconfirmed: after Stage 1 commit + green smoke, queue all result-independent scans, headline + nanoGPT first.

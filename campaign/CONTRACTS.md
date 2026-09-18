@@ -160,3 +160,7 @@ falls back to it) and an `experiment_results` symlink to the real results root; 
 `OMP_NUM_THREADS=1`. NPROC per GPU from the probe: A100 — MLP Sven 12, first-order MLP 12, LBFGS/HIG/Shampoo 4,
 nanoGPT 3, CIFAR Sven 1, CIFAR baselines 4; MIG slice — MLP Sven 6, first-order 6, LBFGS 6, nanoGPT 1.
 gpu_test allows 2 jobs and 8 slices per user: a MIG job takes `--gres=gpu:4`, 12 h, and runs one worker pool per slice.
+* (user, 2026-09-18 ~21:30) `exp_finetune_cifar_smallN` moves to the EXTENSION phase (after the campaign, not in the
+  launch plan; config stays). `mnist_kappaScan_labelRegression` stays in the plan. Standing go: after Stage 1 is
+  committed and the smoke matrix is green, queue everything that does not depend on scan results, headline scans +
+  `exp_nanogpt_speedrun` first in every work list.

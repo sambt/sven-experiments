@@ -1,0 +1,368 @@
+# The robustness campaign, as work the launcher can submit.
+#
+#   tools/launch_campaign.py campaign/plan_campaign.yaml --phase P0            # print
+#   tools/launch_campaign.py campaign/plan_campaign.yaml --phase P0 --lane mig --submit
+#   tools/reconcile.py --all campaign/plan_campaign.yaml --phase P0
+#
+# Scope and launch order are CONTRACTS.md "Scope update" (user, 2026-09-18 evening):
+# P0 = six headline scans + exp_nanogpt_speedrun; P1 = overparam (P>N), Fig-5 CIFAR
+# param-fraction, batch-size polynomial; P2 = one grid-extension round (+ standalone
+# timing, which is NOT in this plan -- see the `timing:` stub at the bottom);
+# P3 = kappa retune, micro-batch / param-fraction MLP scans, fine-tune, diagnostics
+# and confirmation seeds. CUT scans (critbatch, GPT-2-small, the four 1-seed CIFAR
+# kappa/paramFrac scans, mnist_scan_brier) do not appear here at all.
+#
+# Every list is a PRIORITY ORDER, not an assignment: the runner takes work from the
+# claim queue (`scheduler=claims`), so every GPU of every job may work the same item
+# concurrently and an item whose runs are all finished returns in seconds. Adding
+# jobs to a lane therefore never duplicates work -- it only adds throughput.
+#
+# NPROC values are the measured GPU probe table (campaign/stage0_reports/gpu.probe.md,
+# CONTRACTS.md "Stage 1 contracts"): A100 -- MLP Sven 12, first-order MLP 12,
+# LBFGS/HIG/Shampoo 4, nanoGPT 3, CIFAR Sven 1, CIFAR baselines 4; MIG slice -- MLP
+# Sven 6, first-order 6, LBFGS 6, nanoGPT 1. Values NOT in the probe table are marked
+# `# inferred` where they appear.
+version: 1
+plan: campaign
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
+
+lanes:
+  # 8 A100-80GB per QOS pair in practice (2 distinct nodes per QOS, independent caps);
+  # `gpu` is opportunistic overflow only (campaign/scout/queue.md).
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    mem: 64G
+    time: "24:00:00"
+    cpus_extra: 2          # cpus-per-task = max NPROC over the list's items + 2
+    note: "one GPU per job, many jobs; 24 h default (the 12 h in the old launchers was self-imposed)"
+  # gpu_test: MIG a100_3g.20gb (19.6 GB), median queue wait 3 s, but MaxJobsPU=2 AND
+  # MaxSubmitPU=2 and gres/gpu=8 per user -> exactly 2 jobs x 4 slices.
+  mig:
+    partition: gpu_test
+    gres: "gpu:4"
+    cpus: 32
+    mem: 128G
+    time: "12:00:00"
+    max_jobs: 2
+    note: "MLP work only: 20 GB/slice fits toy/poly/MNIST MLPs; CIFAR full capture (23 GB) does not"
+
+# ---------------------------------------------------------------------------
+# Anchors. Keys starting with `_` are ignored by the parser.
+# ---------------------------------------------------------------------------
+_nproc:
+  sven_mlp:    &np_sven_mlp    {a100: 12, mig: 6}
+  first_mlp:   &np_first_mlp   {a100: 12, mig: 6}
+  heavy_mlp:   &np_heavy_mlp   {a100: 4,  mig: 6}   # LBFGS / SOAP+Shampoo+KFAC; JD inferred
+  nanogpt:     &np_nanogpt     {a100: 3,  mig: 1}
+  cifar_sven:  &np_cifar_sven  {a100: 1,  mig: 1}   # T=0.98 at 2 co-tenants: 1 is optimal
+  cifar_first: &np_cifar_first {a100: 4,  mig: 1}
+  cifar_heavy: &np_cifar_heavy {a100: 2,  mig: 1}   # inferred: CIFAR LBFGS is unmeasured
+  resnet_ft:   &np_resnet_ft   {a100: 1,  mig: 1}   # inferred: pretrained-ResNet18 Sven, hooks capture
+
+_overrides:
+  # `optimizers_standard` must stay a SUBSET of the config's own list -- the launcher's
+  # dry run warns when it is not (`[warn] not in config`). PolyakSGD rides along in
+  # FIRST: it is its own family in the grid but a cheap first-order step in practice.
+  svd:     &O_SVD     "mode=svd"
+  first:   &O_FIRST   "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]"
+  second:  &O_SECOND  "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]"
+  lbfgs:   &O_LBFGS   "mode=standard optimizers_standard=[LBFGS]"
+  jd:      &O_JD      "mode=jd"
+  hig:     &O_HIG     "mode=hig"
+  # CIFAR: the config lists Adam/SGD/SGDm/RMSprop/PolyakSGD/LBFGS today. AdamW (C-B4:
+  # torch-default wd in every scan) and Muon/MuonW (O6, now that MuonConv is vendored
+  # and exact) have NEVER run on ResNet18 and get their own item, because optim.fix.md
+  # (c) expects their lr grid to need extending downwards.
+  cifar_first:  &O_CIFAR_FIRST  "mode=standard optimizers_standard=[Adam,SGD,SGDm,RMSprop,PolyakSGD]"
+  cifar_muon:   &O_CIFAR_MUON   "mode=standard optimizers_standard=[AdamW,Muon,MuonW]"
+  nanogpt_std:  &O_NANOGPT_STD  "mode=standard optimizers_standard=[AdamW,Muon,MuonW,SOAP]"
+
+# P0 MLP work: identical items for the MIG lane and its A100 overflow list, with the
+# lane picking the NPROC. Sven for all four scans first (the headline claim), then the
+# first-order baselines, then second-order/LBFGS, then JD/HIG (400 runs that NO launcher
+# has ever submitted -- grid_inventory.md §5.1).
+_items:
+  p0_mlp: &items_p0_mlp
+    - {config: toy_1d_scan,                 overrides: *O_SVD,    nproc: *np_sven_mlp}
+    - {config: polynomial_scan,             overrides: *O_SVD,    nproc: *np_sven_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_SVD,    nproc: *np_sven_mlp}
+    - {config: mnist_scan_ce,               overrides: *O_SVD,    nproc: *np_sven_mlp}
+    - {config: toy_1d_scan,                 overrides: *O_FIRST,  nproc: *np_first_mlp}
+    - {config: polynomial_scan,             overrides: *O_FIRST,  nproc: *np_first_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_FIRST,  nproc: *np_first_mlp}
+    # MNIST-CE lost AdamW/Muon/MuonW/SOAP/Shampoo/KFAC in submit_fresh_suite.sh:79
+    # (CORE_FIRST, no SECOND job). Both items below are what puts them back.
+    - {config: mnist_scan_ce,               overrides: *O_FIRST,  nproc: *np_first_mlp}
+    - {config: toy_1d_scan,                 overrides: *O_SECOND, nproc: *np_heavy_mlp}
+    - {config: polynomial_scan,             overrides: *O_SECOND, nproc: *np_heavy_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_SECOND, nproc: *np_heavy_mlp}
+    - {config: mnist_scan_ce,               overrides: *O_SECOND, nproc: *np_heavy_mlp}
+    - {config: toy_1d_scan,                 overrides: *O_LBFGS,  nproc: *np_heavy_mlp}
+    - {config: polynomial_scan,             overrides: *O_LBFGS,  nproc: *np_heavy_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_LBFGS,  nproc: *np_heavy_mlp}
+    - {config: mnist_scan_ce,               overrides: *O_LBFGS,  nproc: *np_heavy_mlp}
+    - {config: toy_1d_scan,                 overrides: *O_JD,     nproc: *np_heavy_mlp}
+    - {config: polynomial_scan,             overrides: *O_JD,     nproc: *np_heavy_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_JD,     nproc: *np_heavy_mlp}
+    - {config: mnist_scan_ce,               overrides: *O_JD,     nproc: *np_heavy_mlp}
+    - {config: toy_1d_scan,                 overrides: *O_HIG,    nproc: *np_heavy_mlp}
+    - {config: polynomial_scan,             overrides: *O_HIG,    nproc: *np_heavy_mlp}
+    - {config: mnist_scan_labelRegression,  overrides: *O_HIG,    nproc: *np_heavy_mlp}
+    - {config: mnist_scan_ce,               overrides: *O_HIG,    nproc: *np_heavy_mlp}
+
+  # P1 MLP work. `n_data` is an item axis (one item per value), because it changes the
+  # dataset and the batch size (toy/poly run full batch, B = N) -- and because it is in
+  # the run_id via `result_id_fields: [mlp_width, n_data]`, so the values never collide.
+  # MNIST tops out at 50000: the train part IS 50,000 and n_train above the pool now
+  # RAISES instead of clamping (data.fix.md).
+  p1_mlp: &items_p1_mlp
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=svd n_data=150",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=svd n_data=300",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=svd n_data=600",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=svd n_data=1200",  nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=svd n_data=170",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=svd n_data=340",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=svd n_data=675",   nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=svd n_data=1350",  nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=2500",  nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=5000",  nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=10000", nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=20000", nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=40000", nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=svd n_data=50000", nproc: *np_sven_mlp}
+    - {config: rebuttal_batchsize_polynomial_scan,  overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=150",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=300",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=600",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=1200",  nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=170",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=340",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=675",   nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=1350",  nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=2500",  nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=5000",  nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=10000", nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=20000", nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=40000", nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=50000", nproc: *np_first_mlp}
+    - {config: rebuttal_batchsize_polynomial_scan,  overrides: *O_FIRST,  nproc: *np_first_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=150",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=300",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=600",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=1200",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=170",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=340",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=675",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=1350",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=2500",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=5000",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=10000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=20000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=40000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=50000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_batchsize_polynomial_scan,  overrides: *O_SECOND, nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[LBFGS] n_data=150",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[LBFGS] n_data=300",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[LBFGS] n_data=600",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_toy_1d_scan,      overrides: "mode=standard optimizers_standard=[LBFGS] n_data=1200",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[LBFGS] n_data=170",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[LBFGS] n_data=340",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[LBFGS] n_data=675",   nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_polynomial_scan,  overrides: "mode=standard optimizers_standard=[LBFGS] n_data=1350",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=2500",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=5000",  nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=10000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=20000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=40000", nproc: *np_heavy_mlp}
+    - {config: rebuttal_overparam_mnist_scan,       overrides: "mode=standard optimizers_standard=[LBFGS] n_data=50000", nproc: *np_heavy_mlp}
+    # O5: the LBFGS grid of the batch-size scan is cut in the CONFIG (6 B x 3 lr x 5
+    # seeds, max_iter/history pinned at the headline best), so this item stays plain.
+    - {config: rebuttal_batchsize_polynomial_scan,  overrides: *O_LBFGS,  nproc: *np_heavy_mlp}
+
+  # P3 MLP ablations: Sven-only knob sweeps. "toy + MNIST label-reg first" per the
+  # scope update, so the CE variants sit at the end of the list.
+  p3_mlp: &items_p3_mlp
+    - {config: mnist_kappaScan_labelRegression, overrides: *O_SVD, nproc: *np_sven_mlp,
+       note: "C-X1: per-kappa lr retune lives in the config (lrs 0.1..1.0, kappa 1/2/3)"}
+    - {config: toy_1d_microbatch_scan,          overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: toy_1d_paramfrac_scan,           overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: mnist_microbatch_labelreg_scan,  overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: mnist_paramfrac_labelreg_scan,   overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: polynomial_microbatch_scan,      overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: polynomial_paramfrac_scan,       overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: mnist_microbatch_ce_scan,        overrides: *O_SVD, nproc: *np_sven_mlp}
+    - {config: mnist_paramfrac_ce_scan,         overrides: *O_SVD, nproc: *np_sven_mlp}
+
+# ---------------------------------------------------------------------------
+# The work lists
+# ---------------------------------------------------------------------------
+work_lists:
+  # ---------------- P0: the six headline scans + nanoGPT ----------------
+  - name: p0_mlp_mig
+    phase: P0
+    lane: mig
+    n_jobs: 2                 # the gpu_test cap: 2 jobs x 4 slices = the 8-GPU TRES cap
+    chain: true               # `--chain` makes ONE of these renew itself at 12 h
+    note: "toy/poly/MNIST headline MLP work on MIG slices; 0 s queue wait, ~0.5-0.8x an A100 per slice"
+    items: *items_p0_mlp
+
+  - name: p0_mlp_a100_overflow
+    phase: P0
+    lane: a100
+    n_jobs: 4
+    note: "same items at A100 NPROC; absorbs whatever the 8 MIG slices have not finished"
+    items: *items_p0_mlp
+
+  - name: p0_cifar_sven
+    phase: P0
+    lane: a100
+    n_jobs: 4
+    note: "CIFAR Sven: NPROC=1 (probe T=0.98 at 2 co-tenants), several identical jobs instead;
+           full capture + empty_cache=false + expandable_segments = 186.7 ms/step, 23.3 GB"
+    items:
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_SVD, nproc: *np_cifar_sven}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_SVD, nproc: *np_cifar_sven}
+
+  - name: p0_cifar_baselines
+    phase: P0
+    lane: a100
+    n_jobs: 2
+    note: "ResNet18 baselines; AdamW/Muon/MuonW have never run on CIFAR (needs the config
+           to list them -- the dry run warns until it does)"
+    items:
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_CIFAR_FIRST, nproc: *np_cifar_first}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_CIFAR_FIRST, nproc: *np_cifar_first}
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_LBFGS,       nproc: *np_cifar_heavy}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_LBFGS,       nproc: *np_cifar_heavy}
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_CIFAR_MUON,  nproc: *np_cifar_first}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_CIFAR_MUON,  nproc: *np_cifar_first}
+
+  - name: p0_nanogpt
+    phase: P0
+    lane: a100
+    n_jobs: 2
+    note: "R1 'no transformers'; ~4 GPU-h total. nanoGPT Sven NPROC=3 (probe), MIG is 1 -> A100 only"
+    items:
+      - {config: exp_nanogpt_speedrun, overrides: *O_SVD,          nproc: *np_nanogpt}
+      - {config: exp_nanogpt_speedrun, overrides: *O_NANOGPT_STD,  nproc: *np_nanogpt}
+
+  # ---------------- P1: the rebuttal cruxes ----------------
+  - name: p1_mlp_mig
+    phase: P1
+    lane: mig
+    n_jobs: 2
+    chain: true
+    note: "overparam P>N (R1 crux) + batch-size sweep (R2 Q1); one item per n_data"
+    items: *items_p1_mlp
+
+  - name: p1_mlp_a100_overflow
+    phase: P1
+    lane: a100
+    n_jobs: 4
+    note: "same items at A100 NPROC"
+    items: *items_p1_mlp
+
+  - name: p1_cifar_fig5
+    phase: P1
+    lane: a100
+    n_jobs: 2
+    note: "Fig-5 param-fraction, 3 seeds (user: necessary; replaces the two 1-seed CIFAR
+           paramFrac scans). Its k/lr/rtol set point must be re-derived from the reconciled
+           headline scan BEFORE launch (grid_inventory.md §5.5)"
+    items:
+      - {config: rebuttal_fig5_cifar_paramfrac_scan, overrides: *O_SVD, nproc: *np_cifar_sven}
+
+  # ---------------- P2: one grid-extension round ----------------
+  - name: p2_extension_round
+    phase: P2
+    lane: a100
+    n_jobs: 2
+    note: "STUB, intentionally empty. Fill it from `tools/reconcile.py <scan>`: every
+           method whose best config sits on a grid EDGE gets one half-decade extension
+           item (`lrs=[...]`, and for Sven `k_values`/`rtol`), per C-B3, at most one
+           round. Enable the items, then launch this list."
+    items: []
+
+  # ---------------- P3: ablations, fine-tune, diagnostics ----------------
+  - name: p3_mlp_mig
+    phase: P3
+    lane: mig
+    n_jobs: 2
+    chain: true
+    note: "kappa retune + micro-batch / param-fraction MLP sweeps"
+    items: *items_p3_mlp
+
+  - name: p3_mlp_a100_overflow
+    phase: P3
+    lane: a100
+    n_jobs: 2
+    note: "same items at A100 NPROC"
+    items: *items_p3_mlp
+
+  - name: p3_finetune
+    phase: P3
+    lane: a100
+    n_jobs: 2
+    note: "R2 Q3, pretrained ResNet18 on small N; bn_mode=frozen everywhere (O2).
+           The existing 240 records in this scan dir are F3-contaminated -- fresh root only"
+    items:
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=250",  nproc: *np_resnet_ft}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=500",  nproc: *np_resnet_ft}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=1000", nproc: *np_resnet_ft}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=svd n_data=2000", nproc: *np_resnet_ft}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=250",  nproc: *np_cifar_first}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=500",  nproc: *np_cifar_first}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=1000", nproc: *np_cifar_first}
+      - {config: exp_finetune_cifar_smallN, overrides: "mode=standard n_data=2000", nproc: *np_cifar_first}
+
+  - name: p3_cifar_jd_hig
+    phase: P3
+    lane: a100
+    n_jobs: 1
+    note: "PARKED, needs a user decision. Both CIFAR headline configs carry lrs_jd and
+           lrs_hig (20 JD + 80 HIG runs each) and NO launcher has ever run them; HIG on
+           ResNet18 needs a full per-sample Jacobian, i.e. Sven-class cost (~25-30 min a
+           run => ~50 GPU-h per scan). Enable only if the reviewers' JD/HIG comparison is
+           wanted on CIFAR as well as on the four MLP scans."
+    items:
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_JD,  nproc: *np_cifar_heavy, enabled: false}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_JD,  nproc: *np_cifar_heavy, enabled: false}
+      - {config: cifar10_resnet_scan_labelRegression, overrides: *O_HIG, nproc: *np_cifar_sven,  enabled: false}
+      - {config: cifar10_resnet_ce_scan,              overrides: *O_HIG, nproc: *np_cifar_sven,  enabled: false}
+
+  - name: p3_diagnostics_confirmation
+    phase: P3
+    lane: a100
+    n_jobs: 2
+    note: "STUB, intentionally empty. Diagnostics = the reconciled best config per (scan,
+           method) re-run with `checkpoints=log` and dense spectra; confirmation seeds =
+           the same configs at extra model_seeds. Both need best_configs.json re-derived
+           from the fresh scans, so the items cannot be written before P0/P1 reconcile.
+           Polynomial data-seed replicates belong here too, but `data_seed` is NOT part of
+           the run_id: two data seeds would collide on the same run_id unless `data_seed`
+           joins `result_id_fields` or the replicate gets its own config. DECISION NEEDED."
+    items: []
+
+# ---------------------------------------------------------------------------
+# Standalone timing (C-T1 / phase 5) -- deliberately NOT part of this plan
+# ---------------------------------------------------------------------------
+timing:
+  status: not_in_this_plan
+  why: >
+    Timing runs must be the only process on their GPU and must run serially: the probe
+    measured that an MLP step time is set by HOST CPU load (identical MNIST-Adam config:
+    1.13 ms on a quiet node vs 4.58 ms on a node at 4/4 GPUs), so any worker pool -- even
+    on other GPUs of the same node -- corrupts the numbers. A claim queue is the wrong
+    tool: there is no throughput to win, only isolation to protect.
+  shape: >
+    One `--exclusive --gres=gpu:4` job per batch of (scan, method) best-config pairs,
+    NPROC=1, serial, ~36 h, launched with bench/timing_serial.sbatch (RESELECT=1 to
+    re-derive best_configs.json first). Note that an exclusive job consumes one of the two
+    node slots of its QOS and cannot start while any co-tenant holds a GPU on the node --
+    the 2026-09-17 `timing_serial_RERUNS` job sat in QOSMaxNodePerUserLimit for 13 h.
+  depends_on:
+    - P0/P1 reconciled and best_configs.json re-derived from the FRESH results root
+    - two CIFAR `*_timing` configs, which do not exist yet (grid_inventory.md §1)
+  scans: [toy_1d_scan_timing, polynomial_scan_timing, mnist_scan_labelRegression_timing,
+          mnist_scan_ce_timing, exp_nanogpt_speedrun_timing]
