@@ -1,0 +1,48 @@
+{
+ "findings": [
+  {
+   "severity": "medium",
+   "file": "sven/sven/nn/sven_wrapper.py",
+   "line": 353,
+   "issue": "Contract deviation: CONTRACTS.md (Decisions, 2026-09-18) says `evaluate_and_loss()` = \"train-mode normalisation, no buffer write\". The implementation routes it through `_pass_norm_stats()`, so under `bn_mode=\"frozen\"` it uses eval-mode (running-stat) normalisation, not train-mode. The reasoning is sound and internally consistent with the same file's \"frozen = norm layers in eval mode always (train and eval)\" decision, and I verified no campaign config is affected (every scan is `use_gram: true` + `variable_k: false`, and `_update_params_variable_k` exists only on the classic `Sven`). But it is a deviation from an explicitly binding line and the user should be the one to sign it off, because it is what the `variable_k` line search accepts/rejects against.",
+   "suggested_fix": "Keep the behaviour (it is the right call) but get it ratified: add the deviation to CONTRACTS.md's Decisions section, or restore the literal reading by giving `evaluate_and_loss` its own train-mode-no-write context. Do not change it silently in either direction."
+  },
+  {
+   "severity": "medium",
+   "file": "sven/tests/test_torch_bn_policy.py",
+   "line": 249,
+   "issue": "Requirement (3) of the track spec names \"jvp\" among the passes that must run under the no-write context, and the only jvp site is `SvenGramReg._rows_jvp` (`sven/sven/opt/sven.py:582`). Neither new test file instantiates `SvenGramReg` with `fisher_decay>0`, so that half of the requirement has no coverage: the suppression currently depends on one line in a file this track does not own and which the sven-opt track is actively editing. I confirmed by probe that it is correct today (`{'bn1': 1, 'bn2': 1}` updates with `fisher_decay=1e-3`), so this is a coverage gap, not a defect. Campaign risk is near zero because `SvenGramReg` is referenced by no sv3 config.",
+   "suggested_fix": "Add one parametrisation to `test_batch_mode_updates_stats_exactly_once_gram` that steps `SvenGramReg(wrapper, lr=0.1, k=B, rtol=1e-10, fisher_decay=1e-3)` (needs `step((x, y))`) and reuses `assert_updated_exactly_once` \u2014 ~6 lines in a file the track owns, and it pins the `_pass_norm_stats()` call site against a future edit."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 260,
+   "issue": "C-R4 is only half wired: `mean_actual_param_fraction` now exists and is correct, but nothing in sv3 reads it. `grep -rn actual_param_fraction experiments/ analysis/` matches only `analysis/style.py:444`, where `actual_param_fraction` is already reserved as a PROVENANCE column. So the C-R4 acceptance criterion (\"for masked runs the mean actual_param_fraction\" on every record) cannot pass today, and every masked run in the campaign would ship without it. The file belongs to the runner track, not to sven-nn; flagging it because it is the other half of this track's deliverable and it is currently unowned.",
+   "suggested_fix": "In the runner's post-run record assembly (beside the `facts` dict at generic_scan.py:260), write `record['actual_param_fraction'] = train_model.mean_actual_param_fraction` for svd-family runs when `param_fraction < 1` \u2014 the column name `analysis/style.py` already expects, carrying the mean value C-R4 asks for."
+  },
+  {
+   "severity": "low",
+   "file": "sven/sven/nn/gram_wrapper.py",
+   "line": 230,
+   "issue": "`capture=\"hooks\"` + `bn_mode=\"batch\"` is not rejected when the norm layers happen to already be in eval mode: `_check_hooks_supported` only raises on `mod.training or mod.running_mean is None`. I confirmed by probe that such a wrapper is accepted, writes no buffer, and reports `bn_mode == \"batch\"` \u2014 i.e. the run would be labelled `batch` in `run_id`/records while actually training with frozen statistics. The spec said hooks \"supports only 'frozen' as today - raise clearly otherwise\". Unreachable through the runner (grid.py:247 rejects `gram_freeze_norm_stats=false` unless capture is chunked/full), so this is a latent mislabel only.",
+   "suggested_fix": "Raise in `GramSvenWrapper.__init__` when `capture == \"hooks\" and self.bn_mode == \"batch\"`, independent of the current module modes; or, cheaper, assert the invariant in `loss_and_grad` next to the existing `_check_hooks_supported()` call."
+  },
+  {
+   "severity": "low",
+   "file": "sven/sven/nn/sven_wrapper.py",
+   "line": 222,
+   "issue": "`no_norm_stat_updates()` is correct for `_BatchNorm` (stock and sv3-vendored \u2014 both gate on `not self.training or self.track_running_stats` and `bn_training = self.training`), but it is wrong for the other `_NormBase` subclass with running stats, `InstanceNorm*d`: its `forward` hands `running_mean`/`running_var` to `F.instance_norm` unconditionally (so the buffers are still written) and computes `use_input_stats = self.training or not self.track_running_stats` (so clearing the flag flips an eval-mode InstanceNorm to input statistics, changing the normalisation and hence the Gram). No model in sv3 uses InstanceNorm, so this is future-proofing only.",
+   "suggested_fix": "Either narrow `_norm_stat_modules()` to `isinstance(mod, _BatchNorm)` and raise `NotImplementedError` for any other running-stat `_NormBase`, or add one sentence to the `no_norm_stat_updates` docstring stating that the contract is verified for `_BatchNorm` only."
+  },
+  {
+   "severity": "low",
+   "file": "sven/sven/nn/sven_wrapper.py",
+   "line": 615,
+   "issue": "Two cosmetic edges in the new C-R4 surface. (a) `mean_actual_param_fraction` falls back to `self.actual_param_fraction` (= 1.0) before the first step, so a masked run read too early reports \"unmasked\" rather than a sentinel. (b) A `loss_and_grad` that raises after the mask is drawn still contributes to the mean (`_apf_steps == 1` after a shape error \u2014 verified by probe); harmless, since such a run dies anyway. Separately, `freeze_norm_stats` is now a read-only property, so any external `wrapper.freeze_norm_stats = X` would raise `AttributeError`; I found no such assignment anywhere in sv3 or sven, but notebooks are not covered by that grep.",
+   "suggested_fix": "Optional: return `float(\"nan\")` (or `self.param_fraction`) from `mean_actual_param_fraction` when `_apf_steps == 0 and param_fraction < 1`, so a record can distinguish \"no steps yet\" from \"unmasked\". No action needed on (b) or on the property."
+  }
+ ],
+ "tests_run": "Ran via campaign/run_cpu_tests.sh (sbatch, CPU, -C sven): (1) `pytest tests/test_torch_bn_policy.py tests/test_torch_param_fraction_record.py -q` -> `32 passed in 5.77s`; (2) bare `pytest -q` over the whole sven suite -> `179 passed, 5 skipped in 9.58s` (4 jax modules skipped by the new importorskip, 1 skip on the absent OpenWebText shard; the suite collects cleanly with the new [tool.pytest.ini_options], which was the F-hygiene requirement). Plus two independent adversarial probe scripts run locally against sv3's real vendored BatchNorm (`/tmp/claude-66176/-n-home11-sambt-iaifi-sv3/30b30b16-e05d-4e46-8a25-371ea6181950/scratchpad/probe_bn.py` and `probe_bn2.py`), recovering the buffer-update count by replaying F.batch_norm on cloned pre-step buffers: exactly one update per step for gram full, gram chunked, gram chunked + masked (elementwise/tensor/rows), classic SvenWrapper+Sven, classic + masked, microbatch_size=2, variable_k=True, SvenGramReg(fisher_decay=1e-3) (the jvp path), and across two consecutive steps; partial freeze (one BN left in eval under bn_mode=batch) updates only the train-mode layer; frozen-mode Gram is bitwise equal (max err 0.0) to an eval-mode jacrev reference, confirming the legacy frozen path is unchanged. The two probe \"FAIL\" lines were my own arbitrary tolerance and a pre-existing, unrelated limitation (tensor-mode whole-tensor packing cannot approach 0.4 on a 4-layer toy MLP; rows-mode masking rejects BatchNorm affine params \u2014 same error before this change).",
+ "verdict": "pass"
+}

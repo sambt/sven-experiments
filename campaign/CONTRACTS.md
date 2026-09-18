@@ -112,3 +112,6 @@ generators, targets normalised by pool mean/std, `n_train` subsamples the pool.
   CIFAR keeps `gram_capture: full`, NPROC=1.
 * MNIST train part is 50,000: `n_train` larger than the available pool must RAISE, never clamp silently; the top
   point of `rebuttal_overparam_mnist_scan` becomes N=50000.
+* `evaluate_and_loss()` = train-mode-no-write under `bn_mode=batch`; under `frozen` the frozen decision wins
+  (eval-stat normalisation, no write). No campaign config uses `variable_k`.
+* Runner records `actual_param_fraction = train_model.mean_actual_param_fraction` for svd-family runs (1.0 unmasked).
