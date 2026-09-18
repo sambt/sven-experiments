@@ -10,7 +10,7 @@ Conventions
     peak_mb      max over measured steps of ``torch.cuda.max_memory_allocated``
     overhead_mb  peak_mb minus the model's own parameter memory
     rel_time     step_ms / the reference first-order method (Adam, else AdamW) at the SAME
-                 architecture, batch size and width;  rel_mem likewise vs SGD
+                 architecture, batch size and width;  rel_mem = peak_mb / SGD (SGD only)
     status       ok | oom | infeasible | error  -- non-ok rows are kept and drawn as markers
 """
 from __future__ import annotations
@@ -23,6 +23,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from style import METHOD_COLORS, method_color
+
 RESULTS_ROOT = '../profile_results_v2'
 MB = 1e6
 
@@ -32,12 +34,14 @@ LABELS = {
     'gram_chunked': 'Sven (Gram, chunked)', 'classic': r'Sven (classic, rand. SVD)',
     'JD': 'JD (UPGrad)', 'LBFGS1': 'LBFGS (1 it.)', 'LBFGS3': 'LBFGS (3 it.)',
 }
-# Sven in black / magenta / teal / orange-brown (outside the baseline hues); baselines fixed.
+# Baselines take the global optimizer colours (style.METHOD_COLORS).  The Sven variants
+# only ever appear side by side here: the default backend (Gram, hooks) is Sven's black,
+# the others magenta / teal / brown, outside the baseline hues.  LBFGS (3 it.) is a
+# darker shade of the LBFGS grey.
 COLORS = {
-    'gram_hooks': '#000000', 'gram_full': '#C2185B', 'gram_chunked': '#00796B', 'classic': '#8D6E63',
-    'Adam': '#4C72B0', 'AdamW': '#64B5CD', 'SGD': '#55A868', 'RMSprop': '#C44E52', 'Muon': '#8172B3',
-    'SOAP': '#DD8452', 'Shampoo': '#DA8BC3', 'KFAC': '#937860', 'PolyakSGD': '#CCB974',
-    'LBFGS1': '#8C8C8C', 'LBFGS3': '#4D4D4D', 'JD': '#2CA02C', 'HIG': '#D62728',
+    'gram_hooks': method_color('Sven'), 'gram_full': '#C2185B', 'gram_chunked': '#00796B', 'classic': '#A0522D',
+    **{m: c for m, c in METHOD_COLORS.items() if m != 'Sven'},
+    'LBFGS1': method_color('LBFGS'), 'LBFGS3': '#4D4D4D',
 }
 MARKERS = {'gram_hooks': 'o', 'gram_full': 's', 'gram_chunked': 'D', 'classic': '^'}
 ARCH_TITLES = {'toy_1d': 'Toy 1D MLP', 'polynomial': 'Polynomial MLP', 'mnist': 'MNIST MLP',
@@ -47,7 +51,7 @@ ARCH_ORDER = ['toy_1d', 'polynomial', 'mnist', 'nanogpt', 'cifar_resnet18']
 
 
 def label(m): return LABELS.get(m, m)
-def color(m): return COLORS.get(m, '#333333')
+def color(m): return COLORS[m] if m in COLORS else method_color(m)
 def is_sven(m): return m in SVEN
 
 
@@ -122,7 +126,8 @@ def add_relative(df: pd.DataFrame) -> pd.DataFrame:
             for k_, v in ok[ok.method == m].groupby(key, dropna=False)[col].mean().items():
                 out.setdefault(k_, v)
         return out
-    rt, rm = ref(['Adam', 'AdamW'], 'step_ms'), ref(['SGD', 'Adam', 'AdamW'], 'peak_mb')
+    # rel_mem is "/ SGD" and only SGD: a silent fallback to Adam made the label a lie
+    rt, rm = ref(['Adam', 'AdamW'], 'step_ms'), ref(['SGD'], 'peak_mb')
     keys = list(zip(df.arch, df.B, df.width))
     norm = lambda k_: tuple(None if (isinstance(x, float) and np.isnan(x)) else x for x in k_)
     rt = {norm(k_): v for k_, v in rt.items()}; rm = {norm(k_): v for k_, v in rm.items()}
@@ -136,10 +141,18 @@ def raw_steps(row, which='step_ms'):
     return np.asarray(json.loads(Path(row['_path']).read_text())['raw'].get(which, []), dtype=float)
 
 
-def legend_below(fig, ax, ncol=4, fontsize=9):
-    """One shared legend under the figure (keeps it off the data and the failure markers)."""
-    h, l = ax.get_legend_handles_labels()
-    seen = dict(zip(l, h))
+def legend_below(fig, ax=None, ncol=4, fontsize=9):
+    """One shared legend under the figure (keeps it off the data and the failure markers).
+
+    Collects the handles of EVERY axes in the figure (``ax`` is accepted for backwards
+    compatibility and ignored), so a method or failure marker that only appears in a
+    later panel still gets an entry.
+    """
+    seen = {}
+    for a in fig.axes:
+        h, l = a.get_legend_handles_labels()
+        for label, handle in zip(l, h):
+            seen.setdefault(label, handle)
     fig.legend(seen.values(), seen.keys(), loc='upper center', bbox_to_anchor=(0.5, 0.02), ncol=ncol,
                fontsize=fontsize, frameon=False)
 

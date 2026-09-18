@@ -412,7 +412,9 @@ def set_style():
         'savefig.bbox': 'tight',
         'lines.linewidth': 2,
         'axes.grid': False,
-        'font.family': 'arial',
+        # C27: a fallback list instead of a bare 'arial' (absent on Linux -> warning spam)
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Arial', 'Helvetica', 'Liberation Sans', 'DejaVu Sans'],
         'legend.frameon': False,
         'mathtext.fontset': 'cm',
     })
@@ -424,3 +426,144 @@ lr_labels[0.003] = "3 \\times 10^{-3}"
 lr_labels[0.03] = "3 \\times 10^{-2}"
 lr_labels[0.05] = "0.05"
 lr_labels[50.0] = "50"
+
+
+# ---------------------------------------------------------------------------
+# Optimizer colours -- THE convention, for every notebook and helper module
+# ---------------------------------------------------------------------------
+# One colour per optimizer, keyed by name, so a method looks the same in the scan
+# notebooks, the study notebooks and the profiling plots.  Never colour an optimizer
+# positionally (f'C{i}', a palette indexed by plot order, matplotlib's default
+# cycle): the colour then depends on which methods happen to be present and how
+# they are sorted.  Look it up with :func:`method_color` instead.
+#
+# Sven is black.  Baselines are seaborn "deep" plus three extra hues chosen to stay
+# apart from it (olive, navy, dark grey).  To add an optimizer, add a line here.
+METHOD_COLORS = {
+    'Sven':      '#000000',
+    'SGD':       '#55A868',   # green
+    'PolyakSGD': '#CCB974',   # khaki
+    'RMSprop':   '#C44E52',   # red
+    'Adam':      '#4C72B0',   # blue
+    'AdamW':     '#64B5CD',   # light blue
+    'LBFGS':     '#8C8C8C',   # grey
+    'Muon':      '#8172B3',   # purple
+    'MuonW':     '#B7A9DB',   # light purple (Muon at its default wd = 0.1, as AdamW is to Adam)
+    'SOAP':      '#DD8452',   # orange
+    'Shampoo':   '#DA8BC3',   # pink
+    'KFAC':      '#937860',   # brown
+    'JD':        '#6B8E23',   # olive
+    'HIG':       '#1B3A57',   # navy
+}
+# Other spellings of the same optimizer (result files, profiler, legacy labels).
+METHOD_ALIASES = {
+    'SVD': 'Sven', 'sven': 'Sven',
+    'JD_UPGrad': 'JD', 'JD (UPGrad)': 'JD',
+    'LBFGS1': 'LBFGS', 'K-FAC': 'KFAC', 'Polyak': 'PolyakSGD',
+}
+_UNKNOWN_METHOD_COLOR = '#333333'
+
+
+def canonical_method(name):
+    """The name an optimizer goes by in :data:`METHOD_COLORS` (``'SVD'`` -> ``'Sven'``)."""
+    return METHOD_ALIASES.get(name, name)
+
+
+def method_color(name):
+    """The global colour of an optimizer.  Unknown names get a dark grey and a
+    one-time warning, so a new optimizer is noticed rather than silently cycled."""
+    key = canonical_method(name)
+    if key not in METHOD_COLORS:
+        if key not in method_color._warned:
+            method_color._warned.add(key)
+            print(f"[style] no colour registered for optimizer {name!r}; "
+                  f"add it to style.METHOD_COLORS")
+        return _UNKNOWN_METHOD_COLOR
+    return METHOD_COLORS[key]
+
+
+method_color._warned = set()
+
+
+# ---------------------------------------------------------------------------
+# Two conventions shared by every notebook (see ANALYSIS_FIXES.md, A4 / A5)
+# ---------------------------------------------------------------------------
+DIVERGED_FACTOR = 10.0
+
+
+def final_value(curve):
+    """The final value of a per-epoch curve -- NaN if it ends non-finite.
+
+    DIVERGED = FAILED.  A diverged run (see :func:`is_diverged`) has no final loss: it
+    is left out of its configuration's seed mean and counted in ``n_diverged``; it is
+    NOT scored by its last finite value, which would flatter a method that blows up late.
+    """
+    if curve is None or len(curve) == 0:
+        return np.nan
+    try:
+        v = float(curve[-1])
+    except (TypeError, ValueError):
+        return np.nan
+    return v if np.isfinite(v) else np.nan
+
+
+def is_diverged(train_curve, val_curve):
+    """The one definition of a diverged run: its train or val curve ends non-finite, OR
+    its validation loss ends more than ``DIVERGED_FACTOR`` times above the pre-training
+    value at ``val[0]`` (a finite blow-up -- the paramfrac scans end some runs at
+    1e7..1e15 without ever producing a NaN).  Only the val curve is used for the ratio:
+    it starts with the untrained model, whereas ``train[0]`` is already the post-epoch-1
+    loss and makes a poor reference."""
+    fv, ft = final_value(val_curve), final_value(train_curve)
+    if not (np.isfinite(fv) and np.isfinite(ft)):
+        return True
+    try:
+        v0 = float(val_curve[0])
+    except (TypeError, ValueError, IndexError):
+        return False
+    return bool(np.isfinite(v0) and v0 > 0 and fv > DIVERGED_FACTOR * v0)
+
+
+def config_eligible(n_ok, n_expected):
+    """Whether a configuration may be picked as a method's best: more than half of
+    the scan's seeds must have finished (not diverged, not missing)."""
+    return np.asarray(n_ok) > np.asarray(n_expected) / 2
+
+
+def clipped_band(mean, std, lo):
+    """``(lower, upper)`` of the seed band drawn everywhere: mean +/- 1 std (ddof=1),
+    with the lower edge clipped at the lowest seed ``lo`` so it never reaches <= 0
+    on a log axis.  The line itself stays the arithmetic seed mean."""
+    mean, lo = np.asarray(mean, dtype=float), np.asarray(lo, dtype=float)
+    std = np.nan_to_num(np.asarray(std, dtype=float))
+    return np.maximum(mean - std, lo), mean + std
+
+
+def clipped_yerr(mean, std, lo):
+    """The same band as an asymmetric ``yerr=[below, above]`` for ``bar`` / ``errorbar``."""
+    lower, upper = clipped_band(mean, std, lo)
+    mean = np.asarray(mean, dtype=float)
+    return np.vstack([mean - lower, upper - mean])
+
+
+# ---------------------------------------------------------------------------
+# Dataset / task names -- one spelling everywhere (ANALYSIS_FIXES C22)
+# ---------------------------------------------------------------------------
+DATASET_TITLES = {
+    'toy_1d':         'Toy 1D',
+    'polynomial':     'Random Polynomial',
+    'mnist_ce':       'MNIST (CE)',
+    'mnist_labelreg': 'MNIST (label reg.)',
+    'cifar_ce':       'CIFAR-10 (CE)',
+    'cifar_labelreg': 'CIFAR-10 (label reg.)',
+    'nanogpt':        'nanoGPT (tiny-shakespeare)',
+}
+# Axis labels for the final-loss metrics ("seed mean" is appended by the plot helpers).
+METRIC_LABELS = {'final_val_loss': 'Final validation loss', 'final_train_loss': 'Final train loss',
+                 'final_val_acc': 'Final validation accuracy'}
+
+
+def metric_label(metric, seed_mean=True):
+    base = METRIC_LABELS.get(metric, metric.replace('_', ' '))
+    return base + (' (seed mean)' if seed_mean else '')
+

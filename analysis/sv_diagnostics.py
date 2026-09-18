@@ -307,14 +307,21 @@ def plot_used_vs_batch(df, ax, lr, rtol, ks, colors=None, smooth_frac=0.02,
 
 
 def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
-                       floor=1e-6, x_fraction=True, results_root=RESULTS_ROOT,
-                       **plot_kw):
+                       floor=1e-6, x_fraction=True, show_rtol=True,
+                       results_root=RESULTS_ROOT, **plot_kw):
     """Per-epoch spectrum shapes ``sigma_i / sigma_0``, coloured by epoch.
 
     One line per epoch, averaged over the batches in that epoch and over seeds.
-    ``x_fraction`` puts SV rank on a 0..1 axis (so different ``k`` overlay);
+    ``x_fraction`` puts SV rank on a 0..1 axis as a fraction of the cap ``k`` (so
+    different ``k`` overlay; with ``k = B`` it is the fraction of the batch size);
     otherwise the raw rank index is used.  ``lo``/``hi`` restrict the colormap
     range so early epochs stay visible against a light background.
+
+    The optimizer records only the SVs it keeps (``sigma_i > rtol * sigma_0``), so
+    the stored width is the largest rtol-rank any saved step reached, NOT ``k`` --
+    the axis is therefore normalised by ``k``, never by that width.  For the same
+    reason every curve stops at ``rtol`` (drawn dotted when ``show_rtol``), and its
+    tail is an average over only the steps whose rank reached that index.
 
     Returns ``(spectra, norm)`` -- the ``(n_epoch, width)`` array and the
     :class:`~matplotlib.colors.Normalize` for the epoch colourbar.
@@ -326,6 +333,13 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
     spectra = seed_mean(runs, epoch_spectra, results_root=results_root)
     if spectra is None:
         return None, None
+    if spectra.shape[1] < k:
+        # Runs made before the full-spectrum fix (sven/opt/sven.py, SvenGram.step)
+        # recorded only the SVs above rtol: the tail of every curve is a survivorship
+        # average pinned just above rtol.  See RERUNS_NEEDED.md.
+        print(f'  [plot_epoch_spectra] recorded spectra are truncated at rtol '
+              f'({spectra.shape[1]} of {k} SVs, k={k}, lr={lr}, rtol={rtol}) -- '
+              f'rerun these runs with the full-spectrum logging to fix the tail')
     cmap = plt.get_cmap(cmap)
     n_ep, width = spectra.shape
     norm = mcolors.Normalize(vmin=1, vmax=n_ep)
@@ -336,9 +350,11 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
         if not valid.any():
             continue
         y = np.clip(shape[valid], floor, 1.0)
-        x = (np.arange(width)[valid] / max(width - 1, 1) if x_fraction
+        x = (np.arange(width)[valid] / max(k - 1, 1) if x_fraction
              else np.arange(width)[valid])
         ax.plot(x, y, color=cmap(lo + (hi - lo) * norm(ep + 1)), lw=lw, **plot_kw)
+    if show_rtol and rtol is not None and rtol >= floor:
+        ax.axhline(rtol, color='0.4', lw=1, ls=':', zorder=0)
     ax.set_yscale('log')
     ax.set_xlabel('SV rank' + (' / $k$' if x_fraction else ''))
     ax.set_ylabel(r'$\sigma_i \ / \ \sigma_0$')
