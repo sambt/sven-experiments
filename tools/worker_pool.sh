@@ -122,7 +122,15 @@ STOP_AT=0
 # the assertion below is what proves it, per job, instead of trusting that.
 export PYTHONPATH=$SNAP:$SNAP/sven
 export SV3_RESULTS_ROOT=${SV3_RESULTS_ROOT:-$SNAP/experiment_results}
+# Both spellings: this torch prints "PYTORCH_CUDA_ALLOC_CONF is deprecated, use
+# PYTORCH_ALLOC_CONF instead" for the old name (it still honours it -- the Gate-1 CIFAR
+# Sven run measured 200 ms/step, the fast expandable-segments path, not the 841 ms of a
+# default allocator with per-step empty_cache). Exporting the new name too means the
+# setting the probe measured survives the version that stops honouring the old one:
+# `expandable_segments` is what halves peak reserved memory and what makes CIFAR Sven
+# fit a 19.6 GB MIG slice at all (campaign/stage0_reports/gpu.probe.md).
 export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+export PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF:-$PYTORCH_CUDA_ALLOC_CONF}
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 export SV3_SNAPSHOT=$SNAP
 # the snapshot's identity is the point of the snapshot: no job may write __pycache__

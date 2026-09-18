@@ -36,6 +36,7 @@ with open(os.environ["FAKE_PY_LOG"], "a") as fh:
         "argv": sys.argv[1:], "cwd": os.getcwd(), "pid": os.getpid(),
         "env": {{k: os.environ.get(k) for k in
                 ("PYTHONPATH", "SV3_RESULTS_ROOT", "PYTORCH_CUDA_ALLOC_CONF",
+                 "PYTORCH_ALLOC_CONF",
                  "OMP_NUM_THREADS", "MKL_NUM_THREADS", "CUDA_VISIBLE_DEVICES",
                  "PYTHONDONTWRITEBYTECODE")}}}}) + "\\n")
     fh.flush()
@@ -180,7 +181,11 @@ def test_the_runner_environment_is_the_contract(env):
     snap = str(env["snap"])
     assert call["env"]["PYTHONPATH"] == f"{snap}:{snap}/sven"
     assert call["env"]["SV3_RESULTS_ROOT"] == f"{snap}/experiment_results"
+    # both spellings: this torch warns that the CUDA-prefixed name is deprecated, and
+    # `expandable_segments` is what halves peak reserved memory and what lets CIFAR Sven
+    # fit a MIG slice, so it must survive the version that stops honouring the old name
     assert call["env"]["PYTORCH_CUDA_ALLOC_CONF"] == "expandable_segments:True"
+    assert call["env"]["PYTORCH_ALLOC_CONF"] == "expandable_segments:True"
     assert call["env"]["OMP_NUM_THREADS"] == "1"
     assert call["env"]["MKL_NUM_THREADS"] == "1"
     # the snapshot is shared and immutable: no job may write __pycache__ into it
