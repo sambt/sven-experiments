@@ -214,6 +214,16 @@ _items:
 # ---------------------------------------------------------------------------
 work_lists:
   # ---------------- P0: the six headline scans + nanoGPT ----------------
+  # The gpu_test lane admits only 2 jobs per user, so "queue everything at once, headline first"
+  # (user, 2026-09-18) is ONE ordered list for that lane: P0 items, then P1, then P3. Launch it by
+  # name (`--list all_mlp_mig`); the per-phase mig lists below stay for targeted resubmits.
+  - name: all_mlp_mig
+    phase: P9                 # spans P0+P1+P3: select it with `--list all_mlp_mig`, never by phase
+    lane: mig
+    n_jobs: 2
+    note: "all MLP work in priority order on the 8 MIG slices; resubmit the same command every 12 h until reconcile is clean"
+    items: [*items_p0_mlp, *items_p1_mlp, *items_p3_mlp]
+
   - name: p0_mlp_mig
     phase: P0
     lane: mig

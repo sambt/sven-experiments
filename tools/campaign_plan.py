@@ -269,8 +269,13 @@ def load_plan(path) -> Plan:
             items_raw = []
         if not isinstance(items_raw, list):
             raise PlanError(f"{where}: `items` must be a list")
+        # an entry may itself be a list (a YAML alias of an item group): flatten one level, so a
+        # combined list can be written `items: [*items_p0_mlp, *items_p1_mlp]` and keep the order
+        flat = []
+        for it in items_raw:
+            flat.extend(it if isinstance(it, list) else [it])
         items = tuple(_parse_item(f"{where} item[{i}]", it, lane)
-                      for i, it in enumerate(items_raw))
+                      for i, it in enumerate(flat))
         n_jobs = int(spec.get("n_jobs", 1))
         if n_jobs < 1:
             raise PlanError(f"{where}: n_jobs must be >= 1, got {n_jobs}")

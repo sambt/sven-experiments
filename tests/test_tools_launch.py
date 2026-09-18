@@ -160,7 +160,8 @@ def _launch(sandbox, *args, extra_path=None, monkeypatch=None):
 
 def test_the_campaign_plan_parses_and_covers_the_kept_scans():
     plan = campaign_plan.load_plan(PLAN_FILE)
-    assert {wl.phase for wl in plan.work_lists} == {"P0", "P1", "P2", "P3"}
+    # P9 = the one combined, priority-ordered MIG list (gpu_test admits only 2 jobs per user)
+    assert {wl.phase for wl in plan.work_lists} == {"P0", "P1", "P2", "P3", "P9"}
     assert set(plan.lanes) == {"a100", "mig"}
     names = [wl.name for wl in plan.work_lists]
     assert len(names) == len(set(names))
