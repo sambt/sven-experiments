@@ -27,4 +27,4 @@ optimizers_standard: [AdamW]
 lrs_standard: [3e-4, 1e-3, 3e-3]
 
 loader_seed: 5000
-model_seeds: [5000, 5001]
+model_seeds: [5000, 5001, 5002, 5003, 5004]   # 5 seeds since 2026-09-17 (RERUNS_NEEDED 5)
