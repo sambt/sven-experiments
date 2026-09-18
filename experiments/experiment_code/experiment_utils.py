@@ -16,8 +16,15 @@ import time
 import random
 from sven.opt import PolyakSGD
 from experiments.nn.norm_utils import eval_mode, freeze_norm_layers, no_norm_stat_updates
-from experiments.optimizers.baselines import Lion, ScheduleFreeAdamW, ScheduleFreeSGD
-from experiments.optimizers.soap import SOAP  # vendored zero-dep reference SOAP
+
+# The standard-optimizer factory moved to optim_factory.py (C-B2 / C-B5 / C-B6);
+# the names are re-exported unchanged, so every call site that imports them from
+# here -- including experiments/optimizer_profile.py -- keeps working.
+from .optim_factory import (  # noqa: F401  (re-export)
+    _CUSTOM_OPTIMIZERS, _DEFAULT_WEIGHT_DECAY, _KFACOptimizer, _CombinedOptimizer,
+    _REMOVED_OPTIMIZERS, build_standard_optimizer, get_muon_variant,
+    resolve_weight_decay,
+)
 
 def set_seed(seed: int, deterministic: bool = False):
     """
@@ -990,146 +997,3 @@ def train_loop_jd(model, inner_optimizer, aggregator, per_sample_loss_fn, train_
                 checkpointer.epoch_end(epoch, step, module)
 
     return model, _finish_losses(losses, total_start_time)
-
-
-_CUSTOM_OPTIMIZERS = {
-    "Lion": Lion,
-    "ScheduleFreeAdamW": ScheduleFreeAdamW,
-    "ScheduleFreeSGD": ScheduleFreeSGD,
-    "SOAP": SOAP,
-}
-
-
-class _KFACOptimizer:
-    """Bundles a K-FAC preconditioner with a base optimizer so the standard
-    training loop needs no changes.  K-FAC requires ``preconditioner.step()``
-    to run AFTER ``loss.backward()`` and BEFORE the base ``optimizer.step()``;
-    both are performed here inside a single ``.step()`` call.  The preconditioner
-    installs its own forward/backward hooks on the model at construction time.
-    """
-
-    def __init__(self, base, preconditioner):
-        self.base = base
-        self.preconditioner = preconditioner
-
-    @property
-    def param_groups(self):
-        return self.base.param_groups
-
-    def zero_grad(self, set_to_none=True):
-        self.base.zero_grad(set_to_none=set_to_none)
-
-    def step(self, closure=None):
-        # grads are already populated by loss.backward() in the training loop
-        self.preconditioner.step()
-        self.base.step()
-
-    def state_dict(self):
-        return {"base": self.base.state_dict()}
-
-    def load_state_dict(self, sd):
-        self.base.load_state_dict(sd["base"])
-
-
-class _CombinedOptimizer:
-    """Wraps two optimizers so they behave as one (zero_grad / step / state_dict)."""
-
-    def __init__(self, *optimizers):
-        self.optimizers = optimizers
-
-    # Expose a unified param_groups (needed by some LR schedulers / logging)
-    @property
-    def param_groups(self):
-        groups = []
-        for opt in self.optimizers:
-            groups.extend(opt.param_groups)
-        return groups
-
-    def zero_grad(self, set_to_none=True):
-        for opt in self.optimizers:
-            opt.zero_grad(set_to_none=set_to_none)
-
-    def step(self, closure=None):
-        for opt in self.optimizers:
-            opt.step(closure=closure)
-
-    def state_dict(self):
-        return [opt.state_dict() for opt in self.optimizers]
-
-    def load_state_dict(self, state_dicts):
-        for opt, sd in zip(self.optimizers, state_dicts):
-            opt.load_state_dict(sd)
-
-
-# PyTorch defaults that a bare `weight_decay=0.0` used to override.  "Muon" keeps
-# running at wd = 0 (its existing runs stay valid); "MuonW" is Muon at its PyTorch
-# default wd = 0.1, the same split as Adam / AdamW.
-_DEFAULT_WEIGHT_DECAY = {"AdamW": 0.01, "MuonW": 0.1}
-
-
-def resolve_weight_decay(optim_name, weight_decay):
-    """The weight decay a run actually uses: ``None`` means the optimizer's own default
-    (AdamW: 0.01; everything else: 0.0), a number is taken as given."""
-    if weight_decay is None:
-        return _DEFAULT_WEIGHT_DECAY.get(optim_name, 0.0)
-    return float(weight_decay)
-
-
-def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
-    """Construct a standard PyTorch optimizer by name."""
-    if "weight_decay" in kwargs:
-        kwargs["weight_decay"] = resolve_weight_decay(optim_name, kwargs["weight_decay"])
-    if optim_name == "LBFGS":
-        lbfgs_kwargs = {
-            k: kwargs[k] for k in ("max_iter", "history_size", "line_search_fn")
-            if k in kwargs
-        }
-        return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
-    elif optim_name == "PolyakSGD":
-        return PolyakSGD(model.parameters(), **kwargs)
-    elif optim_name in ("Muon", "MuonW"):
-        # Muon only supports 2D parameters; use AdamW for the rest.
-        # Muon:  wd as given (0 unless the config sweeps it) on both parts.
-        # MuonW: Muon at its PyTorch default wd (0.1) and AdamW at ITS default (0.01)
-        #        for the 1-D parameters -- "everything at its own default".
-        muon_params = [p for p in model.parameters() if p.ndim == 2]
-        other_params = [p for p in model.parameters() if p.ndim != 2]
-        weight_decay = kwargs.get("weight_decay", 0.0)
-        adamw_wd = _DEFAULT_WEIGHT_DECAY["AdamW"] if optim_name == "MuonW" else weight_decay
-        if other_params:
-            muon_opt = torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
-            adam_opt = torch.optim.AdamW(other_params, lr=lr, weight_decay=adamw_wd)
-            return _CombinedOptimizer(muon_opt, adam_opt)
-        else:
-            return torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
-    elif optim_name == "Shampoo":
-        # torch_optimizer.Shampoo — pure drop-in. NOTE: default lr=0.1 is too hot
-        # for tiny MLPs; sweep lr down (grid already includes 1e-4..1e-1).
-        import torch_optimizer
-        return torch_optimizer.Shampoo(
-            model.parameters(), lr=lr,
-            weight_decay=kwargs.get("weight_decay", 0.0),
-            update_freq=kwargs.get("update_freq", 1),
-            epsilon=kwargs.get("epsilon", 1e-4),
-        )
-    elif optim_name == "KFAC":
-        # kfac-pytorch: a KFAC preconditioner wrapping a base optimizer (classic
-        # K-FAC uses SGD+momentum). Hooks are installed on `model` at construction.
-        from kfac.preconditioner import KFACPreconditioner
-        base = torch.optim.SGD(
-            model.parameters(), lr=lr, momentum=kwargs.get("momentum", 0.9),
-            weight_decay=kwargs.get("weight_decay", 0.0),
-        )
-        precond = KFACPreconditioner(
-            model,
-            factor_update_steps=kwargs.get("factor_update_steps", 1),
-            inv_update_steps=kwargs.get("inv_update_steps", 1),
-            lr=lr,
-            damping=kwargs.get("kfac_damping", 3e-3),
-        )
-        return _KFACOptimizer(base, precond)
-    elif optim_name in _CUSTOM_OPTIMIZERS:
-        cls = _CUSTOM_OPTIMIZERS[optim_name]
-        return cls(model.parameters(), lr=lr, **kwargs)
-    else:
-        return getattr(torch.optim, optim_name)(model.parameters(), lr=lr, **kwargs)

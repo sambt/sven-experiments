@@ -481,6 +481,89 @@ def test_bn_mode_is_resolved_per_family_and_named_only_when_it_deviates():
                          mode="svd", verbose=False)
 
 
+#: the only configs whose run_ids differ from the pre-campaign grid, and the
+#: token each one gains (C-E2). Verified against HEAD's `grid.py` over all 46
+#: configs x 6 modes: 255 (config, mode) pairs identical, 21 differing -- these
+#: six stems, and nothing else. Both changes are intended and both are BUG FIXES:
+#: the configs were committed with `bn_mode: batch` / `bn_mode: frozen` before
+#: `grid.py` understood the key, so HEAD's grid + the committed configs was the
+#: broken combination (it silently dropped `_bnbatch`). The oracle is therefore
+#: NOT HEAD's grid.py but the run_ids on disk -- 90 of them in
+#: `tests/golden/cifar10_resnet_scan_labelRegression.txt` end in `_gram_bnbatch`,
+#: which `test_golden_run_ids_are_reproduced` checks -- plus the per-id
+#: correspondence for the finetune baselines in `_explain_exp_finetune_cifar_smallN`.
+BN_TOKEN_CONFIGS = {
+    "cifar10_resnet_ce_scan": ("svd", "_gram_bnbatch"),
+    "cifar10_resnet_ce_scan_timing": ("svd", "_gram_bnbatch"),
+    "cifar10_resnet_scan_labelRegression": ("svd", "_gram_bnbatch"),
+    "cifar10_resnet_scan_labelRegression_timing": ("svd", "_gram_bnbatch"),
+    "profile_cifar": ("svd", "_gram_bnbatch"),
+    "rebuttal_fig5_cifar_paramfrac_scan": ("svd", "_gram_bnbatch"),
+    "exp_finetune_cifar_smallN": ("standard", "_bnfrozen"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BN_TOKEN_CONFIGS))
+def test_only_the_bn_mode_configs_carry_a_bn_token(name):
+    """Pin which configs a `bn_mode` key renames (see :data:`BN_TOKEN_CONFIGS`),
+    so a run_id move is never invisible: these are the CIFAR / fine-tune scans,
+    every id of the named family carries the token, and no other config does."""
+    family, token = BN_TOKEN_CONFIGS[name]
+    specs = grid.expand_grid(load_rcfg(name), mode=family, verbose=False)
+    assert specs and all(s.run_id.endswith(token) for s in specs), name
+
+
+def test_the_runners_model_mutation_is_a_named_function():
+    """`experiments/configs/model/nanogpt.yaml` omits `vocab_size`: the dataset
+    owns it, and `run_grid` injects it (and `block_size`) into `cfg.model` before
+    anything is instantiated or hashed. That mutation is therefore part of the run
+    hash, and `tools/reconcile.py` -- which composes the live config without
+    importing torch -- must apply the SAME one (or read the post-mutation config
+    the runner saves in `{scan}/configs/{job}.yaml`), or every LM run comes out
+    with a different hash8 than the runner used and a finished nanoGPT scan
+    reports as "work remains". `model_generation` is the same canonicalisation,
+    and names the shared init checkpoint (C-L3)."""
+    model = {"_target_": "experiments.nn.NanoGPT", "block_size": 128}
+    out = grid.inject_dataset_facts(model, vocab_size=65, block_size=256)
+    assert out == {"_target_": "experiments.nn.NanoGPT", "block_size": 256,
+                   "vocab_size": 65}
+    assert model == {"_target_": "experiments.nn.NanoGPT", "block_size": 128}
+    # a model config that has no block_size key does not grow one
+    assert "block_size" not in grid.inject_dataset_facts(
+        {"_target_": "x"}, vocab_size=65, block_size=256)
+
+    rcfg = load_rcfg("exp_nanogpt_speedrun")
+    spec = grid.expand_grid(rcfg, mode="svd", verbose=False)[0]
+    before = grid.hash8(spec, rcfg)
+    injected = dict(rcfg, model=grid.inject_dataset_facts(rcfg["model"], vocab_size=65))
+    assert grid.hash8(spec, injected) != before          # a different identity
+    assert grid.model_generation(injected) != grid.model_generation(rcfg)
+    assert grid.model_generation(rcfg) == grid.model_generation(dict(rcfg))
+    assert len(grid.model_generation(rcfg)) == 8
+
+
+def test_a_bn_token_only_appears_where_a_config_asks_for_a_policy():
+    """No config may grow a `_bnbatch` / `_bnfrozen` run_id by accident: a token
+    means the scan named `bn_mode` (or the deprecated `gram_freeze_norm_stats`)
+    and asked for something other than that family's legacy default. The CIFAR
+    kappa / param-fraction scans reach `_bnbatch` through the alias, which is why
+    :data:`BN_TOKEN_CONFIGS` (the ids that MOVED) is a subset of the configs that
+    carry a token."""
+    tokened = {}
+    for path in sorted(CONFIGS.glob("*.yaml")):
+        rcfg = load_rcfg(path.stem)
+        if "loader_seed" not in rcfg or "model_seeds" not in rcfg:
+            continue
+        ids = [s.run_id for s in grid.expand_grid(rcfg, mode="all", verbose=False)]
+        tokens = {t for t in ("_bnbatch", "_bnfrozen")
+                  for i in ids if f"{t}" in i}
+        if tokens:
+            assert rcfg.get("bn_mode") is not None or \
+                rcfg.get("gram_freeze_norm_stats") is not None, path.stem
+            tokened[path.stem] = tokens
+    assert set(BN_TOKEN_CONFIGS) <= set(tokened), set(BN_TOKEN_CONFIGS) - set(tokened)
+
+
 def test_new_config_keys_are_resolved_and_validated():
     """The Stage-1 config keys, with the defaults CONTRACTS.md gives them."""
     # a bare config: the defaults must come from the code, not from whatever
@@ -774,17 +857,21 @@ def test_execute_keeps_the_per_family_asymmetries():
     assert "batch_sampler=sampler" in src and "shuffle=True" not in src
     for family in grid.FAMILIES:
         assert "drop_last" not in _branch(branches, family), family
-    # C-T3: the per-step allocator flush is a Sven constructor flag (default false),
-    # while the error path still frees the cache for the non-svd families.
+    # C-T3: the per-step allocator flush is a Sven constructor flag (default false).
     svd = _branch(branches, "svd")
     assert svd.count("empty_cache=ctx.empty_cache") == 2      # Sven and SvenGram
-    # svd-only diagnostics + compile cache
+    # svd-only diagnostics + compile cache. The failure path's `empty_cache` is
+    # deliberately NOT one of the asymmetries: Sven is the OOM candidate (CIFAR at
+    # `gram_capture: full`), so excluding it there was what let one OOM cascade
+    # into the rest of the worker's walk. `compiler.reset()` (compiled code, not
+    # allocator blocks) stays svd-only and stays in the `finally`.
     _, fn = _scan_function("execute")
     node = next(n for n in ast.walk(fn) if isinstance(n, ast.Try))
     final = "\n".join(ast.unparse(s) for s in node.finalbody)
     handlers = "\n".join(ast.unparse(h) for h in node.handlers)
     assert "torch.compiler.reset()" in final and "spec.family == 'svd'" in final
-    assert "empty_cache" in handlers and "spec.family != 'svd'" in handlers
+    assert "torch.cuda.empty_cache()" in handlers
+    assert "spec.family != 'svd'" not in handlers
     assert "torch.compiler.reset" not in handlers
     # C-R1: the record is assembled and written AFTER the try, so a failure gets
     # the same record shape as a success; the svd-only fields still come off the

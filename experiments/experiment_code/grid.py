@@ -49,6 +49,25 @@ JD_AGGREGATOR_NAMES = ("UPGrad", "Mean", "Sum")
 FAMILIES = ("svd", "standard", "lbfgs", "polyak", "jd", "hig")
 #: optimizers whose weight decay is swept (everything else is forced to 0).
 _WD_OPTIMIZERS = ("AdamW", "Muon", "MuonW")
+#: values of the `bn_mode` config key (C-E2).
+BN_MODES = ("batch", "frozen")
+#: copy of ``checkpointing.POLICIES`` (that module imports torch); values of the
+#: `checkpoints` / `checkpoints_svd` config keys (C-L3).
+CHECKPOINT_POLICIES = ("none", "final", "epochs", "log")
+#: values of the `scheduler` config key (CONTRACTS "Scheduling"): `claims` = every
+#: worker walks the whole grid and runs what it can claim (the default, so a
+#: resubmitted job mops up whatever is left); `static` = the legacy
+#: `specs[shard_id::n_shards]` slicing, kept as a fallback.
+SCHEDULERS = ("claims", "static")
+#: default `svd_spectra_schedule` (C-L2): log every step below `dense_first`, then
+#: every `every`-th step.
+DEFAULT_SPECTRA_SCHEDULE = {"dense_first": 200, "every": 20}
+#: copy of ``optim_factory.MUON_RULE_TOKEN`` (importing it would pull torch in):
+#: the model-independent Muon construction rule, recorded and hashed so a run made
+#: under the old rule does not dedup against one made under the new one (C-B5).
+MUON_RULE_TOKEN = "hidden2d+convflat:match_rms_adamw:v1"
+#: optimizer names built by the Muon branch of the factory.
+MUON_OPTIMIZERS = ("Muon", "MuonW")
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +239,83 @@ def mode_flags(rcfg, mode=None):
     }
 
 
+def default_bn_mode(family, use_gram=False):
+    """The norm-statistics policy a config that names none has always had (C-E2).
+
+    Only the Gram backend ever suppressed the running statistics: its
+    ``gram_freeze_norm_stats`` defaulted to ``True``, i.e. frozen (and its
+    ``hooks`` capture *requires* frozen).  Every other family trained in
+    ``.train()`` mode with batch statistics.  Keeping that as the default means
+    ``bn_mode`` changes no run_id and no behaviour until a config asks for it.
+    """
+    return "frozen" if (family == "svd" and use_gram) else "batch"
+
+
+def resolve_bn_mode(rcfg):
+    """The scan-level ``bn_mode``, or ``None`` when the config names none.
+
+    ``gram_freeze_norm_stats`` is the deprecated alias (``true`` = ``frozen``);
+    ``bn_mode`` wins if both are given.  ``None`` means "use
+    :func:`default_bn_mode` per family", which is what keeps every existing
+    config byte-identical.
+    """
+    mode = rcfg.get("bn_mode")
+    if mode is not None:
+        mode = str(mode)
+        if mode not in BN_MODES:
+            raise ValueError(f"bn_mode must be one of {BN_MODES}, got {mode!r}")
+        return mode
+    if rcfg.get("gram_freeze_norm_stats") is not None:
+        return "frozen" if bool(rcfg["gram_freeze_norm_stats"]) else "batch"
+    return None
+
+
+def bn_mode_suffix(bn_mode, family, use_gram=False):
+    """The run_id token for a norm policy that differs from the legacy default.
+
+    ``_bnbatch`` (batch statistics under the Gram backend) is unchanged from
+    before the campaign; ``_bnfrozen`` is new and marks a run that freezes the
+    norm layers where the family would normally train with batch statistics
+    (the fine-tune study, O2).  A config that only restates the default gets no
+    token, so run_ids move exactly when the computation does.
+    """
+    if bn_mode == default_bn_mode(family, use_gram):
+        return ""
+    return "_bnbatch" if bn_mode == "batch" else "_bnfrozen"
+
+
+def resolve_spectra_schedule(rcfg):
+    """``{"dense_first": int, "every": int}`` from the config (C-L2).
+
+    ``svd_spectra_schedule: {dense_first: D, every: E}`` logs every step below
+    ``D`` and then every ``E``-th step.  The superseded ``svd_spectra_every: E``
+    is still honoured (as ``{dense_first: 0, every: E}``) so no existing config
+    or override breaks.
+    """
+    schedule = rcfg.get("svd_spectra_schedule")
+    if schedule is None:
+        if rcfg.get("svd_spectra_every") is not None:
+            return {"dense_first": 0, "every": max(1, int(rcfg["svd_spectra_every"]))}
+        return dict(DEFAULT_SPECTRA_SCHEDULE)
+    unknown = set(schedule) - set(DEFAULT_SPECTRA_SCHEDULE)
+    if unknown:
+        raise ValueError(f"svd_spectra_schedule: unknown key(s) {sorted(unknown)}; "
+                         f"expected {sorted(DEFAULT_SPECTRA_SCHEDULE)}")
+    return {
+        "dense_first": max(0, int(schedule.get("dense_first",
+                                               DEFAULT_SPECTRA_SCHEDULE["dense_first"]))),
+        "every": max(1, int(schedule.get("every", DEFAULT_SPECTRA_SCHEDULE["every"]))),
+    }
+
+
+def _checkpoint_policy(rcfg, key, default):
+    policy = rcfg.get(key, default)
+    policy = "none" if policy is None else str(policy)
+    if policy not in CHECKPOINT_POLICIES:
+        raise ValueError(f"{key} must be one of {CHECKPOINT_POLICIES}, got {policy!r}")
+    return policy
+
+
 def resolve_scan_settings(rcfg):
     """Scan-level values derived from the config (``generic_scan.py:311-341``)."""
     loss_key = rcfg.get("loss", "ce")
@@ -228,6 +324,20 @@ def resolve_scan_settings(rcfg):
     svd_info_mode = rcfg.get("svd_info", "full")
     if svd_info_mode not in SVD_INFO_MODES:
         raise ValueError(f"svd_info must be one of {SVD_INFO_MODES}, got {svd_info_mode!r}")
+    eval_batch_size = int(rcfg.get("eval_batch_size", 2048))
+    if eval_batch_size < 1:
+        raise ValueError(f"eval_batch_size must be positive, got {eval_batch_size}")
+    train_eval_size = int(rcfg.get("train_eval_size", 10_000))
+    if train_eval_size < 1:
+        raise ValueError(f"train_eval_size must be positive, got {train_eval_size}")
+    # `checkpoints_svd` overrides `checkpoints` for the svd family only (a Sven run
+    # is worth `log` where its baselines are worth `final`); null = no override.
+    checkpoints = _checkpoint_policy(rcfg, "checkpoints", "final")
+    checkpoints_svd = (None if rcfg.get("checkpoints_svd") is None
+                       else _checkpoint_policy(rcfg, "checkpoints_svd", None))
+    scheduler = str(rcfg.get("scheduler", "claims"))
+    if scheduler not in SCHEDULERS:
+        raise ValueError(f"scheduler must be one of {SCHEDULERS}, got {scheduler!r}")
     return {
         "loss_key": loss_key,
         # Non-legacy loss keys are encoded in the run_id so a `loss=` override can
@@ -237,11 +347,27 @@ def resolve_scan_settings(rcfg):
         "is_lm": loss_key == "lm_ce",
         "track_param_norm": rcfg.get("track_param_norm", False),
         "svd_info_mode": svd_info_mode,
-        "svd_spectra_every": int(rcfg.get("svd_spectra_every", 20)),
+        "svd_spectra_schedule": resolve_spectra_schedule(rcfg),
         # Signed-residual Sven rows; scalar-output regression only. Not in the run_id
         # (the update is identical wherever the loss path is finite).
         "signed_residual": (bool(rcfg.get("signed_residual", True))
                             and loss_key in SIGNED_RESIDUAL_LOSS_KEYS),
+        # C-E1: validation / test / train_eval never use the training batch size.
+        "eval_batch_size": eval_batch_size,
+        "train_eval_size": train_eval_size,
+        "eval_every_steps": (None if rcfg.get("eval_every_steps") is None
+                             else int(rcfg["eval_every_steps"])),
+        # C-L3 checkpoint policies; C-T3 allocator; C-R1 early stop; C-E2 norm policy
+        # (None = per-family default, see resolve_bn_mode / default_bn_mode).
+        "checkpoints": checkpoints,
+        "checkpoints_svd": checkpoints_svd,
+        "empty_cache": bool(rcfg.get("empty_cache", False)),
+        # C-R1: a non-finite training batch loss ends the run with `diverged`
+        # instead of burning the remaining epochs on NaN. Default true per
+        # CONTRACTS.md "Config keys"; `false` reproduces the legacy behaviour.
+        "stop_on_nonfinite": bool(rcfg.get("stop_on_nonfinite", True)),
+        "bn_mode": resolve_bn_mode(rcfg),
+        "scheduler": scheduler,
     }
 
 
@@ -252,14 +378,19 @@ def resolve_svd_settings(rcfg):
     if use_gram and variable_k:
         raise ValueError("use_gram is incompatible with variable_k")
     gram_capture = rcfg.get("gram_capture", "hooks")
-    gram_freeze_norm_stats = bool(rcfg.get("gram_freeze_norm_stats", True))
     gram_chunk_numel = int(rcfg.get("gram_chunk_numel", 2 ** 22))
-    if use_gram and not gram_freeze_norm_stats and gram_capture not in ("chunked", "full"):
-        raise ValueError("gram_freeze_norm_stats=false requires gram_capture: chunked or full")
+    # C-E2: `bn_mode` supersedes `gram_freeze_norm_stats`, which stays as the
+    # deprecated alias; the record keeps both (the alias as the boolean it was).
+    bn_mode = resolve_bn_mode(rcfg) or default_bn_mode("svd", use_gram)
+    gram_freeze_norm_stats = bn_mode == "frozen"
+    if use_gram and bn_mode == "batch" and gram_capture not in ("chunked", "full"):
+        raise ValueError("bn_mode: batch (= gram_freeze_norm_stats: false) requires "
+                         "gram_capture: chunked or full")
     return {
         "variable_k": variable_k,
         "use_gram": use_gram,
         "gram_capture": gram_capture,
+        "bn_mode": bn_mode,
         "gram_freeze_norm_stats": gram_freeze_norm_stats,
         "gram_chunk_numel": gram_chunk_numel,
         "mask_mode": rcfg.get("mask_mode", "elementwise"),
@@ -295,6 +426,12 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
     st = resolve_scan_settings(rcfg)
     loss_key, loss_suffix = st["loss_key"], st["loss_suffix"]
     signed_residual = st["signed_residual"]
+    # C-E2: one norm policy for every optimizer of the scan; None = each family's
+    # own legacy default (so a config that names neither key is unchanged).
+    bn_cfg = st["bn_mode"]
+
+    def bn_of(family, use_gram=False):
+        return bn_cfg if bn_cfg is not None else default_bn_mode(family, use_gram)
 
     with _quiet(verbose):
         hparams = process_hparam_config(rcfg)
@@ -359,8 +496,9 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                     run_id += "_variablek"
                 if sv["use_gram"]:
                     run_id += "_gram"
-                    if not sv["gram_freeze_norm_stats"]:
-                        run_id += "_bnbatch"  # batch-statistics BatchNorm
+                # "_bnbatch" exactly where it always was; "_bnfrozen" only when a
+                # config freezes a family that trains with batch statistics (C-E2).
+                run_id += bn_mode_suffix(sv["bn_mode"], "svd", sv["use_gram"])
                 if kappa != 2.0:
                     run_id += f"_kappa{kappa}"
                 run_id += loss_suffix
@@ -402,6 +540,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                         "mask_mode": sv["mask_mode"] if masked else None,
                         "kappa": kappa,
                         "signed_residual": bool(use_residual),
+                        "bn_mode": sv["bn_mode"],
                     },
                 ))
 
@@ -426,27 +565,35 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                     # default-wd runs do not collide with the old wd=0 ones
                     if weight_decay != 0.0 or optim_name in ("AdamW", "MuonW"):
                         run_id += f"_wd{weight_decay}"
-                    run_id += seed_str + loss_suffix
+                    run_id += seed_str + bn_mode_suffix(bn_of("standard"), "standard")
+                    run_id += loss_suffix
 
+                    record_extra = {
+                        "optimizer": optim_name,
+                        "loss": loss_key,
+                        "batch_size": batch_size,
+                        "k_fraction": None,
+                        "k": None,
+                        "lr": lr,
+                        "rtol": None,
+                        "weight_decay": weight_decay,
+                        "model_seed": model_seed,
+                        "loader_seed": loader_seed,
+                        "svd_mode": None,
+                        "svd_info": None,
+                        "bn_mode": bn_of("standard"),
+                    }
+                    if optim_name in MUON_OPTIMIZERS:
+                        # C-B5: which weights go to Muon and how its lr is adjusted
+                        # is a code-level rule, so it must enter the run hash --
+                        # otherwise a new-rule run dedups against an old-rule one.
+                        record_extra["muon_rule"] = MUON_RULE_TOKEN
                     specs.append(RunSpec(
                         family="standard", run_id=run_id, model_seed=model_seed,
                         loader_seed=loader_seed, batch_size=batch_size,
                         hparams={"optim_name": optim_name, "lr": lr,
                                  "weight_decay": weight_decay},
-                        record_extra={
-                            "optimizer": optim_name,
-                            "loss": loss_key,
-                            "batch_size": batch_size,
-                            "k_fraction": None,
-                            "k": None,
-                            "lr": lr,
-                            "rtol": None,
-                            "weight_decay": weight_decay,
-                            "model_seed": model_seed,
-                            "loader_seed": loader_seed,
-                            "svd_mode": None,
-                            "svd_info": None,
-                        },
+                        record_extra=record_extra,
                     ))
 
             if has_lbfgs:
@@ -461,7 +608,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                     run_id = (
                         f"std_bs{batch_size}{id_str}_lr{lr}_optimLBFGS"
                         f"_mi{max_iter}_hs{history_size}_ls{line_search_fn}{seed_str}"
-                        f"{loss_suffix}"
+                        f"{bn_mode_suffix(bn_of('lbfgs'), 'lbfgs')}{loss_suffix}"
                     )
                     specs.append(RunSpec(
                         family="lbfgs", run_id=run_id, model_seed=model_seed,
@@ -484,6 +631,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                             "lbfgs_max_iter": max_iter,
                             "lbfgs_history_size": history_size,
                             "lbfgs_line_search_fn": line_search_fn,
+                            "bn_mode": bn_of("lbfgs"),
                         },
                     ))
 
@@ -498,7 +646,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                     run_id = (
                         f"std_bs{batch_size}{id_str}_optimPolyakSGD"
                         f"_fstar{f_star}_maxlr{max_lr}_eps{eps}{seed_str}"
-                        f"{loss_suffix}"
+                        f"{bn_mode_suffix(bn_of('polyak'), 'polyak')}{loss_suffix}"
                     )
                     specs.append(RunSpec(
                         family="polyak", run_id=run_id, model_seed=model_seed,
@@ -519,6 +667,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                             "polyak_f_star": f_star,
                             "polyak_max_lr": max_lr,
                             "polyak_eps": eps,
+                            "bn_mode": bn_of("polyak"),
                         },
                     ))
 
@@ -535,7 +684,8 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                     continue
                 run_id = (
                     f"jd_bs{batch_size}{id_str}"
-                    f"_lr{lr}_agg{aggregator_name}_inner{inner_optim_name}{seed_str}{loss_suffix}"
+                    f"_lr{lr}_agg{aggregator_name}_inner{inner_optim_name}{seed_str}"
+                    f"{bn_mode_suffix(bn_of('jd'), 'jd')}{loss_suffix}"
                 )
                 specs.append(RunSpec(
                     family="jd", run_id=run_id, model_seed=model_seed,
@@ -552,6 +702,7 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                         "model_seed": model_seed,
                         "loader_seed": loader_seed,
                         "svd_info": None,
+                        "bn_mode": bn_of("jd"),
                     },
                 ))
 
@@ -559,7 +710,8 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
         if flags["hig"]:
             hig_grid = product(hparams['batch_size'], hparams['lrs_hig'], hparams['tau_hig'])
             for batch_size, lr, tau in hig_grid:
-                run_id = f"hig_bs{batch_size}{id_str}_lr{lr}_tau{tau}{seed_str}{loss_suffix}"
+                run_id = (f"hig_bs{batch_size}{id_str}_lr{lr}_tau{tau}{seed_str}"
+                          f"{bn_mode_suffix(bn_of('hig'), 'hig')}{loss_suffix}")
                 specs.append(RunSpec(
                     family="hig", run_id=run_id, model_seed=model_seed,
                     loader_seed=loader_seed, batch_size=batch_size,
@@ -573,10 +725,35 @@ def expand_grid(rcfg, *, mode=None, has_torchjd=True,
                         "model_seed": model_seed,
                         "loader_seed": loader_seed,
                         "svd_info": None,
+                        "bn_mode": bn_of("hig"),
                     },
                 ))
 
     return specs
+
+
+def inject_dataset_facts(model_cfg, *, vocab_size=None, block_size=None):
+    """The model config a language-model run actually instantiates (C-R3).
+
+    ``experiments/configs/model/nanogpt.yaml`` deliberately omits ``vocab_size``:
+    the dataset owns it.  :func:`generic_scan.run_grid` therefore injects the
+    dataset's ``vocab_size`` (and ``block_size``, when the model config has that
+    key) into ``cfg.model`` *before* anything is instantiated or hashed -- so the
+    mutation is part of the run's identity, and any torch-free consumer that
+    recomputes ``hash8`` (``tools/reconcile.py``) has to apply the **same**
+    mutation or read the post-mutation config the runner saved in
+    ``{scan}/configs/{job}.yaml``.  Composing the live config and hashing it
+    unchanged gives a different hash8 for every LM run, which reports a finished
+    nanoGPT scan as "work remains".
+
+    Returns a new dict; the argument is never mutated.
+    """
+    model = dict(model_cfg or {})
+    if vocab_size is not None:
+        model["vocab_size"] = int(vocab_size)
+    if block_size is not None and "block_size" in model:
+        model["block_size"] = int(block_size)
+    return model
 
 
 def shard(specs, n_shards=1, shard_id=0):
@@ -600,23 +777,59 @@ _HASH_EXCLUDED_RECORD_KEYS = frozenset({
     "optimizer", "loss", "batch_size", "model_seed", "loader_seed",
     "k_fraction", "decomposition", "svd_info", "svd_mode",
 })
-#: evaluation settings; all absent today, live after C-E1/C-E4.
-_HASH_EVAL_KEYS = ("eval_batch_size", "eval_every_steps")
+#: evaluation settings (C-E1 / C-E3 / C-E4). They change what a record *says*, not
+#: how the model trains, but a record made under a different `eval_batch_size` or a
+#: different `train_eval` subset is a different record, so they are hashed. Taken
+#: from the RESOLVED settings, so omitting a key and spelling out its default are
+#: the same run (otherwise a config tidy-up would re-execute the whole campaign).
+_HASH_EVAL_KEYS = ("eval_batch_size", "eval_every_steps", "train_eval_size")
 
 
 def run_hash(spec, rcfg, *, schema_version=SCHEMA_VERSION):
-    """sha256 hex of everything that defines what a run computes.
+    """sha256 hex of everything that defines what a run computes (C-R3).
 
-    Covers the family and its hyperparameters, the seeds, the batch size, the
-    resolved dataset / model configs, the loss, the epoch count, the evaluation
-    settings and ``schema_version`` (C-R3). ``hash8`` = first 8 characters.
+    ``hash8`` = the first 8 characters, which is what the done marker and
+    ``_stale/{hash8}/`` carry, so this function alone decides when a result on
+    disk is still the result of the current code and config. The final rule:
 
-    ``rcfg`` must be the *resolved* container and, for LM datasets, must already
-    carry the vocab_size / block_size injected into ``cfg.model`` -- otherwise a
-    nanoGPT run hashes its un-injected model config.
+    **Hashed** -- inputs to the computation or to the meaning of its numbers:
+    ``schema_version``; the family, its ``hparams`` and the batch size; the
+    model, loader and data seeds; the resolved ``dataset`` and ``model`` configs
+    (which for an LM dataset must already carry the ``vocab_size`` /
+    ``block_size`` that ``scan()`` injects into ``cfg.model`` -- hash *after* that
+    mutation or a nanoGPT run hashes a model it never built); the loss key;
+    ``num_epochs``; every input field of ``record_extra`` (kappa, microbatch
+    size, param fraction + mask mode, the Gram settings, ``signed_residual``,
+    ``bn_mode`` (C-E2) and Muon's construction rule token (C-B5)); and the
+    resolved evaluation settings :data:`_HASH_EVAL_KEYS` (C-E1/C-E3/C-E4).
+
+    **Not hashed** -- what is *logged or scheduled*, not computed:
+
+    * the checkpoint policy (``checkpoints`` / ``checkpoints_svd``) and the
+      spectra schedule (``svd_spectra_schedule`` / ``svd_spectra_every``): both
+      decide which states and which spectra are written, never the trajectory,
+      so re-running a scan with a denser ladder must not invalidate the runs it
+      already has (C-L2/C-L3);
+    * ``empty_cache`` (an allocator knob, C-T3), ``svd_info`` /
+      ``track_param_norm`` (how much is recorded), and ``stop_on_nonfinite``
+      (it only truncates a run that has already gone non-finite);
+    * ``scheduler``, ``n_shards``, ``shard_id``: which worker runs it;
+    * names and derived echoes -- :data:`_HASH_EXCLUDED_RECORD_KEYS`, e.g.
+      ``k_fraction`` (derived from ``k`` and the batch size) and ``decomposition``.
+
+    The ``dataset`` and ``model`` containers are hashed **as written**, key order
+    apart (``sort_keys`` canonicalises that recursively).  Unlike the evaluation
+    settings they cannot be resolved here -- their defaults live in the classes
+    ``_target_`` names -- so spelling out a value that was already the default
+    (``n_test: 10000``) or renaming a key *is* a new generation, and ``run_grid``
+    then retires every finished run of that scan into ``_stale/`` and re-executes
+    it.  A scan's ``dataset`` / ``model`` yaml is therefore frozen once its first
+    job is submitted; check a pending edit with ``tools/reconcile.py`` before
+    relaunching.
     """
     settings = {k: v for k, v in spec.record_extra.items()
                 if k not in _HASH_EXCLUDED_RECORD_KEYS}
+    resolved = resolve_scan_settings(rcfg)
     payload = {
         "schema_version": int(schema_version),
         "family": spec.family,
@@ -630,7 +843,7 @@ def run_hash(spec, rcfg, *, schema_version=SCHEMA_VERSION):
         "model": rcfg.get("model"),
         "loss": rcfg.get("loss", "ce"),
         "num_epochs": rcfg.get("num_epochs"),
-        "eval": {k: rcfg.get(k) for k in _HASH_EVAL_KEYS},
+        "eval": {k: resolved[k] for k in _HASH_EVAL_KEYS},
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=repr)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -641,3 +854,23 @@ def hash8(spec_or_hash, rcfg=None):
     if isinstance(spec_or_hash, str):
         return spec_or_hash[:8]
     return run_hash(spec_or_hash, rcfg)[:8]
+
+
+def config_digest(fragment, n=8):
+    """Short stable digest of a config fragment (:func:`run_hash`'s canonical form)."""
+    canonical = json.dumps(fragment, sort_keys=True, separators=(",", ":"), default=repr)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:n]
+
+
+def model_generation(rcfg, n=8):
+    """Digest of the resolved ``model`` config: which model an init state belongs to.
+
+    One scan directory can hold several *models*: ``result_id_fields:
+    [mlp_width, n_data]`` (``rebuttal_overparam_*``) puts six jobs with six model
+    configs in one directory, and a config edit replaces the model of a whole
+    generation.  The shared per-seed initial state (``ckpt/init_mseed{seed}.*``)
+    is therefore named by the model seed **and** this digest: without it the
+    first job's initialisation would be the only one stored (``save_init_state``
+    skips an existing file), silently standing in for every other model's.
+    """
+    return config_digest(rcfg.get("model"), n)

@@ -30,9 +30,17 @@ dependencies = [
 ]
 
 [dependency-groups]
-# Notebook kernel for VS Code / Jupyter (`uv sync` installs it into .venv, which
-# VS Code then offers as a kernel). Synced by default; harmless on the cluster.
-dev = ["ipykernel>=6.29"]
+# ipykernel: notebook kernel for VS Code / Jupyter (`uv sync` installs it into
+# .venv, which VS Code then offers as a kernel).
+# nbconvert: `./make_plots.sh` re-executes every analysis notebook with
+# `.venv/bin/jupyter nbconvert --execute`; without it the venv has `jupyter` (from
+# jupyter-core) but no `nbconvert` subcommand, and the `jupyter` on PATH outside
+# the venv cannot even import jupyter_core.
+# Synced by default; both are harmless on the cluster.
+dev = [
+    "ipykernel>=6.29",
+    "nbconvert>=7.17.1",
+]
 
 [tool.uv.sources]
 # The Sven package lives in ./sven and is developed in-tree: editable install.
@@ -49,6 +57,13 @@ kfac-pytorch = { git = "https://github.com/gpauloski/kfac-pytorch", rev = "869cf
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+# The experiment code is imported as the `experiments` package from the repo root
+# (see [tool.uv] package = false), so pytest must put the root on sys.path itself:
+# without this, `.venv/bin/pytest tests/` fails at collection and only
+# `python -m pytest` (which adds "" to sys.path) works.
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 # This is a workspace-style project: the experiment code is imported as the
 # `experiments` package from the repo root, not built into a wheel.

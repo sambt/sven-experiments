@@ -22,6 +22,9 @@ gram_capture: hooks
 # overrides the eval_batch_size default. 256 blocks = 32,768 tokens per eval batch, ~4
 # batches over the 10% val split.
 eval_batch_size: 256
+# fixed train subset for the end-of-epoch train_eval pass: the Shakespeare train split is ~6971 blocks, so the
+# 10,000 default would re-evaluate the whole training set every epoch
+train_eval_size: 1000
 # 826,368 params x 50 epochs is ~165 MB/run under `log`; `epochs` (one state per epoch end)
 # is the diagnostics resolution this scan needs.
 checkpoints: epochs

@@ -164,3 +164,8 @@ gpu_test allows 2 jobs and 8 slices per user: a MIG job takes `--gres=gpu:4`, 12
   launch plan; config stays). `mnist_kappaScan_labelRegression` stays in the plan. Standing go: after Stage 1 is
   committed and the smoke matrix is green, queue everything that does not depend on scan results, headline scans +
   `exp_nanogpt_speedrun` first in every work list.
+* Layout addition (runner fixer): `{scan}/attempts/{run_id}.{hash8}.{status}.{token}` counts failed attempts; a run
+  with >= 3 `oom`/`error` attempts under one hash is `poisoned` and no longer retried (delete its `attempts/` files
+  to retry). Any model with norm running stats REQUIRES an explicit `bn_mode`; HIG refuses `bn_mode=batch` on such
+  models until `HIGWrapper` gets the norm policy (HIG is MLP-only in the campaign). Shared init checkpoint is
+  `ckpt/init_mseed{seed}.{model_generation}.pt`.
