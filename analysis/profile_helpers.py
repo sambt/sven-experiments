@@ -6,12 +6,21 @@ DataFrame (a row per configuration); every plot function here takes that frame, 
 notebooks are thin drivers.
 
 Conventions
-    step_ms      steady-state mean step time (start-up steps and >3 MAD spikes dropped)
+    step_ms      AMORTISED mean step time: the plain mean over the last 80% of the measured
+                 steps, truncated to a whole number of 10-step cycles (C-T2).  Methods with
+                 a periodic refresh -- SOAP's ``precondition_frequency=10``, Sven's
+                 re-factorisations -- pay for it on one step in ten, and a spike filter
+                 would simply delete that cost (SOAP: 5.56 ms filtered vs 6.14 ms amortised).
+    step_ms_steady  the old steady-state mean (>3 MAD spikes dropped), kept for reference
     peak_mb      max over measured steps of ``torch.cuda.max_memory_allocated``
     overhead_mb  peak_mb minus the model's own parameter memory
     rel_time     step_ms / the reference first-order method (Adam, else AdamW) at the SAME
                  architecture, batch size and width;  rel_mem = peak_mb / SGD (SGD only)
-    status       ok | oom | infeasible | error  -- non-ok rows are kept and drawn as markers
+    status       ok | oom | infeasible | error | nonfinite  -- non-ok rows are kept and
+                 drawn as markers.  ``nonfinite`` (the parameters blew up during the
+                 profiled steps) still TIMED the steps, so its timings and memory are
+                 used like an ok row's (:data:`TIMED`) and only flagged in the labels;
+                 oom / infeasible / error have no numbers at all.
 """
 from __future__ import annotations
 
@@ -44,6 +53,16 @@ COLORS = {
     'LBFGS1': method_color('LBFGS'), 'LBFGS3': '#4D4D4D',
 }
 MARKERS = {'gram_hooks': 'o', 'gram_full': 's', 'gram_chunked': 'D', 'classic': '^'}
+#: Short note per non-ok status (used by the tables and the failure markers).
+STATUS_NOTE = {'oom': 'OOM', 'infeasible': 'infeasible', 'error': 'n/a', 'nonfinite': 'non-finite'}
+#: Statuses whose timings and memory ARE measurements.  ``nonfinite`` is recorded
+#: AFTER the measured steps (``optimizer_profile.py``), so the step cost is valid even
+#: though the parameters diverged: every function that CONSUMES a value filters on this
+#: set (a non-finite REFERENCE method would otherwise blank out the whole ``x Adam``
+#: column), and the tables / markers keep flagging the status.
+TIMED = ('ok', 'nonfinite')
+#: SOAP's ``precondition_frequency``: the period of the most expensive refresh profiled.
+CYCLE = 10
 ARCH_TITLES = {'toy_1d': 'Toy 1D MLP', 'polynomial': 'Polynomial MLP', 'mnist': 'MNIST MLP',
                'mnist_width': 'MNIST MLP (width sweep)', 'cifar_resnet18': 'CIFAR-10 ResNet18',
                'nanogpt': 'nanoGPT', 'nanogpt_width': 'nanoGPT (width sweep)'}
@@ -58,9 +77,45 @@ def is_sven(m): return m in SVEN
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
+def cycle_mean(values, cycle=CYCLE):
+    """Mean over the last 80% of a per-step series, truncated to whole ``cycle``-step
+    cycles -- the amortised cost of a step (C-T2).
+
+    The first 20% are start-up; the remainder is truncated to a multiple of ``cycle``
+    so that a refresh with period ``cycle`` is counted exactly the right number of
+    times, whatever the window's phase.  NaN for an empty series.
+
+    Duplicated in ``experiments/optimizer_profile.summarize`` (which cannot be imported
+    here: it imports torch); ``tests/test_analysis_offline.py`` checks the two agree.
+    """
+    a = np.asarray(values if values is not None else [], dtype=float)
+    if a.size == 0:
+        return np.nan
+    tail = a[int(0.2 * a.size):]
+    n = (tail.size // cycle) * cycle
+    return float(tail[:n].mean() if n else tail.mean())
+
+
+def _timing(t: dict, raw: dict, key: str):
+    """The cycle mean of the timing series ``key``: the value stored by a fresh profile,
+    else RECOMPUTED from the stored raw list, so legacy profiles are repaired without
+    rerunning them (C-T2).  Falls back to ``steady_mean`` when neither exists."""
+    d = t.get(key) or {}
+    if d.get('cycle_mean') is not None:
+        return d['cycle_mean']
+    v = cycle_mean(raw.get(key))
+    if v == v:
+        return v
+    # NaN, not None, for a series this method does not have (the Sven-only phase
+    # splits): a column of Nones is an object column, and `.round()` raises on it.
+    sm = d.get('steady_mean')
+    return sm if sm is not None else np.nan
+
+
 def _row(r: dict) -> dict:
     p, meta = r.get('params', {}), r.get('meta') or {}
     t, mem = r.get('time') or {}, r.get('memory') or {}
+    raw = r.get('raw') or {}
     st = t.get('step_ms') or {}
     g = lambda d, k: (d.get(k) if d else None)
     out = {
@@ -71,10 +126,11 @@ def _row(r: dict) -> dict:
         'pf': p.get('param_fraction', 1.0), 'mask_mode': p.get('mask_mode') or 'none',
         'mb': p.get('microbatch_size', 1), 'chunk_fraction': p.get('chunk_fraction'),
         'chunk_numel': meta.get('chunk_numel'), 'n_groups': meta.get('n_groups'), 'width': p.get('width'),
-        'step_ms': st.get('steady_mean'), 'step_ms_median': st.get('median'), 'step_ms_trimmed': st.get('trimmed_mean'),
+        'step_ms': _timing(t, raw, 'step_ms'), 'step_ms_steady': st.get('steady_mean'),
+        'step_ms_median': st.get('median'), 'step_ms_trimmed': st.get('trimmed_mean'),
         'step_ms_mean': st.get('mean'), 'step_ms_p10': st.get('p10'), 'step_ms_p90': st.get('p90'), 'n_steps': st.get('n'),
-        'wall_ms': g(t.get('wall_ms'), 'steady_mean'), 'capture_ms': g(t.get('capture_ms'), 'steady_mean'),
-        'solve_ms': g(t.get('solve_ms'), 'steady_mean'),
+        'wall_ms': _timing(t, raw, 'wall_ms'), 'capture_ms': _timing(t, raw, 'capture_ms'),
+        'solve_ms': _timing(t, raw, 'solve_ms'),
         'model_mb': (r.get('baseline_model_bytes') or 0) / MB,
         'peak_mb': (mem.get('peak_alloc_bytes_max') or np.nan) / MB,
         'peak_reserved_mb': (mem.get('peak_reserved_bytes_max') or np.nan) / MB,
@@ -91,11 +147,18 @@ def _row(r: dict) -> dict:
     return out
 
 
+#: Bump when :func:`_row` changes what it derives from the same JSON files -- the file
+#: listing alone cannot see a change of summary statistic (C-T2 moved ``step_ms`` from
+#: ``steady_mean`` to the cycle mean, and every cached frame would have stayed stale).
+_CACHE_VERSION = 2
+
+
 def load_profiles(root=RESULTS_ROOT, configs=None, use_cache=True) -> pd.DataFrame:
     """Every profile JSON under ``root`` as one tidy frame (cached on the file listing)."""
     root = Path(root)
     files = sorted(f for f in root.glob('*/*.json') if configs is None or f.parent.name in configs)
-    sig = (len(files), max((f.stat().st_mtime_ns for f in files), default=0), tuple(configs or ()))
+    sig = (_CACHE_VERSION, len(files), max((f.stat().st_mtime_ns for f in files), default=0),
+           tuple(configs or ()))
     cache = root / '_profile_cache.pkl'
     if use_cache and cache.is_file():
         try:
@@ -119,7 +182,7 @@ def add_relative(df: pd.DataFrame) -> pd.DataFrame:
     """rel_time (vs Adam, else AdamW) and rel_mem (vs SGD) at matching arch / B / width."""
     df = df.copy()
     key = ['arch', 'B', 'width']
-    ok = df[(df.status == 'ok') & (df.pf == 1.0) & (df.mb == 1)]
+    ok = df[df.status.isin(TIMED) & (df.pf == 1.0) & (df.mb == 1)]
     def ref(methods, col):
         out = {}
         for m in methods:
@@ -175,8 +238,7 @@ def method_table(df, arch, study='methods') -> pd.DataFrame:
     """One row per method at the set point: time, memory, ratios, status."""
     d = df[(df.arch == arch) & (df.study == study)].copy()
     d['Method'] = d.method.map(label)
-    note = d.apply(lambda r: '' if r.status == 'ok' else
-                   (f'OOM' if r.status == 'oom' else 'infeasible' if r.status == 'infeasible' else 'error'), axis=1)
+    note = d.status.apply(lambda s: '' if s == 'ok' else STATUS_NOTE.get(s, s))
     out = pd.DataFrame({
         'Method': d.Method, 'Step (ms)': d.step_ms.round(2), 'x Adam': d.rel_time.round(2),
         'Peak mem (MB)': d.peak_mb.round(1), 'x SGD': d.rel_mem.round(2),
@@ -187,7 +249,10 @@ def method_table(df, arch, study='methods') -> pd.DataFrame:
 
 
 def plot_method_bars(df, arch, ax, value='step_ms', study='methods', log=True):
-    """Horizontal bars, one per method, sorted; non-ok configurations are annotated."""
+    """Horizontal bars, one per method, sorted; non-ok configurations are annotated.
+
+    A ``nonfinite`` row keeps its bar and its number (they were measured) and carries
+    the crimson note as well."""
     d = df[(df.arch == arch) & (df.study == study)].copy()
     d = d.sort_values(value, ascending=True, na_position='first')
     y = np.arange(len(d))
@@ -195,21 +260,22 @@ def plot_method_bars(df, arch, ax, value='step_ms', study='methods', log=True):
     ax.barh(y, vals, color=[color(m) for m in d.method], edgecolor='k', lw=0.4)
     ax.set_yticks(y); ax.set_yticklabels([label(m) for m in d.method], fontsize=9)
     for yi, (_, r) in zip(y, d.iterrows()):
+        if r.status in TIMED and r[value] == r[value]:
+            ax.text(r[value], yi, ' ' + _fmt(r[value]), va='center', fontsize=8)
         if r.status != 'ok':
             ax.text(ax.get_xlim()[0] if not log else max(vals[vals > 0].min() if (vals > 0).any() else 1, 1e-3),
-                    yi, {'oom': ' OOM', 'infeasible': ' infeasible', 'error': ' n/a'}[r.status], va='center', fontsize=8,
+                    yi, ' ' + STATUS_NOTE.get(r.status, r.status), va='center', fontsize=8,
                     color='crimson')
-        else:
-            ax.text(r[value], yi, ' ' + _fmt(r[value]), va='center', fontsize=8)
     if log: ax.set_xscale('log')
-    ax.set_xlabel({'step_ms': 'Steady-state step time (ms)', 'peak_mb': 'Peak GPU memory (MB)',
+    ax.set_xlabel({'step_ms': 'Amortised step time (ms)', 'peak_mb': 'Peak GPU memory (MB)',
                    'overhead_mb': 'Peak memory above model (MB)', 'rel_time': r'Step time / Adam',
                    'rel_mem': 'Peak memory / SGD'}.get(value, value))
     ax.set_title(ARCH_TITLES.get(arch, arch)); ax.grid(axis='x', ls='--', alpha=0.5)
 
 
 def plot_heatmap(df, ax, value='rel_time', study='methods', archs=None, methods=None, fmt='{:.1f}'):
-    """methods x architectures grid of a relative cost; OOM / infeasible / n/a cells are labelled."""
+    """methods x architectures grid of a relative cost; OOM / infeasible / n/a cells are
+    labelled, and a measured cell whose parameters went non-finite carries a ``*``."""
     d = df[df.study == study]
     archs = archs or [a for a in ARCH_ORDER if a in set(d.arch)]
     methods = methods or (SVEN + [m for m in COLORS if m not in SVEN])
@@ -220,8 +286,9 @@ def plot_heatmap(df, ax, value='rel_time', study='methods', archs=None, methods=
             r = d[(d.method == m) & (d.arch == a)]
             if r.empty: txt[i][j] = '--'; continue
             r = r.iloc[0]
-            if r.status == 'ok': M[i, j] = r[value]; txt[i][j] = fmt.format(r[value])
-            else: txt[i][j] = {'oom': 'OOM', 'infeasible': 'inf.', 'error': 'n/a'}[r.status]
+            if r.status in TIMED and r[value] == r[value]:
+                M[i, j] = r[value]; txt[i][j] = fmt.format(r[value]) + ('' if r.status == 'ok' else '*')
+            else: txt[i][j] = {'infeasible': 'inf.'}.get(r.status) or STATUS_NOTE.get(r.status, r.status)
     im = ax.imshow(np.log10(M), cmap='viridis_r', aspect='auto')
     for i in range(len(methods)):
         for j in range(len(archs)):
@@ -239,7 +306,9 @@ def plot_sweep(df, arch, study, x, ax, value='step_ms', methods=None, style_by=N
                analytic=None, ideal=None):
     """``value`` vs ``x`` for one study, a line per method (and per ``style_by`` value, e.g. mask_mode).
 
-    Non-ok points are drawn as red crosses at the top of the axis so OOM walls are visible.
+    Points with no measurement (oom / infeasible / error) are drawn as red crosses at the
+    top of the axis so OOM walls are visible; a ``nonfinite`` point was timed, so it stays
+    on its line and gets a crimson ring instead of being turned into a wall.
     ``analytic``: a column to overlay as a dotted line (e.g. 'analytic_jac_mb').
     ``ideal``: 'linear' draws the proportional-to-x reference through each method's x=max point.
     """
@@ -257,11 +326,15 @@ def plot_sweep(df, arch, study, x, ax, value='step_ms', methods=None, style_by=N
             if style_by is not None:       # the unmasked pf=1 point belongs to every mask_mode line
                 g = pd.concat([g, dm[dm[style_by] == 'none']])
             g = g.sort_values(x)
-            ok = g[g.status == 'ok']
+            ok = g[g.status.isin(TIMED)]
             lab = label(m) + (f' [{gval}]' if style_by is not None else '')
             ax.plot(ok[x], ok[value], marker=MARKERS.get(m, 'o'), ms=5, lw=2.2 if is_sven(m) else 1.4,
                     ls=ls_cycle[gi % 4] if style_by is not None else '-', color=color(m), label=lab)
-            bad = g[g.status != 'ok']
+            nf = ok[ok.status == 'nonfinite']
+            if len(nf):    # timed, but the parameters diverged: same point, flagged
+                ax.plot(nf[x], nf[value], MARKERS.get(m, 'o'), ms=9, mfc='none', color=color(m),
+                        mec='crimson', mew=1.2, ls='none', label='non-finite parameters')
+            bad = g[~g.status.isin(TIMED)]
             if len(bad):   # failures: method-coloured X with a red edge, stacked above the data
                 top = (np.nanmax(d[value]) if d[value].notna().any() else 1) * (1.6 * 1.35 ** n_bad_rows)
                 n_bad_rows += 1
@@ -283,12 +356,12 @@ def plot_sweep(df, arch, study, x, ax, value='step_ms', methods=None, style_by=N
 
 def plot_pareto(df, arch, ax):
     """Chunk-fraction trade-off: peak memory vs step time, annotated with the chunk fraction."""
-    d = df[(df.arch == arch) & (df.study == 'chunk_fraction') & (df.status == 'ok')].sort_values('chunk_fraction')
+    d = df[(df.arch == arch) & (df.study == 'chunk_fraction') & df.status.isin(TIMED)].sort_values('chunk_fraction')
     ax.plot(d.peak_mb, d.step_ms, '-D', color=color('gram_chunked'), lw=2, label=label('gram_chunked'))
     for _, r in d.iterrows():
         ax.annotate(f"$f$={r.chunk_fraction:g}\n({int(r.n_groups)} grp)", (r.peak_mb, r.step_ms), fontsize=8,
                     textcoords='offset points', xytext=(6, 4))
-    ref = df[(df.arch == arch) & (df.study == 'methods') & (df.status == 'ok')]
+    ref = df[(df.arch == arch) & (df.study == 'methods') & df.status.isin(TIMED)]
     for m in ['gram_hooks', 'gram_full', 'classic', 'Adam']:
         r = ref[ref.method == m]
         if len(r): ax.plot(r.peak_mb, r.step_ms, MARKERS.get(m, '*'), ms=10, color=color(m), label=label(m), mec='k')
@@ -298,8 +371,10 @@ def plot_pareto(df, arch, ax):
 
 
 def plot_phase_bars(df, ax, archs=None, study='methods'):
-    """Stacked capture vs solve+apply time for each Sven variant, grouped by architecture."""
-    d = df[(df.study == study) & (df.family == 'sven') & (df.status == 'ok')]
+    """Stacked capture vs solve+apply time for each Sven variant, grouped by architecture.
+
+    A ``nonfinite`` variant keeps its bar (the phases were timed) with a ``*`` on its tick."""
+    d = df[(df.study == study) & (df.family == 'sven') & df.status.isin(TIMED)]
     archs = archs or [a for a in ARCH_ORDER if a in set(d.arch)]
     xs, labs = [], []; x = 0
     for a in archs:
@@ -309,7 +384,7 @@ def plot_phase_bars(df, ax, archs=None, study='methods'):
             r = r.iloc[0]
             ax.bar(x, r.capture_ms, color=color(m), edgecolor='k', lw=0.4)
             ax.bar(x, r.solve_ms, bottom=r.capture_ms, color=color(m), alpha=0.35, hatch='//', edgecolor='k', lw=0.4)
-            xs.append(x); labs.append(f"{label(m).replace('Sven ', '')}"); x += 1
+            xs.append(x); labs.append(label(m).replace('Sven ', '') + ('' if r.status == 'ok' else '*')); x += 1
         x += 0.8
     ax.set_xticks(xs); ax.set_xticklabels(labs, rotation=60, ha='right', fontsize=8)
     ax.set_yscale('log'); ax.set_ylabel('Time per step (ms)')
@@ -328,19 +403,24 @@ def fit_exponent(x, y):
 
 
 def scaling_table(df, arch, value='step_ms') -> pd.DataFrame:
-    """Per method: value at the smallest / largest model, the growth factor and the fitted exponent in P."""
+    """Per method: value at the smallest / largest TIMED model (:data:`TIMED`, so a run
+    whose parameters diverged still counts -- the column ``non-finite`` says how many),
+    the growth factor, the fitted exponent in P and the first configuration with no
+    measurement at all."""
     d = df[(df.arch == arch) & (df.study == 'width')]
     rows = []
     for m, g in d.groupby('method'):
-        ok = g[g.status == 'ok'].sort_values('n_params')
-        bad = g[g.status != 'ok'].sort_values('n_params')
+        ok = g[g.status.isin(TIMED)].sort_values('n_params')
+        bad = g[~g.status.isin(TIMED)].sort_values('n_params')
         rows.append({'Method': label(m), 'smallest P': _fmt(ok[value].iloc[0]) if len(ok) else '--',
-                     'largest ok P': f"{int(ok.n_params.iloc[-1]):,}" if len(ok) else '--',
+                     'largest timed P': f"{int(ok.n_params.iloc[-1]):,}" if len(ok) else '--',
                      'at largest': _fmt(ok[value].iloc[-1]) if len(ok) else '--',
                      'growth': round(ok[value].iloc[-1] / ok[value].iloc[0], 1) if len(ok) > 1 else np.nan,
                      'exponent': round(fit_exponent(ok.n_params, ok[value]), 2),
                      'first failure': (f"{bad.status.iloc[0]} @ P={int(bad.n_params.iloc[0]):,}" if len(bad) and bad.n_params.notna().any()
-                                       else (bad.status.iloc[0] if len(bad) else ''))})
+                                       else (bad.status.iloc[0] if len(bad) else '')),
+                     # Timed but diverged: not a failure of the measurement, still worth seeing.
+                     'non-finite': int((ok.status == 'nonfinite').sum()) or ''})
     return pd.DataFrame(rows).sort_values('exponent').reset_index(drop=True)
 
 
@@ -348,21 +428,25 @@ def scaling_table(df, arch, value='step_ms') -> pd.DataFrame:
 # Quality control
 # ---------------------------------------------------------------------------
 def plot_steadiness(df, ax, threshold=1.3):
-    """p90/p10 of the per-step times for every ok configuration; flags the unsteady ones."""
-    d = df[df.status == 'ok'].sort_values('steadiness')
+    """p90/p10 of the per-step times for every TIMED configuration; flags the unsteady ones."""
+    d = df[df.status.isin(TIMED)].sort_values('steadiness')
     ax.plot(np.arange(len(d)), d.steadiness, '.', ms=3, color='k')
     ax.axhline(threshold, color='crimson', ls='--', lw=1)
     ax.set_yscale('log'); ax.set_xlabel('configuration (sorted)'); ax.set_ylabel('step time p90 / p10')
     bad = d[d.steadiness > threshold]
     ax.set_title(f'{len(bad)} of {len(d)} configurations above {threshold}')
-    return bad[['arch', 'study', 'method', 'B', 'step_ms', 'step_ms_p10', 'step_ms_p90', 'steadiness']]
+    return bad[['arch', 'study', 'method', 'B', 'step_ms', 'step_ms_p10', 'step_ms_p90',
+                'steadiness', 'status']]
 
 
 def plot_raw_steps(row, ax):
     """Raw per-step times of one configuration with the summary statistics overlaid."""
     s = raw_steps(row)
     ax.plot(s, '.-', color='k', lw=0.8)
-    for v, c, l in [(row.step_ms, 'crimson', 'steady mean'), (row.step_ms_median, 'C0', 'median'), (row.step_ms_mean, 'C2', 'plain mean')]:
+    for v, c, l in [(row.step_ms, 'crimson', 'cycle mean'), (row.step_ms_steady, 'C1', 'steady mean'),
+                    (row.step_ms_median, 'C0', 'median'), (row.step_ms_mean, 'C2', 'plain mean')]:
+        if v is None or v != v:
+            continue
         ax.axhline(v, color=c, ls='--', lw=1, label=f'{l} {v:.2f} ms')
     ax.set_xlabel('measured step'); ax.set_ylabel('ms'); ax.legend(fontsize=8)
     ax.set_title(f"{row.arch} / {label(row.method)}")

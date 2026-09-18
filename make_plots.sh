@@ -13,7 +13,17 @@
 # is also how the saved outputs are brought back in line after a helper change -- they are
 # stale until it is run (analysis/ANALYSIS_FIXES.md).
 set -eu
-cd "$(dirname "$0")/analysis"
+REPO=$(cd "$(dirname "$0")" && pwd)
+# The venv's OWN jupyter: the `jupyter` on PATH (~/.local/bin) cannot import
+# jupyter_core, and nbconvert is a dev dependency of this project (pyproject.toml),
+# not of whatever interpreter happens to come first.  `uv sync` installs it.
+JUPYTER=$REPO/.venv/bin/jupyter
+if [ ! -x "$JUPYTER" ] || ! "$JUPYTER" nbconvert --version >/dev/null 2>&1; then
+  echo "error: $JUPYTER nbconvert is missing; run 'uv sync --inexact' (or" >&2
+  echo "       'uv pip install --python .venv/bin/python nbconvert')" >&2
+  exit 1
+fi
+cd "$REPO/analysis"
 
 SCANS=(toy_1d_analysis polynomial_analysis mnist_analysis mnist_analysis_labelRegression comparisons)
 STUDIES=(baselines_analysis batchsize_analysis overparam_analysis critbatch_analysis nanogpt_analysis
@@ -26,7 +36,7 @@ else NBS=("${SCANS[@]}" "${STUDIES[@]}" "${PROFILES[@]}"); fi
 
 for nb in "${NBS[@]}"; do
   printf '== %s ==\n' "$nb"
-  jupyter nbconvert --to notebook --execute --inplace "$nb.ipynb" \
+  "$JUPYTER" nbconvert --to notebook --execute --inplace "$nb.ipynb" \
       --ExecutePreprocessor.timeout=3600 --log-level=ERROR
 done
 echo "done: ${#NBS[@]} notebook(s); plots under analysis/plots_v2/"

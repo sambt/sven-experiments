@@ -27,13 +27,16 @@ up to ``num_steps`` measured steps (at least ``min_steps``, stopping early once
 ``max_seconds`` of measured time has elapsed).  Each measured step records CUDA-event
 time, wall time, peak allocated / reserved bytes and, for Sven, the capture
 (``loss_and_grad``) vs solve+apply (``optimizer.step``) split.  The raw per-step lists
-are stored; summary statistics include the median, a 10% trimmed mean and a
-*steady-state mean* (first 20% of measured steps dropped, then >3 MAD outliers) -- use
-that one as "mean step time ignoring start-up fluctuations".
+are stored; summary statistics include the median, a 10% trimmed mean, a *steady-state
+mean* (first 20% of measured steps dropped, then >3 MAD outliers) and a *cycle mean*
+(last 80% of measured steps, truncated to whole 10-step cycles) -- use the LAST one as
+the cost of a step: the MAD filter deletes the periodic refresh that a method like SOAP
+actually pays for (C-T2).
 
 Out-of-memory is a RESULT (``status: "oom"``), not a crash; methods whose Jacobian cannot
 possibly fit (HIG on conv-nets / language models) are recorded as ``"infeasible"`` with
-the analytic size instead of being attempted.  One JSON per configuration under
+the analytic size instead of being attempted, and a method that left the parameters
+non-finite as ``"nonfinite"`` (its timings are still recorded).  One JSON per configuration under
 ``{output_dir}/{config_name}/{run_id}.json``; existing files are skipped (resumable).
 Run on an exclusively reserved node: co-tenant jobs skew launch-bound timings by up to 2x.
 """
@@ -86,8 +89,38 @@ BASELINE_SPECS: dict[str, dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 # Statistics
 # ---------------------------------------------------------------------------
+CYCLE = 10   # SOAP's `precondition_frequency`: the period of the most expensive refresh
+
+
+def cycle_mean(values, cycle=CYCLE):
+    """Mean over the last 80% of a per-step series, truncated to whole ``cycle``-step
+    cycles -- the amortised cost of a step (C-T2).
+
+    The first 20% are start-up; the remainder is truncated to a multiple of ``cycle``
+    so that a refresh with period ``cycle`` is counted exactly the right number of
+    times, whatever the window's phase.  NaN for an empty series.
+
+    Duplicated in ``analysis/profile_helpers.py`` (which must stay torch-free, and this
+    module imports torch at the top); ``tests/test_analysis_offline.py`` checks the two
+    agree.
+    """
+    a = np.asarray(values if values is not None else [], dtype=float)
+    if a.size == 0:
+        return np.nan
+    tail = a[int(0.2 * a.size):]
+    n = (tail.size // cycle) * cycle
+    return float(tail[:n].mean() if n else tail.mean())
+
+
 def summarize(values: list[float]) -> dict[str, float]:
-    """Robust summary of a per-step series (ms or bytes)."""
+    """Robust summary of a per-step series (ms or bytes).
+
+    ``cycle_mean`` is the headline statistic (C-T2): ``steady_mean`` drops the >3 MAD
+    points, which for a method with a periodic refresh (SOAP every 10 steps, Sven's
+    re-factorisations) deletes exactly the cost that has to be paid -- SOAP on
+    ``profile_mnist`` reads 5.56 ms steady against 6.14 ms amortised.  ``steady_mean``
+    is kept as the reference column.
+    """
     a = np.asarray(values, dtype=float)
     if a.size == 0:
         return {}
@@ -102,7 +135,8 @@ def summarize(values: list[float]) -> dict[str, float]:
     return {
         "n": int(a.size), "mean": float(a.mean()), "std": float(a.std()), "median": float(np.median(a)),
         "trimmed_mean": float(trimmed.mean()), "steady_mean": float(steady.mean()),
-        "steady_n": int(steady.size), "p10": float(np.percentile(a, 10)), "p90": float(np.percentile(a, 90)),
+        "steady_n": int(steady.size), "cycle_mean": float(cycle_mean(a)), "cycle": int(CYCLE),
+        "p10": float(np.percentile(a, 10)), "p90": float(np.percentile(a, 90)),
         "min": float(a.min()), "max": float(a.max()),
     }
 
@@ -391,6 +425,10 @@ def profile_one(job, cfg, rcfg, dataset, device, prof) -> dict:
             "peak_reserved_bytes_max": int(max(rec["peak_reserved_bytes"])),
             "peak_capture_bytes_max": int(max(rec["peak_capture_bytes"])) if rec["peak_capture_bytes"] else None,
         }
+        # A method that blew the parameters up still produces perfectly good step times,
+        # so the timings are kept -- but the configuration is not "ok" (C-T2).
+        if not all(torch.isfinite(q).all().item() for q in model.parameters()):
+            result["status"] = "nonfinite"
     except _Infeasible as e:
         result.update(status="infeasible", error=str(e), meta=e.meta)
     except torch.cuda.OutOfMemoryError as e:
