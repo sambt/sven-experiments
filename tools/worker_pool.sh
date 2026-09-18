@@ -63,7 +63,13 @@ ITEMS=$(cd "$(dirname "$ITEMS")" && pwd)/$(basename "$ITEMS")
 
 PY=${WORKER_PY:-/n/home11/sambt/iaifi/sv3/.venv/bin/python}
 [ -x "$PY" ] || die "python '$PY' is not executable (set WORKER_PY)"
-SCHED=${WORKER_SCHEDULER_OVERRIDE-scheduler=claims}
+# `++`, not `=`: NO scan config declares `scheduler` (the default lives in
+# grid.resolve_scan_settings and tests/test_configs.py forbids the key in a config), so
+# hydra's struct mode rejects a plain `scheduler=claims` with "Could not override
+# 'scheduler' ... not in struct" and every runner process of every campaign job exits 1
+# before it trains anything. `++key=value` overrides the key if it is there and appends
+# it if it is not, so it is correct either way.
+SCHED=${WORKER_SCHEDULER_OVERRIDE-++scheduler=claims}
 JOBID=${SLURM_JOB_ID:-local.$$}
 [ -n "$LABEL" ] || LABEL=$(basename "$ITEMS" .txt)
 # Logs go to holystore, NOT to $HOME: one log per (job x pool x item x NPROC) plus a

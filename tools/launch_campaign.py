@@ -175,34 +175,61 @@ def snapshot_config_dir(snapshot):
 # ---------------------------------------------------------------------------
 
 _OPTIM_RE = re.compile(r"optimizers_standard=\[([^\]]*)\]")
+_POOL_SCHED_RE = re.compile(r"^SCHED=\$\{WORKER_SCHEDULER_OVERRIDE-(\S+)\}\s*$", re.M)
+#: what `tools/worker_pool.sh` adds to every runner command line when it cannot be read
+DEFAULT_POOL_OVERRIDE = "++scheduler=claims"
 
 
-def check_items(items, *, config_dir=None):
+def pool_override(snapshot):
+    """The override `worker_pool.sh` prepends to every runner command, read from the
+    snapshot that will run.
+
+    Composing only the plan's own overrides is how `scheduler=claims` -- which no scan
+    config declares, so hydra's struct mode refuses it -- passed a clean dry run and
+    then failed every runner process of every job. The check has to compose the command
+    line a job will really use, so it is read from the pool script itself.
+    """
+    path = os.path.join(str(snapshot or ""), "tools", "worker_pool.sh")
+    try:
+        with open(path) as fh:
+            match = _POOL_SCHED_RE.search(fh.read())
+    except OSError:
+        return DEFAULT_POOL_OVERRIDE
+    return match.group(1) if match else DEFAULT_POOL_OVERRIDE
+
+
+def check_items(items, *, config_dir=None, extra_overrides=""):
     """`{item_index: (n_runs, [problems])}` by composing each item's config.
 
     Cheap (hydra only, no torch) and worth it: an item whose overrides expand to zero
     runs, or name an optimizer the config does not list, would otherwise burn a whole
     job before anybody noticed.
+
+    `extra_overrides` is what the worker pool adds to every command (see
+    :func:`pool_override`), so what gets composed here is the command line a job runs.
     """
     import reconcile                                  # torch-free, same directory
     out = {}
     grid = reconcile.load_grid()
     jd = reconcile.has_torchjd()
+    prefix = f"{extra_overrides} " if extra_overrides else ""
     with reconcile.ConfigLoader(config_dir) as loader:
         for idx, item in enumerate(items):
             problems = []
             try:
-                rcfg = loader.compose(item.config, item.overrides)
+                rcfg = loader.compose(item.config, prefix + item.overrides)
             except Exception as exc:
-                out[idx] = (None, [f"cannot compose: {type(exc).__name__}: {exc}"])
+                out[idx] = (None, [f"cannot compose: {type(exc).__name__}: {exc} "
+                                   f"(composed with the worker pool's "
+                                   f"{extra_overrides!r})"])
                 continue
             wanted = _OPTIM_RE.search(item.overrides)
             if wanted:
                 # the config's OWN list, i.e. composed without this item's
                 # `optimizers_standard=` override (which would otherwise be what we
                 # compare against, and the check would be vacuous)
-                base = " ".join(t for t in item.overrides.split()
-                                if not t.startswith("optimizers_standard="))
+                base = prefix + " ".join(t for t in item.overrides.split()
+                                         if not t.startswith("optimizers_standard="))
                 try:
                     listed = loader.compose(item.config, base).get("optimizers_standard") or []
                 except Exception:
@@ -550,6 +577,8 @@ def main(argv=None):
     print(f"[launch] configs   {config_dir or os.path.join(REPO, 'experiments', 'configs')}"
           f"   ({source}; run counts and warnings below describe THESE configs)")
     print(f"[launch] results   {results_root}")
+    print(f"[launch] pool adds {pool_override(snapshot)}   "
+          f"(composed together with every item's own overrides)")
     print(f"[launch] mode      {'SUBMIT' if a.submit else 'dry run (nothing is submitted)'}"
           f"{'  +chain' if a.chain else ''}")
 
@@ -612,7 +641,8 @@ def main(argv=None):
     if not a.no_count:
         try:
             all_items = [it for _wl, _l, its, _n in planned for it in its]
-            flat = check_items(all_items, config_dir=config_dir)
+            flat = check_items(all_items, config_dir=config_dir,
+                               extra_overrides=pool_override(snapshot))
             off = 0
             for wl, _l, its, _n in planned:
                 for i in range(len(its)):

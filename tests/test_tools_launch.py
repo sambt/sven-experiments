@@ -466,6 +466,33 @@ def test_dry_run_prints_the_sbatch_line_and_writes_nothing(sandbox, capsys):
     assert not sandbox["work"].exists() and not sandbox["logs"].exists()
 
 
+def test_the_check_composes_the_command_line_the_pool_will_really_run(sandbox, capsys):
+    """A dry run must compose the worker pool's own overrides too.
+
+    `worker_pool.sh` prepends one override (`scheduler=...`) to every runner command.
+    While the check composed only the plan's own overrides, a spelling of that override
+    which hydra's struct mode refuses passed the dry run and then failed EVERY runner
+    process of EVERY job -- 24 of 24 on the Gate-1 smoke, before any training.
+    """
+    # the real pool script is the source of truth, and it must be the working spelling
+    assert launch.pool_override(REPO) == "++scheduler=claims"
+
+    # the stub snapshot in the sandbox has no SCHED line -> the safe default
+    assert launch.pool_override(sandbox["snap"]) == launch.DEFAULT_POOL_OVERRIDE
+    rc = _launch(sandbox, "--phase", "P0")
+    assert rc == 0
+    assert f"pool adds {launch.DEFAULT_POOL_OVERRIDE}" in capsys.readouterr().out
+
+    # a pool that emits the struct-mode-invalid spelling is now caught by the check
+    (sandbox["snap"] / "tools" / "worker_pool.sh").write_text(
+        "#!/bin/bash\nSCHED=${WORKER_SCHEDULER_OVERRIDE-scheduler=claims}\n")
+    assert launch.pool_override(sandbox["snap"]) == "scheduler=claims"
+    rc = _launch(sandbox, "--phase", "P0")
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[warn] cannot compose" in out and "scheduler" in out
+
+
 def test_the_items_file_is_the_work_item_format_worker_pool_parses(sandbox, tmp_path):
     plan = campaign_plan.load_plan(sandbox["plan"])
     wl = plan.work_lists[0]

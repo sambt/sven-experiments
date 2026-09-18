@@ -153,7 +153,7 @@ def test_items_are_parsed_and_walked_in_order_with_nproc_processes(env):
     assert [c["argv"][2] for c in calls] == ["toy_1d_scan", "toy_1d_scan",
                                              "polynomial_scan"]
     assert calls[0]["argv"][:4] == [str(env["snap"] / "run.py"), "--config-name",
-                                    "toy_1d_scan", "scheduler=claims"]
+                                    "toy_1d_scan", _pool_scheduler_token()]
     assert calls[0]["argv"][-1] == "mode=svd"
     # the list-valued override survives as ONE argv word (set -f, no globbing)
     assert calls[2]["argv"][-1] == "optimizers_standard=[Adam,SGD]"
@@ -256,9 +256,42 @@ def test_an_explicit_results_root_wins(env):
     assert _calls(env)[0]["env"]["SV3_RESULTS_ROOT"] == str(other)
 
 
+def test_the_scheduler_override_the_pool_emits_composes_against_a_real_config():
+    """The pool's override must survive hydra's struct mode.
+
+    The fake python of every other test in this file never composes a config, which is
+    how a plain `scheduler=claims` reached a GPU: no scan config declares `scheduler`
+    (the default is `grid.resolve_scan_settings`'s and `tests/test_configs.py` forbids
+    the key in a config), so struct mode answers "Could not override 'scheduler' ...
+    not in struct" and EVERY runner process of EVERY campaign job exits 1 having
+    trained nothing. Compose the token the pool actually emits, against real configs.
+    """
+    sys.path.insert(0, TOOLS)
+    import reconcile                                    # torch-free
+    sys.path.insert(0, REPO)
+    grid = reconcile.load_grid()
+
+    token = _pool_scheduler_token()
+    with reconcile.ConfigLoader() as loader:
+        for config in ("toy_1d_scan", "exp_nanogpt_speedrun",
+                       "cifar10_resnet_ce_scan"):
+            rcfg = loader.compose(config, token)         # raises on a struct-mode clash
+            assert rcfg["scheduler"] == "claims"
+            assert grid.resolve_scan_settings(rcfg)["scheduler"] == "claims"
+
+
+def _pool_scheduler_token():
+    """The default of `SCHED` in worker_pool.sh, i.e. what a job really passes."""
+    import re
+    match = re.search(r"^SCHED=\$\{WORKER_SCHEDULER_OVERRIDE-(\S+)\}\s*$",
+                      open(POOL).read(), re.M)
+    assert match, "worker_pool.sh no longer defines SCHED the way this test reads it"
+    return match.group(1)
+
+
 def test_the_scheduler_override_is_default_on_and_can_be_dropped(env):
     _run(env)
-    assert "scheduler=claims" in _calls(env)[0]["argv"][3:]
+    assert _pool_scheduler_token() in _calls(env)[0]["argv"][3:]
     env["log"].unlink()
     _run(env, extra_env={"WORKER_SCHEDULER_OVERRIDE": ""})
     # an EMPTY override drops the word entirely (Gate-1 smoke, before `scheduler`
