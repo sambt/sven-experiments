@@ -29,6 +29,9 @@ for method, cfg, *_ in json.load(open(path))[scan]:
     elif method.startswith('JD_'):
         agg = method[3:]; inner = cfg.get('inner_optimizer') or 'Adam'
         print(f"JD_{agg}_lr{cfg['lr']:g}|mode=jd lrs_jd=[{cfg['lr']:g}] aggregators_jd=[{agg}] inner_optimizers_jd=[{inner}]")
+    elif method in ('AdamW', 'Muon', 'MuonW') and cfg.get('weight_decay') is not None:
+        wd = float(cfg['weight_decay'])   # AdamW's run_id always carries its wd (default 0.01)
+        print(f"{method}_lr{cfg['lr']:g}_wd{wd:g}|mode=standard optimizers_standard=[{method}] lrs_standard=[{cfg['lr']:g}] weight_decays=[{wd:g}]")
     else:
         print(f"{method}_lr{cfg['lr']:g}|mode=standard optimizers_standard=[{method}] lrs_standard=[{cfg['lr']:g}]")
 PY

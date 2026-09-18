@@ -14,7 +14,7 @@ from hydra.core.hydra_config import HydraConfig
 
 from .experiment_utils import (
     train_loop_svd, train_loop_standard, train_loop_hig, train_loop_jd, set_seed,
-    process_hparam_config, build_standard_optimizer,
+    process_hparam_config, build_standard_optimizer, resolve_weight_decay,
 )
 from sven.opt import Sven, SvenGram
 from sven.nn import SvenWrapper, GramSvenWrapper
@@ -226,9 +226,18 @@ def _split_diagnostics(result, svd_info_mode="full", svd_spectra_every=20):
     return light, diag
 
 
-def _write_run(scan_dir, run_id, result, svd_info_mode="full", svd_spectra_every=20):
+def _write_run(scan_dir, run_id, result, svd_info_mode="full", svd_spectra_every=20,
+               common=None):
     """Write the heavy diagnostics (npz) first, then the light JSONL (the dedup
-    marker), so a run is only ever counted as done once both files exist."""
+    marker), so a run is only ever counted as done once both files exist.
+
+    ``common`` holds per-scan facts every record should carry (``n_params``,
+    ``n_train``, ``n_val``; see :func:`_scan_facts`) -- the analysis needs them for
+    P/N and steps-per-epoch and used to hard-code them.
+    """
+    if common:
+        for k_, v in common.items():
+            result.setdefault(k_, v)
     light, diag = _split_diagnostics(result, svd_info_mode, svd_spectra_every)
     light['diag_file'] = None
     if diag:
@@ -237,6 +246,19 @@ def _write_run(scan_dir, run_id, result, svd_info_mode="full", svd_spectra_every
         np.savez_compressed(os.path.join(diag_dir, run_id + '.npz'), **diag)
         light['diag_file'] = os.path.join('diag', run_id + '.npz')
     _write_result(os.path.join(scan_dir, run_id + '.jsonl'), light)
+
+
+def _scan_facts(model, dataset):
+    """Facts the analysis otherwise has to hard-code: the parameter count P and the
+    train / val set sizes N (steps per epoch = ceil(n_train / batch_size))."""
+    facts = {'n_params': int(sum(p.numel() for p in model.parameters()))}
+    for key, attr in (('n_train', 'train_dataset'), ('n_val', 'val_dataset')):
+        ds = getattr(dataset, attr, None)
+        try:
+            facts[key] = int(len(ds)) if ds is not None else None
+        except TypeError:
+            facts[key] = None
+    return facts
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +390,7 @@ def scan(cfg):
         set_seed(model_seed)
         base_model = instantiate(cfg.model)
         init_state = copy.deepcopy(base_model.state_dict())
+        common = _scan_facts(base_model, dataset)   # n_params / n_train / n_val, on every record
         del base_model
 
         # --------------------------------------------------------------
@@ -555,7 +578,7 @@ def scan(cfg):
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
 
-                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
 
                 except Exception as e:
                     print(f"  [error] Training failed: {e}")
@@ -587,12 +610,16 @@ def scan(cfg):
                 )
 
                 for batch_size, lr, optim_name, weight_decay in standard_grid:
-                    # Non-zero weight decay is only meaningful for AdamW and Muon
-                    if optim_name not in ("AdamW", "Muon") and weight_decay != 0.0:
+                    # None -> the optimizer's own default (AdamW 0.01), see resolve_weight_decay
+                    weight_decay = resolve_weight_decay(optim_name, weight_decay)
+                    # Non-zero weight decay is only meaningful for AdamW and Muon / MuonW
+                    if optim_name not in ("AdamW", "Muon", "MuonW") and weight_decay != 0.0:
                         continue
 
                     run_id = f"std_bs{batch_size}{id_str}_lr{lr}_optim{optim_name}"
-                    if weight_decay != 0.0:
+                    # AdamW / MuonW always carry their wd in the run_id, so the new default-wd
+                    # runs do not collide with (and get skipped as) the old wd=0 ones
+                    if weight_decay != 0.0 or optim_name in ("AdamW", "MuonW"):
                         run_id += f"_wd{weight_decay}"
                     run_id += seed_str + loss_suffix
 
@@ -645,7 +672,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
                     except Exception as e:
                         print(f"  [error] {optim_name} run failed: {e}")
                         if torch.cuda.is_available():
@@ -723,7 +750,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
                     except Exception as e:
                         print(f"  [error] LBFGS run failed: {e}")
                         if torch.cuda.is_available():
@@ -795,7 +822,7 @@ def scan(cfg):
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
 
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
                     except Exception as e:
                         print(f"  [error] PolyakSGD run failed: {e}")
                         if torch.cuda.is_available():
@@ -861,7 +888,7 @@ def scan(cfg):
                         }
                         for f in rcfg.get("result_id_fields", []):
                             result[f] = rcfg[f]
-                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                        _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
                     except Exception as e:
                         print(f"  [error] JD run failed: {e}")
                         if torch.cuda.is_available():
@@ -913,7 +940,7 @@ def scan(cfg):
                     }
                     for f in rcfg.get("result_id_fields", []):
                         result[f] = rcfg[f]
-                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every)
+                    _write_run(scan_dir, run_id, result, svd_info_mode, svd_spectra_every, common)
                 except Exception as e:
                     print(f"  [error] HIG run failed: {e}")
                     if torch.cuda.is_available():

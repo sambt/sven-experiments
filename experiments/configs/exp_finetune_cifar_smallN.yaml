@@ -34,7 +34,7 @@ lrs: [0.01, 0.05, 0.1, 0.5]
 rtol: [1e-3]
 svd_mode: [torch]
 
-optimizers_standard: [AdamW, SGD, Muon]
+optimizers_standard: [AdamW, SGD, Muon, MuonW]
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
 
 loader_seed: 7000

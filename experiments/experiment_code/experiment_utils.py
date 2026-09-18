@@ -115,9 +115,12 @@ def process_hparam_config(cfg) -> dict[str,Iterable]:
     output['lbfgs_line_search_fn'] = listify(cfg.get("lbfgs_line_search_fn", "strong_wolfe"))
 
 
-    # Weight decay sweep — default [0.0] so existing configs are unaffected.
-    # Non-zero values are only applied to AdamW in the scan loop.
-    output['weight_decays'] = listify(cfg.get("weight_decays", [0.0]))
+    # Weight decay sweep.  Default [None] = "the optimizer's own default" (see
+    # resolve_weight_decay): AdamW then runs with its PyTorch default 0.01 -- weight decay
+    # ON, which is the point of AdamW -- instead of the explicit 0.0 the old default
+    # forced on it (which made AdamW bit-identical to Adam in every headline scan).
+    # Non-zero values are only applied to AdamW / Muon in the scan loop.
+    output['weight_decays'] = listify(cfg.get("weight_decays", [None]))
 
     # PolyakSGD-specific hyperparameters (only used when "PolyakSGD" is in optimizers_standard)
     # No LR sweep — the step size is computed automatically from the loss
@@ -589,8 +592,24 @@ class _CombinedOptimizer:
             opt.load_state_dict(sd)
 
 
+# PyTorch defaults that a bare `weight_decay=0.0` used to override.  "Muon" keeps
+# running at wd = 0 (its existing runs stay valid); "MuonW" is Muon at its PyTorch
+# default wd = 0.1, the same split as Adam / AdamW.
+_DEFAULT_WEIGHT_DECAY = {"AdamW": 0.01, "MuonW": 0.1}
+
+
+def resolve_weight_decay(optim_name, weight_decay):
+    """The weight decay a run actually uses: ``None`` means the optimizer's own default
+    (AdamW: 0.01; everything else: 0.0), a number is taken as given."""
+    if weight_decay is None:
+        return _DEFAULT_WEIGHT_DECAY.get(optim_name, 0.0)
+    return float(weight_decay)
+
+
 def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
     """Construct a standard PyTorch optimizer by name."""
+    if "weight_decay" in kwargs:
+        kwargs["weight_decay"] = resolve_weight_decay(optim_name, kwargs["weight_decay"])
     if optim_name == "LBFGS":
         lbfgs_kwargs = {
             k: kwargs[k] for k in ("max_iter", "history_size", "line_search_fn")
@@ -599,14 +618,18 @@ def build_standard_optimizer(model, optim_name, lr=None, **kwargs):
         return torch.optim.LBFGS(model.parameters(), lr=lr, **lbfgs_kwargs)
     elif optim_name == "PolyakSGD":
         return PolyakSGD(model.parameters(), **kwargs)
-    elif optim_name == "Muon":
+    elif optim_name in ("Muon", "MuonW"):
         # Muon only supports 2D parameters; use AdamW for the rest.
+        # Muon:  wd as given (0 unless the config sweeps it) on both parts.
+        # MuonW: Muon at its PyTorch default wd (0.1) and AdamW at ITS default (0.01)
+        #        for the 1-D parameters -- "everything at its own default".
         muon_params = [p for p in model.parameters() if p.ndim == 2]
         other_params = [p for p in model.parameters() if p.ndim != 2]
         weight_decay = kwargs.get("weight_decay", 0.0)
+        adamw_wd = _DEFAULT_WEIGHT_DECAY["AdamW"] if optim_name == "MuonW" else weight_decay
         if other_params:
             muon_opt = torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)
-            adam_opt = torch.optim.AdamW(other_params, lr=lr, weight_decay=weight_decay)
+            adam_opt = torch.optim.AdamW(other_params, lr=lr, weight_decay=adamw_wd)
             return _CombinedOptimizer(muon_opt, adam_opt)
         else:
             return torch.optim.Muon(muon_params, lr=lr, weight_decay=weight_decay)

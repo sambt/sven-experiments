@@ -25,7 +25,7 @@ lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]
 
-optimizers_standard: [AdamW, Muon, SOAP]     # Sophia = follow-up (needs Hessian-update integration)
+optimizers_standard: [AdamW, Muon, MuonW, SOAP]     # Sophia = follow-up (needs Hessian-update integration)
 lrs_standard: [3e-4, 1e-3, 3e-3, 1e-2]       # spans AdamW..Muon/SOAP ranges; bad ones diverge (caught)
 
 loader_seed: 6000
