@@ -148,7 +148,7 @@ submitted). Runs to (re)submit, by scan:
 
 | scan | missing | where |
 |---|---|---|
-| `cifar10_resnet_scan_labelRegression` | **40** | 10 configs are ineligible (< 3 of 5 seeds) -- the CIFAR label-reg table is on shaky ground |
+| ~~`cifar10_resnet_scan_labelRegression`~~ | ~~40~~ **0** | **Correction 2026-09-17: complete (290/290).** The 40 were an analysis artefact: `gram_capture` (chunked vs full, a memory-layout choice) was part of the config key and split the k=128 Sven configs into seed fragments. Fixed in `analysis_helpers.config_columns`. |
 | `rebuttal_batchsize_polynomial_scan` | 24 | spread over configs; 104 configs ineligible, mostly LBFGS/KFAC divergence, not missing runs |
 | `polynomial_scan` | 9 | KFAC |
 | `toy_1d_scan` | 6 | HIG (5), KFAC (1) |
@@ -157,6 +157,10 @@ submitted). Runs to (re)submit, by scan:
 | `toy_1d_paramfrac_scan` / `polynomial_paramfrac_scan` | 3 / 14 | f <= 0.25 at lr >= 0.5 |
 | `rebuttal_overparam_mnist_scan` | 3 | |
 | `mnist_scan_labelRegression` | 1 | HIG |
+
+Counts are against the grid size. (`config_table`'s `n_missing` only sees configs that
+have at least one result file; a config with none is invisible to it, which is why its
+paramfrac numbers are lower than the ones above.)
 
 The paramfrac gaps are almost certainly crashes of the same blow-up that the 10x rule
 flags; re-running them will just add `n_diverged`. Fine -- but then the f <= 0.25 points

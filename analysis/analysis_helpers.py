@@ -64,14 +64,20 @@ def valid(df, metric='final_val_loss', max_val=1e6):
 # Columns that are outcomes or run bookkeeping, never part of a configuration.
 OUTCOMES = ['final_val_loss', 'final_train_loss', 'final_val_acc', 'total_time',
             'peak_gpu_mem_mb', 'val_ppl']
+# Backend / memory-layout choices that compute the same update (chunked vs full Gram
+# capture, and the chunk size).  They are NOT part of a configuration's identity: the
+# CIFAR label-reg scan captured some seeds of the same config 'chunked' and others 'full',
+# and keying on them split every such config into 3+2 / 4+1 seed fragments that were then
+# reported as "missing seeds" and mostly ineligible.
+_BACKEND = {'gram_capture', 'gram_chunk_numel'}
 _NOT_CONFIG = {'model_seed', 'loader_seed', 'run_id', 'diag_file', 'method', 'diverged',
-               '_scan', *OUTCOMES}
+               '_scan', *OUTCOMES, *_BACKEND}
 _SCALAR = (str, bool, int, float, np.integer, np.floating)
 
 
 def config_columns(df, seed_col='model_seed'):
     """The hyperparameter columns that jointly identify a configuration: every scalar
-    column that is not the seed, run bookkeeping or an outcome."""
+    column that is not the seed, run bookkeeping, an outcome, or a backend choice."""
     skip = _NOT_CONFIG | {seed_col}
     return [c for c in df.columns if c not in skip and df[c].notna().any()
             and df[c].dropna().map(lambda v: isinstance(v, _SCALAR)).all()]
@@ -86,7 +92,10 @@ def config_table(df, metric='final_val_loss', minimize=True, seed_col='model_see
 
     Diverged = failed (see ANALYSIS_FIXES.md, A4): a diverged run is not in the means.
     ``n_seeds`` counts the seeds that finished and ``n_diverged`` the ones that did not;
-    ``run_ids`` lists the finished runs (see :func:`config_runs`).  Ranking is
+    ``n_missing`` the seeds with no result file -- for configs that have at least one
+    file: a configuration with no result file at all is invisible here, so compare
+    against the grid size for a complete count.  ``run_ids`` lists the finished runs
+    (see :func:`config_runs`).  Ranking is
 
     1. ``eligible`` -- more than half of the scan's seeds finished;
     2. fewest diverged seeds (dropping a config's failures from its mean flatters it,

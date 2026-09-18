@@ -157,6 +157,13 @@ until then.
   notes are all expected: `missing-data` (RERUNS 7), `spectra-truncated` (RERUNS 1),
   `no-standalone` for MNIST-CE LBFGS (RERUNS 2 / B20), `[n_params]` fallback (RERUNS 10).
 
+- [x] **E30. Backend columns split configurations.** `analysis_helpers.config_columns` keyed
+  configs on `gram_capture` / `gram_chunk_numel` too; the CIFAR label-reg scan captured some
+  seeds of the same Sven config `chunked` and others `full`, so those configs appeared as
+  3+2 / 4+1 seed fragments -- "40 missing runs", mostly ineligible. Found by the cluster
+  instance (290/290 files present). Fixed 2026-09-17: backend columns excluded from the
+  config identity; `cifar_analysis` re-executed; RERUNS_NEEDED item 4 corrected.
+
 ## D. Open questions raised by the fixed plots (not fixes -- decisions)
 
 - [ ] **D28. "Final" = last epoch rewards oscillating optimizers.** With every plot honest,
