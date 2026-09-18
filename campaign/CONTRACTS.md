@@ -115,3 +115,48 @@ generators, targets normalised by pool mean/std, `n_train` subsamples the pool.
 * `evaluate_and_loss()` = train-mode-no-write under `bn_mode=batch`; under `frozen` the frozen decision wins
   (eval-stat normalisation, no write). No campaign config uses `variable_k`.
 * Runner records `actual_param_fraction = train_model.mean_actual_param_fraction` for svd-family runs (1.0 unmasked).
+
+## Stage 1 contracts (integration, configs, launcher) — 2026-09-18 evening
+Stage-0 modules are committed (see `git log`, reports in `campaign/stage0_reports/*.impl.md|*.fix.md`; each ends with
+"Integrator" notes — read the ones relevant to you). Ownership in Stage 1:
+* **integrator**: `experiments/experiment_code/generic_scan.py`, `grid.py`, `experiment_utils.py` (factory region ->
+  `from .optim_factory import ...`), `experiments/experiment_code/__init__.py` (lazy `scan` export so `grid` imports
+  without torch), `experiments/optimizers/__init__.py`, `pyproject.toml` pytest `pythonpath`, `tests/test_runner_*.py`.
+* **configs**: top-level `experiments/configs/*.yaml` + re-freezing `tests/golden/*` per the RE-FREEZING block in
+  `tests/test_grid.py`.
+* **launcher**: `tools/` (reconcile, deploy snapshot, campaign launcher, worker pool), `campaign/plan_*.yaml`.
+
+**Config keys (top-level in each scan yaml; every key optional with these defaults):**
+`eval_batch_size: 2048` (validation/test/train_eval loaders; never the training batch size) ·
+`train_eval_size: 10000` (fixed train subset, chosen with `split_seed`, shared by all optimizers) ·
+`checkpoints: final` (none|final|epochs|log) and `checkpoints_svd: null` (override for the svd family, e.g. `log`) ·
+`svd_spectra_schedule: {dense_first: 200, every: 20}` (replaces `svd_spectra_every`) ·
+`bn_mode: batch` (batch|frozen; supersedes `gram_freeze_norm_stats`, which stays as a deprecated alias) ·
+`empty_cache: false` · `stop_on_nonfinite: true` · `scheduler: claims` (claims|static) ·
+`loader_seed` stays the BASE loader seed; the effective seed is `derive_loader_seed(loader_seed, model_seed)`.
+run_id: unchanged human-readable form (it keeps `_lseed{base}`); new behaviour is captured by the run hash, not by
+new suffixes, except `bn_mode=frozen` which appends `_bnfrozen` (and `_bnbatch` stays as today).
+
+**Record (schema 2)** adds: `schema_version`, `status` (ok|diverged|oom|error), `error`, `diverged_at_step`,
+`run_hash`, provenance dict (both repos' sha/dirty, torch, cuda, gpu, host, slurm_job_id, start/end), `n_train`,
+`n_val`, `n_test`, `steps_per_epoch`, `n_params`, `actual_param_fraction`, `muon_variant`, `split_seed`,
+`effective_loader_seed`, `eval_batch_size`, `bn_mode`, `checkpoint_policy`, `svd_spectra_schedule`, the curve
+summaries from `summarize_curves`, and final `test`/`test_acc`. Diag npz: per-step arrays keep their names; scheduled
+Sven diagnostics are stored with their own `svs_step` index array (`svs`, `utr`, `update_norm`, `resid_norm`,
+`sv_min_kept`, `sv_noise_floor`); legacy `sv_min` is NOT written for new records.
+Layout under `{root}/{scan}/`: `*.jsonl`, `diag/`, `ckpt/{run_id}.pt` (+ `ckpt/init_mseed{seed}.pt`), `done/`,
+`claims/`, `started/`, `manifest/`, `configs/` (resolved Hydra config per job), `_stale/{hash8}/`.
+
+**Runner CLI (Hydra overrides, as today):** `mode=svd|standard|jd|hig|all`, `optimizers_standard=[...]`,
+`model_seeds=[...]`, `n_data=...`; `+n_shards/+shard_id` only with `scheduler=static`. With `scheduler=claims` every
+process expands the full grid for its mode/optimizer subset, shuffles nothing, and walks it claiming runs; many
+processes and many jobs may serve the same scan concurrently. Exit code 0 when nothing is left to claim.
+
+**Execution:** campaign processes run from an exported snapshot, never the live tree:
+`tools/deploy_snapshot.sh` exports both repos at their HEAD into
+`/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/<sv3sha>_<svensha>/` with `DEPLOY_INFO.json` (provenance
+falls back to it) and an `experiment_results` symlink to the real results root; workers set
+`PYTHONPATH=<snapshot>:<snapshot>/sven`, `SV3_RESULTS_ROOT`, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`,
+`OMP_NUM_THREADS=1`. NPROC per GPU from the probe: A100 — MLP Sven 12, first-order MLP 12, LBFGS/HIG/Shampoo 4,
+nanoGPT 3, CIFAR Sven 1, CIFAR baselines 4; MIG slice — MLP Sven 6, first-order 6, LBFGS 6, nanoGPT 1.
+gpu_test allows 2 jobs and 8 slices per user: a MIG job takes `--gres=gpu:4`, 12 h, and runs one worker pool per slice.
