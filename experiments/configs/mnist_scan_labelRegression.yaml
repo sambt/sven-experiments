@@ -15,19 +15,30 @@ result_id_fields: [mlp_width]
 loss: label_regression
 use_gram: true
 
+# 27,562 params x 35 states would be ~3.9 MB/run for every one of the 1000+ runs, so the
+# baselines keep the default `final` and only the Sven family gets the full ladder (the
+# offline-spectra story is Sven's).
+checkpoints_svd: log
+
 k_values: [1, 2, 4, 8, 16, 32, 48, 64]
 lrs: [0.05,0.1,0.5,1.0]
 rtol: [1e-4, 1e-3, 1e-2, 1e-1]
 svd_mode: [torch]
 variable_k: false
 
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+# C-B3, one baked-in extension round; shared by every standard optimizer (rationale in
+# toy_1d_scan). Down to 1e-5 because the MNIST-CE twin puts Adam/RMSprop/Muon/SOAP/JD on
+# the old 1e-4 edge and match_rms_adamw moves Muon/MuonW down by 1.1-5.6x here
+# (optim.fix.md (c)); up to 1.0 because SGD (0.1) and Shampoo (0.1) sit on the old top edge.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 #optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
 # Consolidated: this scan now includes the full modern baseline suite (the extra
 # optimizers formerly in rebuttal_baselines_*). NOTE the results dir also holds the
 # earlier CORE-only runs, which used a different loader seed / LBFGS grid, so the
 # directory documents all runs rather than being a single reproducible Cartesian grid.
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list, so AdamW=0.01, MuonW=0.1,
+# Adam / Muon stay the wd=0 baselines (scope update).
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
@@ -36,11 +47,14 @@ lbfgs_history_size: [2, 5, 10]
 # Jacobian Descent (torchjd) hyperparameters (mode: jd / all)
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]
-lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 
 # Half-Inverse Gradients hyperparameters (mode: hig / all)
-lrs_hig: [0.05, 0.1, 0.5, 1.0]
-tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+# C-B3 shift (see toy_1d_scan): HIG's optimum here IS the bottom edge (lr 0.05, tau 1e-2,
+# seed-mean final val 0.0492); lr 0.1 already reaches 14.1 at tau 1e-4 and 3.2e6 at 1e-8,
+# and lr >= 0.5 produced no records at all -> drop 0.5/1.0, add 0.005/0.015 and two taus.
+lrs_hig: [0.005, 0.015, 0.05, 0.1, 0.25]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
 loader_seed: 3000
 model_seeds: [3000, 3001, 3002, 3003, 3004]

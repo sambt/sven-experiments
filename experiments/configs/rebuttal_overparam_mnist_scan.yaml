@@ -3,15 +3,20 @@
 # The most faithful answer to Reviewer 1: keep the paper's exact MNIST setup
 # (width-32 MLP, P = 27,562 params, minibatch B = 64, label-regression loss)
 # but SUBSAMPLE the training set so P/N_train crosses 1. The crossover is at
-# N ~ 27,562; MNIST full train is 60k (P/N ~ 0.46, the main-paper under-param case).
+# N ~ 27,562; the largest available N is the 50,000-example train part (P/N ~ 0.55),
+# which is also what the main-paper under-param case now trains on.
 #
-# Sweep n_data on the command line to trace the crossover, e.g.:
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=2500    # P/N ~ 11
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=5000    # P/N ~ 5.5
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=10000   # P/N ~ 2.8
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=20000   # P/N ~ 1.4
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=40000   # P/N ~ 0.69 (under)
-#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=60000   # P/N ~ 0.46 (paper)
+# VALID n_data IS <= 50000. Under C-E1 the official 60k MNIST train set is split into
+# 50,000 train / 10,000 val by `split_seed`, and `n_data` subsamples the TRAIN part only;
+# `n_train` above the pool now RAISES rather than clamping silently (scope update), so the
+# old top point (60000) is an error, not a 60k run -- and it is deliberately not written
+# here as a copy-pasteable override. The campaign sweep is exactly
+#
+#   2500  5000  10000  20000  40000  50000
+#
+# i.e. P/N ~ 11, 5.5, 2.8, 1.4, 0.69, 0.55 for P = 27,562 (the top point replaces the old
+# "paper" 60000 point at P/N ~ 0.46). Launch as, e.g.:
+#   sbatch submit_experiment.sh configs/rebuttal_overparam_mnist_scan.yaml n_data=2500
 defaults:
   - dataset: mnist
   - model: mlp_mnist
@@ -33,6 +38,8 @@ mlp_width: 32
 result_id_fields: [mlp_width, n_data]
 loss: label_regression
 track_param_norm: true
+# Sven-only checkpoint ladder (as in the MNIST headline scans); baselines keep `final`.
+checkpoints_svd: log
 
 k_values: [16, 32, 48, 64]
 lrs: [0.1, 0.5, 1.0]
@@ -41,9 +48,10 @@ svd_mode: [torch]
 variable_k: false
 use_gram: true            # Gram-trick backend: exact same update, ~400x faster
 
+# SGDm added (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW at its torch
+# default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines.
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-weight_decays: [0.0, 0.01]
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]

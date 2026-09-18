@@ -15,6 +15,9 @@ result_id_fields: [mlp_width]
 loss: mse
 use_gram: true
 
+# Sven-only ablation on a <1k-param MLP: `log` (steps 0,1,2,4,... + every epoch end) is
+# ~0.5 MB/run, so the offline-spectra ladder is free here.
+checkpoints: log
 # Param fraction sweep: Jacobian columns from ~593 to frac*593
 param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 

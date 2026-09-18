@@ -13,22 +13,55 @@ batch_size: 128
 loss: label_regression
 use_gram: true
 gram_capture: full              # one jacrev over all params = full (B,P) Jacobian -> Gram (batch-stat BN needs chunked/full, not hooks)
-gram_freeze_norm_stats: false    # frozen running stats never update from init -> Sven collapsed to ~28% acc (probe 2026-09-12)
+# C-E2: batch statistics for EVERY optimizer -- frozen running stats never update from init
+# and collapsed Sven to ~28% acc (probe 2026-09-12). Supersedes the old
+# `gram_freeze_norm_stats: false`; grid.py derives that boolean from `bn_mode` and still
+# puts `_bnbatch` in the svd run_ids, so the ids are unchanged.
+bn_mode: batch
 
 # SVD optimizer sweep
 k_values: [64,128]
+# C-B3 OPEN: the Sven optimum on this scan is reported on the LARGEST lr, but lr=1 is the
+# full min-norm (Gauss-Newton) step, so extending above it is over-relaxation, and two more
+# points cost 2 k x 3 rtol x 5 seeds x 2 = 60 runs ~ 30 GPU-h. Left unextended pending an
+# orchestrator decision; see campaign/grid_counts.md.
 lrs: [0.1,0.5,1.0]
 rtol: [1e-4,1e-3,1e-2]
 svd_mode: [torch]   # irrelevant under use_gram: exact eigh of the BxB Gram, no randomized SVD
 kappa: 2
 
-lrs_standard: [1e-4,1e-3,1e-2,1e-1]
-optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3, sized from THIS scan's 290 legacy records (seed-mean final val loss). Unlike
+# CIFAR-CE, where RMSprop's optimum is the 1e-1 edge, NO standard baseline sits on an edge
+# here, so the list is deliberately NOT extended above 3e-1: RMSprop peaks at 1e-2 (0.4157)
+# and is 0.9331 at 1e-1, Adam peaks at 1e-2 (0.3986), and SGD diverges above 1e-3 (1 of 5
+# seeds finite at 1e-2, 0 of 5 at 1e-1). It still reaches 1e-5 because Muon/MuonW are NEW
+# here and adjust_lr_fn=match_rms_adamw scales their effective step by up to 13.6x on the
+# layer4 kernels (optim.fix.md (c)), i.e. their optimum moves DOWN, never up.
+lrs_standard: [1e-5,3e-5,1e-4,1e-3,1e-2,1e-1,3e-1]
+# C-B1/C-B2/C-B5/O6: AdamW, SGDm, SOAP, Muon and MuonW join the CIFAR headline set. Muon
+# and MuonW are legitimate on a ResNet now that the conv kernels go through the vendored
+# MuonConv (flatten-to-2D, validated exact against stock Muon); the old "Muon" on ResNet18
+# was AdamW plus one fc layer (F13). Shampoo/KFAC stay out (per-layer preconditioners at
+# 11.18M params). No weight_decays list => AdamW 0.01, MuonW 0.1, Adam/Muon wd 0.
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, LBFGS, PolyakSGD]
+# C-B3 for the L-BFGS family, which has its own lr grid and IS on its top edge here: the
+# per-lr seed-mean final val falls monotonically, 3.0635 at lr 0.1 -> 0.7855 at 0.5 ->
+# 0.7534 at 1.0, and the best shape (mi3/hs5) is 0.7010 at 0.5 vs 0.6991 at 1.0. ONE
+# bracketing point, not two: the 0.5 -> 1.0 gain is 0.3%, i.e. a plateau, and lr > 1 with
+# strong_wolfe over-relaxes an already-accepted step. +45 runs (3 mi x 3 hs x 5 seeds)
+# ~ 1.7 GPU-h. (Sven's own `lrs` is a separate decision -- see the C-B3 OPEN note above.)
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]
 
+# PARKED, NOT BUDGETED: the jd and hig grids below enumerate 20 + 80 runs that no
+# launcher has ever submitted on a ResNet and that campaign/grid_counts.md excludes from
+# the campaign total (HIG here needs a full per-sample Jacobian, ~50 GPU-h for the 80).
+# They are kept so `p3_cifar_jd_hig` in campaign/plan_campaign.yaml (all items
+# `enabled: false`, awaiting a user decision) can be revived by one flag. Consequence:
+# `mode=all` on this config claims 100 unbudgeted runs -- launch it as mode=svd /
+# mode=standard, which is what the plan does.
 # Jacobian Descent (torchjd) hyperparameters
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]

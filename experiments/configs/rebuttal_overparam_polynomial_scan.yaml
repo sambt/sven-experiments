@@ -33,6 +33,8 @@ mlp_width: 16
 result_id_fields: [mlp_width, n_data]
 loss: mse
 track_param_norm: true
+# 673 params; full-batch, so `log` = steps {0,1,2,4,...} + all 200 epoch ends, ~0.5 MB/run.
+checkpoints: log
 
 k_fractions: [0.25, 0.5, 1.0]
 lrs: [0.05, 0.1, 0.5, 1.0]
@@ -41,9 +43,10 @@ svd_mode: [torch]
 use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
 variable_k: false
 
+# SGDm added (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW at its torch
+# default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines.
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-weight_decays: [0.0, 0.01]
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]

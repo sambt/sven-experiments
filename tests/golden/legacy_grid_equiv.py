@@ -71,6 +71,49 @@ SHARD_CASES = [(1, 0), (2, 0), (2, 1), (3, 2), (6, 4), (7, 0)]
 #: which (scan, mode) pairs `--freeze` writes to `<scan>.order.txt`; these are the
 #: files tests/test_grid.py::test_enumeration_order_matches_the_legacy_loops reads.
 FREEZE = {"toy_1d_scan": "all", "rebuttal_batchsize_polynomial_scan": "both"}
+#: run_id tokens the pinned runner CANNOT emit, because they postdate it: C-E2's
+#: `bn_mode` replaced `gram_freeze_norm_stats`, so a config that sets `bn_mode`
+#: gets `_bnbatch` / `_bnfrozen` from `grid.bn_mode_suffix` while the legacy loop,
+#: which only ever read the boolean, gets its default. The comparison below strips
+#: them and reports how many ids differed only by one, so what is still under test
+#: is what this file exists for -- the ORDER and the shard membership.
+POST_LEGACY_TOKENS = ("_bnbatch", "_bnfrozen")
+#: which token each scan is EXPECTED to carry, and on which FAMILIES -- pinned here,
+#: not read from the config, so this file stays an oracle. A blanket strip would report
+#: `OK` for a CIFAR headline scan flipped to `bn_mode: frozen`, which is exactly the
+#: setting that collapsed Sven to ~28% accuracy (probe 2026-09-12): every id would gain
+#: `_bnfrozen`, the strip would remove it and the order would still match. It would also
+#: report `OK` for a config that LOST `bn_mode` altogether.
+#:
+#: The carrier families differ per token because `grid.bn_mode_suffix` marks the
+#: departure from each family's default (`grid.default_bn_mode`): the Gram svd family
+#: defaulted to frozen, so asking for `batch` is what shows up there, while every other
+#: family defaulted to batch, so only `frozen` shows up on those.
+EXPECTED_BN_TOKEN = {
+    # C-E2: batch statistics for every optimizer -> the svd ids say so
+    "cifar10_resnet_scan_labelRegression": ("_bnbatch", ("svd",)),
+    # O2: frozen pretrained statistics for every optimizer -> the baselines say so
+    "exp_finetune_cifar_smallN": ("_bnfrozen", ("standard", "lbfgs", "polyak",
+                                                "jd", "hig")),
+}
+
+
+def expected_bn(scan_name):
+    """``(token, carrier_families)`` for ``scan_name``, or ``(None, ())``."""
+    return EXPECTED_BN_TOKEN.get(scan_name, (None, ()))
+
+
+def strip_post_legacy(run_id, scan_name):
+    """Strip only the token ``scan_name`` is expected to carry (may be none)."""
+    token, _ = expected_bn(scan_name)
+    return run_id.replace(token, "") if token else run_id
+
+
+def unexpected_bn_tokens(scan_name, run_ids):
+    """run_ids carrying a post-legacy token other than this scan's expected one."""
+    expected, _ = expected_bn(scan_name)
+    others = [t for t in POST_LEGACY_TOKENS if t != expected]
+    return [i for i in run_ids if any(t in i for t in others)]
 
 
 def load_cfg(name, overrides=()):
@@ -176,26 +219,51 @@ def main():
     for scan_name, mode, ov in CASES:
         cfg = load_cfg(scan_name, ov)
         rcfg = OmegaConf.to_container(cfg, resolve=True)
-        new = [s.run_id for s in expand_grid(rcfg, mode=mode, verbose=False)]
+        specs = expand_grid(rcfg, mode=mode, verbose=False)
+        new = [s.run_id for s in specs]
         old = legacy_run_ids(ns, cfg, scan_name, mode)
-        same = new == old
+        stripped = [strip_post_legacy(i, scan_name) for i in new]
+        n_bn = sum(a != b for a, b in zip(new, stripped))
+        wrong = unexpected_bn_tokens(scan_name, new)
+        # EXACTLY the carrier-family ids of an EXPECTED_BN_TOKEN scan must carry it: too
+        # few means the config lost `bn_mode` (or gained it on the wrong family) and
+        # silently fell back to the legacy default, which no other check here would see
+        token, carriers = expected_bn(scan_name)
+        n_carry = sum(1 for s in specs if s.family in carriers)
+        same = stripped == old and not wrong and n_bn == n_carry
         ok &= same
+        note = f" ({n_bn} ids carry {token})" if n_bn else ""
+        if n_bn != n_carry:
+            note += f" (EXPECTED {n_carry} x {token} on families {carriers})"
+        if wrong:
+            note += f" ({len(wrong)} ids carry an UNEXPECTED bn_mode token, " \
+                    f"e.g. {wrong[0]!r})"
         print(f"{'OK ' if same else 'BAD'} {scan_name:38s} mode={mode:9s} "
-              f"legacy={len(old):5d} new={len(new):5d} order_identical={same}")
-        if not same:
-            for i, (a, b) in enumerate(zip(old, new)):
+              f"legacy={len(old):5d} new={len(new):5d} order_identical="
+              f"{stripped == old}{note}")
+        if stripped != old:
+            for i, (a, b) in enumerate(zip(old, stripped)):
                 if a != b:
                     print(f"     first difference at {i}: legacy={a!r} new={b!r}")
                     break
             continue
-        specs = expand_grid(rcfg, mode=mode, verbose=False)
         for n, i in SHARD_CASES:
             old_s = legacy_run_ids(ns, cfg, scan_name, mode, n_shards=n, shard_id=i)
-            new_s = [s.run_id for s in shard(specs, n, i)]
+            new_s = [strip_post_legacy(s.run_id, scan_name) for s in shard(specs, n, i)]
             if old_s != new_s:
                 ok = False
                 print(f"     BAD shard n={n} id={i}: legacy={len(old_s)} new={len(new_s)}")
         if args.freeze and FREEZE.get(scan_name) == mode and not ov:
+            # the frozen file is the LEGACY enumeration, which test_grid.py compares
+            # against the UNstripped new ids -- so a FREEZE scan must carry no bn_mode
+            # token at all. (One would already have failed the order comparison above,
+            # because only an EXPECTED_BN_TOKEN scan gets stripped; this keeps the
+            # reason attached to the freeze.)
+            assert scan_name not in EXPECTED_BN_TOKEN and not any(
+                t in i for i in new for t in POST_LEGACY_TOKENS), (
+                f"{scan_name} now carries a bn_mode token; either drop it from "
+                "FREEZE or teach test_enumeration_order_matches_the_legacy_loops to "
+                "strip them (tests/test_grid.py owns that assertion)")
             path = real_os.path.join(GOLDEN, f"{scan_name}.order.txt")
             with open(path, "w") as f:
                 f.write(f"# ordered legacy enumeration of {scan_name} (mode={mode}), produced by\n"

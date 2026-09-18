@@ -21,6 +21,8 @@ batch_size: [8, 16, 32, 64, 128, 256]   # <-- the swept axis
 mlp_width: 16
 result_id_fields: [mlp_width]
 loss: mse
+# 673 params; `log` is ~0.5 MB/run even at B=8 (most steps per epoch).
+checkpoints: log
 
 k_fractions: [1.0]
 lrs: [0.05, 0.1, 0.5, 1.0]
@@ -29,13 +31,19 @@ svd_mode: [torch]
 use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
 variable_k: false
 
+# SGDm added (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW at its torch
+# default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines. The old
+# `weight_decays: [0.0, 0.01]` here is what the MuonW backfill in
+# submit_reruns_2026-09-17_part2.sh had to patch around with `weight_decays=[0.1]`.
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-weight_decays: [0.0, 0.01]
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# O5: this scan sweeps BATCH SIZE, not the L-BFGS shape. max_iter / history_size are pinned
+# at the legacy polynomial-headline best (bench/best_configs.json: lr 0.5, max_iter 3,
+# history_size 2) and only the lr is swept -- 810 LBFGS runs -> 90.
 lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1, 2, 3]
+lbfgs_max_iter: [3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [2, 5, 10]
+lbfgs_history_size: [2]
 
 loader_seed: 2000
 model_seeds: [2000, 2001, 2002, 2003, 2004]

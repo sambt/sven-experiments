@@ -15,14 +15,25 @@ result_id_fields: [mlp_width]
 loss: ce
 use_gram: true
 
+# Sven-only checkpoint ladder (see mnist_scan_labelRegression); baselines keep `final`.
+checkpoints_svd: log
+
 k_values: [1, 2, 4, 8, 16, 32, 48, 64]
 lrs: [0.05,0.1,0.5,1.0]
 rtol: [1e-4, 1e-3, 1e-2, 1e-1]
 svd_mode: [torch]
 kappa: 2
 
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# C-B3, one baked-in extension round. This is the scan F32 is about: last-epoch val loss
+# puts Adam, RMSprop, Muon, SOAP (and JD below) on the OLD 1e-4 bottom edge, so the shared
+# list goes two half-decades lower; match_rms_adamw additionally moves Muon/MuonW down
+# (optim.fix.md (c)). The top end (3e-1, 1.0) covers SGD/Shampoo, which sit on the old top
+# edge on the other three MLP scans.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
+# The full list is deliberate and must all be launched: submit_fresh_suite.sh:79 used
+# CORE_FIRST here, so AdamW/Muon/MuonW/SOAP/Shampoo/KFAC have never run on this scan
+# (grid_inventory 5.2). SGDm (C-B2) is new; no weight_decays list => AdamW 0.01, MuonW 0.1.
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
@@ -31,11 +42,15 @@ lbfgs_history_size: [2, 5, 10]
 # Jacobian Descent (torchjd) hyperparameters
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]
-lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]   # C-B3: JD best = the old 1e-4 bottom edge
 
 # Half-Inverse Gradients hyperparameters
-lrs_hig: [0.05, 0.1, 0.5, 1.0]
-tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+# C-B3 shift (see toy_1d_scan): HIG's optimum here IS the bottom edge (lr 0.05, tau 1e-2,
+# seed-mean final val 0.1035). Its lr >= 0.5 points did NOT crash on this scan -- all 40
+# ran and are on disk -- they are simply dominated (0.1735 at lr 0.5, 0.2023 at lr 1.0 with
+# tau 1e-2, up to 47.4 at tau 1e-8), so they go and 0.005/0.015 plus two tau steps arrive.
+lrs_hig: [0.005, 0.015, 0.05, 0.1, 0.25]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
 loader_seed: 3000
 model_seeds: [3000, 3001, 3002, 3003, 3004]

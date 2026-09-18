@@ -26,23 +26,25 @@ by ``tests/golden/scan_smoke.sh``.
 
 RE-FREEZING (read before editing a scan config that has an ``.order.txt``)
 -------------------------------------------------------------------------
-Dropping the weight-decay grid (C-B4: ``rebuttal_batchsize_polynomial_scan.yaml``
-loses ``weight_decays: [0.0, 0.01]``) or any other edit to ``toy_1d_scan.yaml`` /
-``rebuttal_batchsize_polynomial_scan.yaml`` invalidates, in this order:
+Any edit to ``toy_1d_scan.yaml`` / ``rebuttal_batchsize_polynomial_scan.yaml``
+invalidates, in this order:
 
-1. ``tests/golden/rebuttal_batchsize_polynomial_scan.order.txt`` (2640 ids) and
-   ``tests/golden/toy_1d_scan.order.txt`` (780) -- regenerate with
+1. ``tests/golden/rebuttal_batchsize_polynomial_scan.order.txt`` and
+   ``tests/golden/toy_1d_scan.order.txt`` -- regenerate with
    ``campaign/run_cpu_tests.sh .venv/bin/python tests/golden/legacy_grid_equiv.py --freeze``
    (it reads the config from the working tree and the runner from the pinned SHA,
    so a re-freeze still compares legacy vs. new enumeration of the SAME config),
-2. ``INVENTORY["rebuttal_batchsize_polynomial_scan"]["standard"] == 1440``
-   (halves to 720 when the two-point wd grid becomes one point),
-3. ``test_weight_decay_grid_filter``'s ``per_optim`` counts (240 -> 120 for
-   AdamW / Muon / MuonW),
-4. ``_explain_rebuttal_batchsize_polynomial_scan``: class (1) maps the 120 on-disk
-   ``_optimAdamW_mseed...`` ids onto today's ``_wd0.0`` ones, which the config will
-   no longer produce -- that class then needs the same treatment as class (2)
-   (assert they come back under an explicit ``weight_decays=[0.0]`` override).
+2. that scan's :data:`INVENTORY` row,
+3. ``test_weight_decay_grid_filter``'s ``per_optim`` counts, and
+4. that scan's :data:`EXPLAINED` entry.
+
+The Stage-1 config round (2026-09-18 evening) did all four: the scope update
+dropped the weight-decay grid everywhere, O5 pinned the L-BFGS shape in the
+batch-size scan, C-B2 added ``SGDm``, C-B3 extended the lr / rtol / tau grids and
+shifted the HIG one, C-E2 put ``bn_mode`` in the fine-tune scan, and C-X1 grew the
+kappa scan (15 -> 210 runs). Every id that a config no longer describes is
+explained in :data:`EXPLAINED` by the change that dropped it, and comes back under
+an explicit override.
 
 Do NOT loosen an assertion instead; the point of these oracles is that a config
 edit is visible.
@@ -145,24 +147,33 @@ OVERRIDES = {
 
 SCANS = sorted(MODE)
 
-# Per-family run counts from campaign/scout/grid_inventory.md section 1 (all seeds).
-# The inventory's "first-order" and "2nd-order" columns are both the `standard`
-# family here; `Sven` is `svd`. Counts are per-config, i.e. summed over the
-# n_data overrides for exp_finetune (its table row reads "60 x 4 N = 240").
+# Per-family run counts. Counts are per-config, i.e. summed over the n_data
+# overrides for exp_finetune. The source was campaign/scout/grid_inventory.md
+# section 1 (the pre-campaign configs); from the Stage-1 config round these are
+# campaign/grid_counts.md, which is generated from these same configs -- the two
+# files must agree, and a config edit has to move both.
+# Deltas vs. grid_inventory.md, all deliberate: `standard` grew with SGDm (C-B2),
+# the C-B3 lr extensions and, on CIFAR, AdamW/SGDm/SOAP/Muon/MuonW (O6); it shrank
+# in the batch-size scan because the weight-decay grid is gone (scope update);
+# `lbfgs` fell 810 -> 90 there (O5) but grew 135 -> 180 on both CIFAR headline scans
+# (C-B3: L-BFGS's best shape sits on the lr top edge on both, so `lrs_lbfgs` gained
+# 2.0 -- the numbers are in campaign/grid_counts.md); `jd`/`hig` grew or shifted with
+# C-B3 on the MLP scans and are untouched on CIFAR (never launched there); `svd` grew
+# with the polynomial rtol point, the CIFAR-CE lrs and the C-X1 kappa grid.
 INVENTORY = {
-    "toy_1d_scan": {"svd": 360, "standard": 180, "lbfgs": 135, "polyak": 5,
-                    "jd": 20, "hig": 80},
-    "mnist_scan_ce": {"svd": 640, "standard": 180, "lbfgs": 135, "polyak": 5,
-                      "jd": 20, "hig": 80},
-    "cifar10_resnet_scan_labelRegression": {"svd": 90, "standard": 60, "lbfgs": 135,
+    "toy_1d_scan": {"svd": 360, "standard": 400, "lbfgs": 135, "polyak": 5,
+                    "jd": 30, "hig": 150},
+    "mnist_scan_ce": {"svd": 640, "standard": 400, "lbfgs": 135, "polyak": 5,
+                      "jd": 30, "hig": 150},
+    "cifar10_resnet_scan_labelRegression": {"svd": 90, "standard": 280, "lbfgs": 180,
                                             "polyak": 5, "jd": 20, "hig": 80},
-    "rebuttal_batchsize_polynomial_scan": {"svd": 360, "standard": 1440,
-                                           "lbfgs": 810, "polyak": 30},
+    "rebuttal_batchsize_polynomial_scan": {"svd": 360, "standard": 1200,
+                                           "lbfgs": 90, "polyak": 30},
     "exp_critbatch_nanogpt": {"svd": 120, "standard": 90},
     "mnist_paramfrac_labelreg_scan": {"svd": 100},
-    "mnist_kappaScan_labelRegression": {"svd": 15},
+    "mnist_kappaScan_labelRegression": {"svd": 210},
     "toy_1d_microbatch_scan": {"svd": 120},
-    "exp_finetune_cifar_smallN": {"svd": 48, "standard": 192},
+    "exp_finetune_cifar_smallN": {"svd": 48, "standard": 360},
 }
 
 
@@ -185,34 +196,89 @@ def golden_ids(scan):
 # Anything NOT explained here must be reproduced byte-identically.
 # ---------------------------------------------------------------------------
 
+def _comes_back_under(scan, ids, mode, *overrides):
+    """Assert ``ids`` are all produced once ``overrides`` restore the old setting.
+
+    The pattern every entry below uses: a campaign decision narrowed a grid, so the
+    run_ids it dropped are no longer describable by the config -- but they must still
+    be *exactly* the ones the superseded setting describes, or the config lost runs it
+    did not mean to.
+    """
+    rcfg = load_rcfg(scan, *overrides)
+    with_override = {s.run_id for s in grid.expand_grid(rcfg, mode=mode, verbose=False)}
+    orphans = set(ids) - with_override
+    assert not orphans, f"{len(orphans)} not restored by {overrides}, e.g. {sorted(orphans)[:3]}"
+
+
 def _explain_rebuttal_batchsize_polynomial_scan(missing, produced):
-    """Two known classes in ``rebuttal_batchsize_polynomial_scan``, both from
-    launcher/config edits made after those runs were written."""
-    # (1) 120 AdamW ids with no `_wd` suffix: written before AdamW/MuonW started
-    #     carrying their weight decay in the run_id (generic_scan.py:620-623, so
-    #     default-wd runs cannot be skipped as the old wd=0 ones). The config
-    #     sweeps weight_decays: [0.0, 0.01], so the same run is named
-    #     `..._optimAdamW_wd0.0_...` today -- assert exactly that correspondence.
+    """Three classes, all from the Stage-1 config round (2026-09-18 evening)."""
+    # (1) 720 of the 810 on-disk LBFGS ids: O5 pins max_iter / history_size at the
+    #     legacy polynomial-headline best (3 / 2) and sweeps the lr only, because the
+    #     swept axis of this scan is the BATCH SIZE, not the L-BFGS shape.
+    lbfgs_shape = {i for i in missing if "_optimLBFGS" in i}
+    assert len(lbfgs_shape) == 720, len(lbfgs_shape)
+    _comes_back_under("rebuttal_batchsize_polynomial_scan", lbfgs_shape, "standard",
+                      "lbfgs_max_iter=[1,2,3]", "lbfgs_history_size=[2,5,10]")
+
+    # (2) 120 AdamW ids with no `_wd` suffix: written before AdamW/MuonW started
+    #     carrying their weight decay in the run_id (generic_scan.py:620-623), when
+    #     this config still swept `weight_decays: [0.0, 0.01]`. The scope update
+    #     dropped that grid, so AdamW is now the single `_wd0.01` default run and the
+    #     wd=0 variant needs the override to exist at all.
     pre_wd_suffix = {i for i in missing if "_optimAdamW_mseed" in i}
     assert len(pre_wd_suffix) == 120, len(pre_wd_suffix)
-    for i in sorted(pre_wd_suffix):
-        assert i.replace("_optimAdamW_mseed", "_optimAdamW_wd0.0_mseed") in produced, i
+    _comes_back_under("rebuttal_batchsize_polynomial_scan",
+                      {i.replace("_optimAdamW_mseed", "_optimAdamW_wd0.0_mseed")
+                       for i in pre_wd_suffix}, "standard", "weight_decays=[0.0]")
 
-    # (2) 120 `_optimMuonW_wd0.1_` ids: the MuonW backfill in
-    #     submit_reruns_2026-09-17_part2.sh runs this config with the override
-    #     `weight_decays=[0.1]` (MuonW's own default), which the config does not
-    #     carry. expand_grid reproduces them exactly under that override.
-    muonw_backfill = {i for i in missing if "_optimMuonW_wd0.1_" in i}
-    assert len(muonw_backfill) == 120, len(muonw_backfill)
-    rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan", "weight_decays=[0.1]")
-    with_override = {s.run_id for s in grid.expand_grid(rcfg, mode="standard", verbose=False)}
-    assert muonw_backfill <= with_override
+    # (3) 120 `_optimMuon_wd0.01_` ids: the non-default half of the same dropped wd
+    #     grid. Plain Muon is now the wd=0 baseline only (its `_optimMuon` ids and
+    #     MuonW's `_wd0.1` ones are produced natively, so they are not missing).
+    muon_wd = {i for i in missing if "_optimMuon_wd0.01_" in i}
+    assert len(muon_wd) == 120, len(muon_wd)
+    _comes_back_under("rebuttal_batchsize_polynomial_scan", muon_wd, "standard",
+                      "weight_decays=[0.01]")
 
-    return missing - pre_wd_suffix - muonw_backfill
+    return missing - lbfgs_shape - pre_wd_suffix - muon_wd
+
+
+def _explain_mnist_scan_ce(missing, produced):
+    """C-B3 shifted the HIG lr grid DOWN instead of growing it: HIG's optimum here is
+    the bottom edge (lr 0.05, tau 1e-2, seed-mean final val 0.1035), so 0.5 and 1.0 were
+    dropped and 0.005/0.015 added below the optimum.
+
+    Those 40 ids did NOT crash -- on this scan all 40 completed and are on disk. They are
+    dominated: 0.1735 at lr 0.5 and 0.2023 at lr 1.0 (up to 47.4 at the small taus)
+    against 0.1035 at lr 0.05. ("lr >= 0.5 always crashes" is true of the other three MLP
+    scans only in the weaker sense that lr >= 0.5 produced no records there at all.)
+    """
+    hig_crashers = {i for i in missing
+                    if i.startswith("hig_") and ("_lr0.5_" in i or "_lr1.0_" in i)}
+    assert len(hig_crashers) == 40, len(hig_crashers)
+    _comes_back_under("mnist_scan_ce", hig_crashers, "hig", "lrs_hig=[0.5,1.0]")
+    return missing - hig_crashers
+
+
+def _explain_exp_finetune_cifar_smallN(missing, produced):
+    """C-E2 / O2: this scan now freezes the pretrained norm statistics for EVERY
+    optimizer, not only for the Sven wrappers. That changes what the baselines
+    compute, so their run_ids gain `_bnfrozen` (grid.bn_mode_suffix) -- the 192
+    legacy standard-family runs trained BatchNorm on 250-2000 images and are
+    superseded, which is exactly what the new token makes visible. The svd ids are
+    unchanged: the Gram backend always froze them."""
+    baselines = {i for i in missing if i.startswith("std_")}
+    assert len(baselines) == 192, len(baselines)
+    # exact per-id correspondence (stronger than an override round-trip, and the
+    # only form that works here: the ids span four `n_data` overrides)
+    for i in sorted(baselines):
+        assert i + "_bnfrozen" in produced, i
+    return missing - baselines
 
 
 EXPLAINED = {
     "rebuttal_batchsize_polynomial_scan": _explain_rebuttal_batchsize_polynomial_scan,
+    "mnist_scan_ce": _explain_mnist_scan_ce,
+    "exp_finetune_cifar_smallN": _explain_exp_finetune_cifar_smallN,
 }
 
 
@@ -315,6 +381,10 @@ def test_shard_matches_the_legacy_modulo_counter(scan, mode, n_shards):
 # The record scaffold each family carried between "run_id" and "losses" in the
 # legacy result dicts (generic_scan.py:551-577, 656-671, 732-749, 804-821,
 # 876-888, 929-940) -- key order included, so the written JSON is unchanged.
+# Schema 2 appends `bn_mode` (C-E2) to every family and, for Muon / MuonW only,
+# `muon_rule` (C-B5): both are inputs, so both must enter the run hash, which is
+# why they live in record_extra rather than being added by the runner.
+SCHEMA2_RECORD_KEYS = ("bn_mode",)
 LEGACY_RECORD_KEYS = {
     "svd": ("optimizer", "loss", "batch_size", "k_fraction", "k", "lr", "rtol",
             "model_seed", "loader_seed", "svd_mode", "decomposition",
@@ -343,7 +413,96 @@ def test_record_extra_matches_the_legacy_result_dicts():
         seen.setdefault(s.family, s)
     assert set(seen) == set(LEGACY_RECORD_KEYS)
     for family, s in seen.items():
-        assert tuple(s.record_extra) == LEGACY_RECORD_KEYS[family], family
+        assert tuple(s.record_extra) == LEGACY_RECORD_KEYS[family] + SCHEMA2_RECORD_KEYS, family
+
+
+def test_muon_runs_carry_the_construction_rule_and_nothing_else_does():
+    """C-B5: `muon_variant` is code-determined, but *which* rule produced it is an
+    input -- an old-rule Muon record must not dedup against a new-rule one. The
+    token is on Muon / MuonW only, so no other baseline's hash moves with it."""
+    specs = [s for s in specs_for("toy_1d_scan") if s.family == "standard"]
+    by_optim = {}
+    for s in specs:
+        by_optim.setdefault(s.hparams["optim_name"], s)
+    assert {"Muon", "MuonW"} <= set(by_optim), sorted(by_optim)
+    for name, s in by_optim.items():
+        if name in grid.MUON_OPTIMIZERS:
+            assert s.record_extra["muon_rule"] == grid.MUON_RULE_TOKEN, name
+        else:
+            assert "muon_rule" not in s.record_extra, name
+    # the token is part of the identity, so changing the rule re-runs those points
+    muon = by_optim["Muon"]
+    rcfg = load_rcfg("toy_1d_scan")
+    other = grid.RunSpec(**{**muon.__dict__,
+                            "record_extra": {**muon.record_extra, "muon_rule": "old"}})
+    assert grid.run_hash(other, rcfg) != grid.run_hash(muon, rcfg)
+
+
+def test_bn_mode_is_resolved_per_family_and_named_only_when_it_deviates():
+    """C-E2. `bn_mode` (batch|frozen) supersedes `gram_freeze_norm_stats` but must
+    not rename anything by default: the Gram backend has always frozen the running
+    statistics (and its `hooks` capture requires it), every other family has always
+    trained with batch statistics. `_bnbatch` therefore keeps its exact old meaning
+    and `_bnfrozen` appears only where a config asks for a deviation."""
+    assert grid.default_bn_mode("svd", use_gram=True) == "frozen"
+    for family in grid.FAMILIES:
+        assert grid.default_bn_mode(family, use_gram=False) == "batch", family
+    assert grid.resolve_bn_mode({}) is None                    # neither key given
+    assert grid.resolve_bn_mode({"gram_freeze_norm_stats": False}) == "batch"
+    assert grid.resolve_bn_mode({"gram_freeze_norm_stats": True}) == "frozen"
+    assert grid.resolve_bn_mode({"bn_mode": "frozen",
+                                 "gram_freeze_norm_stats": False}) == "frozen"
+    with pytest.raises(ValueError, match="bn_mode"):
+        grid.resolve_bn_mode({"bn_mode": "eval"})
+    # no token for either family's own default; one token per deviation
+    assert grid.bn_mode_suffix("frozen", "svd", True) == ""
+    assert grid.bn_mode_suffix("batch", "svd", True) == "_bnbatch"
+    assert grid.bn_mode_suffix("batch", "standard") == ""
+    assert grid.bn_mode_suffix("frozen", "standard") == "_bnfrozen"
+
+    # end to end: a gram scan (frozen by default) is untouched; bn_mode=frozen
+    # renames only the families that would otherwise use batch statistics.
+    rcfg = load_rcfg("toy_1d_scan")
+    base = {s.run_id: s for s in grid.expand_grid(rcfg, mode="all", verbose=False)}
+    assert {s.record_extra["bn_mode"] for s in base.values() if s.family == "svd"} == {"frozen"}
+    assert {s.record_extra["bn_mode"] for s in base.values()
+            if s.family != "svd"} == {"batch"}
+    frozen_cfg = load_rcfg("toy_1d_scan", "bn_mode=frozen")
+    frozen = grid.expand_grid(frozen_cfg, mode="all", verbose=False)
+    assert all(s.record_extra["bn_mode"] == "frozen" for s in frozen)
+    for s in frozen:
+        if s.family == "svd":
+            assert s.run_id in base                     # already the gram default
+        else:
+            assert s.run_id.replace("_bnfrozen", "") in base and "_bnfrozen" in s.run_id
+    # a batch-statistics Gram run needs a capture that can be replayed safely
+    with pytest.raises(ValueError, match="gram_capture"):
+        grid.expand_grid(load_rcfg("toy_1d_scan", "bn_mode=batch"),
+                         mode="svd", verbose=False)
+
+
+def test_new_config_keys_are_resolved_and_validated():
+    """The Stage-1 config keys, with the defaults CONTRACTS.md gives them."""
+    # a bare config: the defaults must come from the code, not from whatever
+    # experiments/configs currently sets (that is the configs track's business).
+    st = grid.resolve_scan_settings({"loader_seed": 0, "model_seeds": [0]})
+    assert st["eval_batch_size"] == 2048 and st["train_eval_size"] == 10_000
+    assert st["svd_spectra_schedule"] == {"dense_first": 200, "every": 20}
+    assert st["empty_cache"] is False and st["eval_every_steps"] is None
+    assert st["checkpoints"] == "final" and st["checkpoints_svd"] is None
+    # svd_spectra_every still works and means "no dense head" (C-L2)
+    assert grid.resolve_spectra_schedule({"svd_spectra_every": 5}) == {
+        "dense_first": 0, "every": 5}
+    assert grid.resolve_spectra_schedule(
+        {"svd_spectra_schedule": {"every": 3}}) == {"dense_first": 200, "every": 3}
+    with pytest.raises(ValueError, match="unknown key"):
+        grid.resolve_spectra_schedule({"svd_spectra_schedule": {"evry": 3}})
+    for bad, match in (({"eval_batch_size": 0}, "eval_batch_size"),
+                       ({"train_eval_size": 0}, "train_eval_size"),
+                       ({"checkpoints": "sometimes"}, "checkpoints"),
+                       ({"checkpoints_svd": "sometimes"}, "checkpoints_svd")):
+        with pytest.raises(ValueError, match=match):
+            grid.resolve_scan_settings({**load_rcfg("toy_1d_scan"), **bad})
 
 
 def test_svd_record_and_run_id_details():
@@ -377,10 +536,12 @@ def test_svd_record_and_run_id_details():
             "_mseed3000_lseed3000_pf0.25_elementwise_gram") in ids
     assert ("svd_bs64_mlp_width32_k64_lr0.05_rtol0.0001_svdtorch"
             "_mseed3000_lseed3000_pf1.0_gram") in ids        # pf == 1 -> no mask token
+    # C-X1 grew this grid to 2 k x 7 lr x 3 kappa x 5 seeds, so one third of the 210
+    # ids carries each kappa token and the kappa == 2 third carries none.
     ids = {s.run_id for s in specs_for("mnist_kappaScan_labelRegression")}
-    assert sum(i.endswith("_kappa1") for i in ids) == 5       # kappa == 2 -> no token
-    assert sum("_kappa" in i for i in ids) == 10
-    rcfg = load_rcfg("cifar10_resnet_scan_labelRegression")   # gram_freeze_norm_stats: false
+    assert sum(i.endswith("_kappa1") for i in ids) == 70      # kappa == 2 -> no token
+    assert sum("_kappa" in i for i in ids) == 140
+    rcfg = load_rcfg("cifar10_resnet_scan_labelRegression")   # bn_mode: batch
     assert all(s.run_id.endswith("_gram_bnbatch")
                for s in grid.expand_grid(rcfg, mode="svd", verbose=False))
     rcfg = load_rcfg("mnist_scan_ce", "loss=brier")           # non-legacy loss key
@@ -390,8 +551,18 @@ def test_svd_record_and_run_id_details():
 
 def test_weight_decay_grid_filter():
     """Only AdamW / Muon / MuonW sweep weight decay; others keep their single wd=0
-    run (generic_scan.py:614-623)."""
-    rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan")   # weight_decays: [0.0, 0.01]
+    run (generic_scan.py:614-623).
+
+    NO campaign config sweeps `weight_decays` any anymore -- the scope update of
+    2026-09-18 dropped C-B4's lr x wd grid, so AdamW runs at its torch default 0.01
+    and MuonW at 0.1, one setting each, everywhere. The filter itself still has to
+    work (a launcher or a rerun may pass an explicit override, as the 2026-09-17
+    MuonW backfill did), so it is exercised through one.
+    """
+    swept = {name: wd for name in ALL_SCAN_CONFIGS
+             if len(grid.listify((wd := load_rcfg(name).get("weight_decays", [None])))) > 1}
+    assert not swept, f"these configs still sweep weight decay: {swept}"
+    rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan", "weight_decays=[0.0,0.01]")
     specs = grid.expand_grid(rcfg, mode="standard", verbose=False)
     per_optim = Counter(s.hparams["optim_name"] for s in specs if s.family == "standard")
     assert per_optim["Adam"] == 120 and per_optim["AdamW"] == 240
@@ -399,12 +570,12 @@ def test_weight_decay_grid_filter():
     assert {s.hparams["weight_decay"] for s in specs
             if s.hparams.get("optim_name") == "SGD"} == {0.0}
     # weight_decays: [None] -> each optimizer's own default, in the run_id for the
-    # two "W" optimizers only.
+    # two "W" optimizers only. SGDm (C-B2) is a momentum change, not a wd one.
     rcfg = load_rcfg("toy_1d_scan")
     wd = {s.hparams["optim_name"]: s.hparams["weight_decay"]
           for s in grid.expand_grid(rcfg, mode="standard", verbose=False)
           if s.family == "standard"}
-    assert wd == {"Adam": 0.0, "AdamW": 0.01, "SGD": 0.0, "RMSprop": 0.0,
+    assert wd == {"Adam": 0.0, "AdamW": 0.01, "SGD": 0.0, "SGDm": 0.0, "RMSprop": 0.0,
                   "Muon": 0.0, "MuonW": 0.1, "SOAP": 0.0, "Shampoo": 0.0, "KFAC": 0.0}
 
 
@@ -458,10 +629,22 @@ def test_run_hash():
         other = load_rcfg("toy_1d_scan", override)
         s2 = grid.expand_grid(other, mode="all", verbose=False)[0]
         assert grid.run_hash(s2, other) != grid.run_hash(specs[0], rcfg), override
-    # ... while a pure diagnostics knob does not
-    quiet = load_rcfg("toy_1d_scan", "svd_spectra_every=1")
-    s3 = grid.expand_grid(quiet, mode="all", verbose=False)[0]
-    assert grid.run_hash(s3, quiet) == grid.run_hash(specs[0], rcfg)
+    # ... while what is only LOGGED or SCHEDULED does not (see the run_hash
+    # docstring: a denser spectra ladder or another checkpoint policy must not
+    # invalidate the runs a scan already has, and neither must the worker layout)
+    for override in ("svd_spectra_every=1",
+                     "svd_spectra_schedule.dense_first=5",
+                     "checkpoints=none", "checkpoints_svd=log",
+                     "empty_cache=true", "stop_on_nonfinite=false",
+                     "scheduler=static", "svd_info=summary"):
+        same = load_rcfg("toy_1d_scan", override)
+        s3 = grid.expand_grid(same, mode="all", verbose=False)[0]
+        assert grid.run_hash(s3, same) == grid.run_hash(specs[0], rcfg), override
+    # spelling out a default is the same run as omitting it (the eval settings are
+    # hashed RESOLVED), so a config tidy-up does not re-execute the campaign
+    spelled = load_rcfg("toy_1d_scan", "eval_batch_size=2048", "train_eval_size=10000")
+    s4 = grid.expand_grid(spelled, mode="all", verbose=False)[0]
+    assert grid.run_hash(s4, spelled) == grid.run_hash(specs[0], rcfg)
 
 
 def test_runspec_is_compared_and_keyed_by_run_id_not_hashed():
@@ -517,19 +700,31 @@ def _family_of(test):
 
 
 def _family_dispatch():
-    """``({family: branch source}, else-source)`` of ``execute``'s if/elif chain."""
+    """``({family: branch source}, else-source)`` of ``execute``'s if/elif chain.
+
+    The chain is identified by *size*, not by position: ``execute`` also carries
+    single-family guards (the svd-only record fields, the compile-cache reset),
+    and since C-R1 moved the record assembly out of the ``try`` one of them sits
+    shallower in the tree than the dispatch, so "the first family test
+    ``ast.walk`` finds" is no longer the dispatch.
+    """
     _, fn = _scan_function("execute")
-    node = next(n for n in ast.walk(fn) if isinstance(n, ast.If) and _family_of(n.test))
-    branches, tail = {}, ""
-    while node is not None:
-        branches[_family_of(node.test)] = "\n".join(ast.unparse(s) for s in node.body)
-        nxt = node.orelse[0] if len(node.orelse) == 1 else None
-        if isinstance(nxt, ast.If) and _family_of(nxt.test):
-            node = nxt
-        else:
-            tail = "\n".join(ast.unparse(s) for s in node.orelse)
-            node = None
-    return branches, tail
+    best = ({}, "")
+    for start in ast.walk(fn):
+        if not (isinstance(start, ast.If) and _family_of(start.test)):
+            continue
+        branches, tail, node = {}, "", start
+        while node is not None:
+            branches[_family_of(node.test)] = "\n".join(ast.unparse(s) for s in node.body)
+            nxt = node.orelse[0] if len(node.orelse) == 1 else None
+            if isinstance(nxt, ast.If) and _family_of(nxt.test):
+                node = nxt
+            else:
+                tail = "\n".join(ast.unparse(s) for s in node.orelse)
+                node = None
+        if len(branches) > len(best[0]):
+            best = (branches, tail)
+    return best
 
 
 def _branch(branches, family):
@@ -557,7 +752,12 @@ def test_execute_dispatches_every_family_to_its_own_loop():
 def test_execute_keeps_the_per_family_asymmetries():
     """The legacy blocks were not uniform; the single copy must keep the differences
     (legacy generic_scan.py: .to(device) at 638/710/786/863 only, track_param_norm
-    at 548/653/874/927 only, drop_last at 540 only, empty_cache at 679-947 only)."""
+    at 548/653/874/927 only, empty_cache at 679-947 only).
+
+    ``drop_last`` is no longer one of them: C-S3 makes it true for every family,
+    so it moved out of the svd branch and into the one sampler
+    (``_ScanContext.loaders``), which is asserted there instead.
+    """
     branches, _ = _family_dispatch()
     # the svd and hig wrappers move the model themselves
     assert set(_scan_constant("_TO_DEVICE_FAMILIES")) == set(grid.FAMILIES) - {"svd", "hig"}
@@ -566,30 +766,63 @@ def test_execute_keeps_the_per_family_asymmetries():
         assert "track_param_norm=" in _branch(branches, family), family
     for family in ("lbfgs", "polyak"):
         assert "track_param_norm=" not in _branch(branches, family), family
-    # only the svd train loader drops the last, short batch (microbatching)
-    assert "drop_last=" in _branch(branches, "svd")
-    for family in set(grid.FAMILIES) - {"svd"}:
+    # C-S3: one loader construction, drop_last for everyone, one sampler seeded
+    # from (base loader seed, model seed) -- not per family, not shuffle=True.
+    _, loaders = _scan_function("loaders")
+    src = "\n".join(ast.unparse(s) for s in loaders.body)
+    assert "EpochPermutationSampler.for_run" in src and "drop_last=True" in src
+    assert "batch_sampler=sampler" in src and "shuffle=True" not in src
+    for family in grid.FAMILIES:
         assert "drop_last" not in _branch(branches, family), family
-    # svd-only diagnostics + compile cache; empty_cache on the error path for the rest
+    # C-T3: the per-step allocator flush is a Sven constructor flag (default false),
+    # while the error path still frees the cache for the non-svd families.
+    svd = _branch(branches, "svd")
+    assert svd.count("empty_cache=ctx.empty_cache") == 2      # Sven and SvenGram
+    # svd-only diagnostics + compile cache
     _, fn = _scan_function("execute")
     node = next(n for n in ast.walk(fn) if isinstance(n, ast.Try))
-    final, handlers = (ast.unparse(node.finalbody[0]),
-                       "\n".join(ast.unparse(h) for h in node.handlers))
+    final = "\n".join(ast.unparse(s) for s in node.finalbody)
+    handlers = "\n".join(ast.unparse(h) for h in node.handlers)
     assert "torch.compiler.reset()" in final and "spec.family == 'svd'" in final
     assert "empty_cache" in handlers and "spec.family != 'svd'" in handlers
     assert "torch.compiler.reset" not in handlers
-    after = "\n".join(ast.unparse(s) for s in node.body)
+    # C-R1: the record is assembled and written AFTER the try, so a failure gets
+    # the same record shape as a success; the svd-only fields still come off the
+    # objects that were pre-bound before it.
+    after = "\n".join(ast.unparse(s) for s in fn.body[fn.body.index(node) + 1:])
     assert "if spec.family == 'svd':\n    result['svd_info']" in after
+    assert "_write_run(" in after and "result['status'] = status" in after
+    for name in ("optimizer = None", "train_model = None", "run_loaders = None",
+                 "checkpointer = None"):
+        assert name in "\n".join(ast.unparse(s) for s in fn.body[:fn.body.index(node)])
+    # C-R1: the curve dict is the runner's, so a failed run keeps its curves, and
+    # C-L3: the checkpoint is flushed before the npz/jsonl and again on failure.
+    body = "\n".join(ast.unparse(s) for s in _scan_function("execute")[1].body)
+    assert "losses = {}" in body and "losses=losses" in body
+    assert body.index("checkpointer.flush()") < body.index("_write_run(")
+    assert "checkpointer.flush()" in final
 
 
 def test_scan_is_expand_shard_dedup_execute_with_a_per_seed_init_state():
-    """scan() is a driver only: the grid comes from grid.py, and the per-seed base
-    model is built ONCE per model seed (the legacy per-seed preamble, which is what
-    reproduces the legacy RNG stream: set_seed -> instantiate -> deepcopy)."""
-    _, fn = _scan_function("scan")
+    """run_grid() is a driver only: the grid comes from grid.py, and the per-seed
+    base model is built ONCE per model seed (the legacy per-seed preamble, which is
+    what reproduces the legacy RNG stream: set_seed -> instantiate -> deepcopy).
+
+    ``scan()`` itself is now only the Hydra entry point (config name + results
+    root); everything else is ``run_grid(cfg, scan_dir)``, which is what the
+    lifecycle tests drive with a temp directory.
+    """
+    _, entry = _scan_function("scan")
+    entry_calls = {ast.unparse(n.func).split(".")[-1] for n in ast.walk(entry)
+                   if isinstance(n, ast.Call)}
+    assert {"run_grid", "results_root"} <= entry_calls
+    _, fn = _scan_function("run_grid")
     called = {ast.unparse(n.func).split(".")[-1] for n in ast.walk(fn)
               if isinstance(n, ast.Call)}
     assert {"expand_grid", "shard", "execute", "_ScanContext"} <= called
+    # C-R2/C-R3: dedup is the done index + the claim queue, not `os.path.exists`
+    assert {"done_index", "is_done", "is_done_now", "try_claim", "mark_started",
+            "mark_done", "clear_started", "write_manifest"} <= called
     assert not [n for n in ast.walk(fn) if isinstance(n, ast.Call)
                 and ast.unparse(n.func).endswith("product")]     # no inline grid left
     _, seed_state = _scan_function("seed_state")

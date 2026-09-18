@@ -35,6 +35,8 @@ mlp_width: 16
 result_id_fields: [mlp_width, n_data]
 loss: mse
 track_param_norm: true   # min-norm story: track ||theta|| growth
+# 593 params; full-batch, so `log` = steps {0,1,2,4,...} + all 200 epoch ends, ~0.5 MB/run.
+checkpoints: log
 
 # Sven: k as a fraction of the (full) batch so it scales with n_data
 k_fractions: [0.25, 0.5, 1.0]
@@ -44,10 +46,13 @@ svd_mode: [torch]
 use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
 variable_k: false
 
-# Baselines: full modern suite (AdamW, Muon, SOAP, Shampoo, K-FAC all wired + tested).
+# Baselines: full modern suite (AdamW, Muon, SOAP, Shampoo, K-FAC all wired + tested)
+# plus SGDm (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW runs at its
+# torch default 0.01 and MuonW at 0.1, one setting each, while Adam and plain Muon are the
+# wd=0 baselines. The old `weight_decays: [0.0, 0.01]` both doubled three optimizers and
+# forced MuonW off its own default.
 lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-weight_decays: [0.0, 0.01]         # only applied to AdamW / Muon
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]

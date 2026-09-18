@@ -28,14 +28,24 @@ loss: label_regression
 use_gram: true
 gram_capture: hooks          # pretrained BN is _NormBase -> frozen-stats hooks (validated)
 track_param_norm: true       # min-norm claim
+# C-E2 / O2: FROZEN pretrained statistics, in train and eval, for EVERY optimizer -- not
+# just for the Sven wrappers. That is the whole point of a fine-tuning study at P >> N: the
+# ImageNet running statistics are part of the pretrained model, and letting the baselines
+# re-estimate them from 250-2000 images while Sven cannot would be an unfair comparison.
+bn_mode: frozen
 
 k_values: [64]
 lrs: [0.01, 0.05, 0.1, 0.5]
 rtol: [1e-3]
 svd_mode: [torch]
 
-optimizers_standard: [AdamW, SGD, Muon, MuonW]
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+# SGDm added (C-B2). No weight_decays list => AdamW 0.01, MuonW 0.1, Muon wd 0.
+optimizers_standard: [AdamW, SGD, SGDm, Muon, MuonW]
+# C-B3: Muon/MuonW on resnet18_pretrained silently changed from "AdamW + fc" to the
+# conv-flat MuonConv variant, and adjust_lr_fn=match_rms_adamw scales the effective step by
+# up to 13.6x on the layer4 kernels (optim.fix.md (c)), so the shared list needs two
+# half-decades of headroom below the old 1e-4 edge.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 
 loader_seed: 7000
 model_seeds: [7000, 7001, 7002]

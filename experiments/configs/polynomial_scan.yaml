@@ -17,19 +17,29 @@ result_id_fields: [mlp_width]
 loss: mse
 use_gram: true
 
+# Headline scan => full per-step checkpoint ladder (C-L3/C-L4). 673 params, ~0.5 MB/run.
+checkpoints: log
+
 k_values: [1,2,4,8,16,32]
 lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3: the Sven optimum here is k=32 (=B, a method boundary, not a grid edge) at the
+# SMALLEST rtol -> extend the rtol grid down by one decade (1e-5).
+rtol: [1e-5, 1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
 variable_k: false
 
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+# C-B3, one baked-in extension round; shared by every standard optimizer (see toy_1d_scan
+# for the full rationale). Here specifically: KFAC best = the old 1e-4 bottom edge,
+# SGD (0.1) and Shampoo (0.1) the old top edge, plus the match_rms_adamw Muon shift.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 #optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
 # Consolidated: this scan now includes the full modern baseline suite (the extra
 # optimizers formerly in rebuttal_baselines_*). NOTE the results dir also holds the
 # earlier CORE-only runs, which used a different loader seed / LBFGS grid, so the
 # directory documents all runs rather than being a single reproducible Cartesian grid.
-optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list, so AdamW=0.01, MuonW=0.1,
+# Adam / Muon stay the wd=0 baselines (scope update).
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
@@ -38,11 +48,14 @@ lbfgs_history_size: [2, 5, 10]
 # Jacobian Descent (torchjd) hyperparameters (mode: jd / all)
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]
-lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 
 # Half-Inverse Gradients hyperparameters (mode: hig / all)
-lrs_hig: [0.05, 0.1, 0.5, 1.0]
-tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+# C-B3 shift (see toy_1d_scan for the per-scan evidence): lr >= 0.5 produced no records
+# here at all and is dominated where it did run (mnist_scan_ce); tau best = the 1e-2 top
+# edge here (0.0030 at lr 0.1 / tau 1e-2).
+lrs_hig: [0.005, 0.015, 0.05, 0.1, 0.25]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
 loader_seed: 2000
 model_seeds: [2000, 2001, 2002, 2003, 2004]

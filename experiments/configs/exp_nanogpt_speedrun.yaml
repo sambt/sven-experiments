@@ -18,14 +18,26 @@ loss: lm_ce
 use_gram: true
 gram_capture: hooks
 
+# GPT-style model: 2048 blocks x 128 tokens does not fit, so this is the one scan that
+# overrides the eval_batch_size default. 256 blocks = 32,768 tokens per eval batch, ~4
+# batches over the 10% val split.
+eval_batch_size: 256
+# 826,368 params x 50 epochs is ~165 MB/run under `log`; `epochs` (one state per epoch end)
+# is the diagnostics resolution this scan needs.
+checkpoints: epochs
+
 k_values: [64]           # k <= B; Sven update lives in a <=B-dim subspace
 lrs: [0.05, 0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]            # irrelevant under Gram
 
-# modern competitors (Muon/SOAP are the current LM-speedrun leaders)
+# modern competitors (Muon/SOAP are the current LM-speedrun leaders). No SGD here, so no
+# SGDm; no weight_decays list => AdamW 0.01, MuonW 0.1, Muon wd 0.
 optimizers_standard: [AdamW, Muon, MuonW, SOAP]
-lrs_standard: [1e-4, 3e-4, 1e-3, 3e-3]
+# C-B3: SOAP's optimum is the old 1e-4 bottom edge, and Muon's (3e-4) needs two half-decades
+# of headroom below it now that adjust_lr_fn=match_rms_adamw scales its effective step by
+# 2.3-4.5x on this model (optim.fix.md (c)).
+lrs_standard: [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3]
 
 loader_seed: 5000
 model_seeds: [5000, 5001, 5002, 5003, 5004]   # 5 seeds since 2026-09-17 (RERUNS_NEEDED 5: AdamW vs Sven was a tie at 3)
