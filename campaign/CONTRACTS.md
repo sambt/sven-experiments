@@ -89,3 +89,20 @@ flag `empty_cache: bool = True` (C-T3). The optimizer keeps its own step counter
 MNIST 50k/10k + official test; CIFAR-10 45k/5k + official test; Shakespeare contiguous 80/10/10; token bins
 val/test/train from disjoint documents; toy/polynomial: fixed pool of 10,000 + val + test from SEPARATE
 generators, targets normalised by pool mean/std, `n_train` subsamples the pool.
+
+## Scope update (user, 2026-09-18 evening) — overrides anything above and in CHANGES_NEEDED.md
+* Cluster only (no rented GPUs). Headline scans first.
+* **No weight-decay grid (C-B4 dropped):** AdamW runs at the torch default wd 0.01 and MuonW at 0.1, one setting
+  each, in EVERY scan. Configs that sweep `weight_decays` (overparam, batch-size: `[0.0, 0.01]`) go back to the
+  single default; Adam (wd 0) and plain Muon (wd 0) stay as separate named baselines.
+* CUT from the campaign: `exp_critbatch_mnist`, `exp_critbatch_nanogpt` (and C-X2), `exp_gpt2_small_comparison`
+  (deferred; in-flight jobs cancelled), `cifar10_resnet_kappaScan_labelReg`, `cifar10_resnet_ce_kappaScan`,
+  `cifar10_resnet_paramFrac_scan_labelReg`, `cifar10_resnet_ce_paramFrac_scan` (Fig-5 at 3 seeds replaces them),
+  `mnist_scan_brier`, the second grid-extension round, confirmation seeds beyond the headline scans.
+  `eval_every_steps` (C-E4) and `analysis/ckpt_tools.py` (C-L4) are off the critical path.
+* KEPT, in launch order: (P0) six headline scans + `exp_nanogpt_speedrun`; (P1) `rebuttal_overparam_*`,
+  `rebuttal_fig5_cifar_paramfrac_scan`, `rebuttal_batchsize_polynomial_scan` (LBFGS grid cut per O5);
+  (P2) standalone timing of headline best configs, one extension round on headline scans; (P3)
+  `mnist_kappaScan_labelRegression` with per-kappa lr retune (C-X1), micro-batch / param-fraction MLP scans
+  (toy + MNIST label-reg first), `exp_finetune_cifar_smallN`, diagnostics + confirmation seeds for headline
+  scans, polynomial data-seed replicates.
