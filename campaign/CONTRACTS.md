@@ -83,7 +83,7 @@ offline. `derive_loader_seed(base_loader_seed, model_seed)` (identical across op
 **Sven optimizer logging (C-L1)**: attribute `optimizer.log_this_step: bool` (default True = legacy behaviour).
 On logged steps append to `svd_info`: `step`, `svs` (all M = B/microbatch values before the k/rtol cut), `utr`
 (= U^T r, all M), `update_norm`, `resid_norm`, `sv_min_kept`. `num_nonzero_svs` stays per step. Constructor
-flag `empty_cache: bool = True` (C-T3). The optimizer keeps its own step counter.
+flag `empty_cache: bool = False` (C-T3; see Scope update). `update_norm` = norm of the APPLIED change (includes lr); extra key `sv_noise_floor`. The optimizer keeps its own step counter.
 
 **Datasets**: every class exposes `train_dataset`, `val_dataset`, `test_dataset` and records `split_seed`.
 MNIST 50k/10k + official test; CIFAR-10 45k/5k + official test; Shakespeare contiguous 80/10/10; token bins
