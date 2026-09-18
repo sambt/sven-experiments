@@ -39,3 +39,4 @@ profile_results_v2/
 analysis/legacy_repair/*.parquet
 analysis/legacy_repair/_cache/
 slurm_logs/
+experiment_results_legacy_2026-09-18
