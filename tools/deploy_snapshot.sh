@@ -137,16 +137,29 @@ STAMP=$(date -Is)
 # The schema provenance.py falls back to: git_sha / git_dirty / exported_at (sha / dirty
 # are accepted aliases). The sven identity goes in sven/DEPLOY_INFO.json because
 # provenance.git_facts(<snap>/sven) looks there, and deliberately never walks up.
+#
+# `git_dirty` describes THIS EXPORT, not the working tree it came from: the tree is
+# `git archive HEAD`, so untracked files are not in it and cannot make it differ from
+# HEAD, while an uncommitted TRACKED change means the code under test is not HEAD.
+# Every record made from a snapshot carries this flag as its "was the code committed"
+# answer (C-R3 / F16), and ~10 agents keep untracked scratch files in the live tree --
+# so the untracked-inclusive reading would stamp `dirty` on essentially every record of
+# the campaign and say nothing. The working tree's own state is still recorded, under
+# `git_dirty_worktree` / `git_untracked_paths`.
 cat > "$TMP/DEPLOY_INFO.json" <<EOF
 {
   "git_sha": "$SV3_SHA",
-  "git_dirty": $SV3_DIRTY,
+  "git_dirty": $SV3_DIRTY_TRACKED,
   "git_dirty_tracked": $SV3_DIRTY_TRACKED,
+  "git_dirty_worktree": $SV3_DIRTY,
+  "git_untracked_paths": $SV3_UNTRACKED,
   "exported_at": "$STAMP",
   "repo": "$REPO",
   "sven_git_sha": "$SVEN_SHA",
-  "sven_git_dirty": $SVEN_DIRTY,
+  "sven_git_dirty": $SVEN_DIRTY_TRACKED,
   "sven_git_dirty_tracked": $SVEN_DIRTY_TRACKED,
+  "sven_git_dirty_worktree": $SVEN_DIRTY,
+  "sven_git_untracked_paths": $SVEN_UNTRACKED,
   "results_root": "$RESULTS_ROOT",
   "exported_by": "tools/deploy_snapshot.sh",
   "host": "$(hostname)"
@@ -155,8 +168,10 @@ EOF
 cat > "$TMP/sven/DEPLOY_INFO.json" <<EOF
 {
   "git_sha": "$SVEN_SHA",
-  "git_dirty": $SVEN_DIRTY,
+  "git_dirty": $SVEN_DIRTY_TRACKED,
   "git_dirty_tracked": $SVEN_DIRTY_TRACKED,
+  "git_dirty_worktree": $SVEN_DIRTY,
+  "git_untracked_paths": $SVEN_UNTRACKED,
   "exported_at": "$STAMP",
   "repo": "$SVEN",
   "exported_by": "tools/deploy_snapshot.sh"

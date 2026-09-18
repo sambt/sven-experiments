@@ -515,6 +515,7 @@ def test_deploy_refuses_a_dirty_tree_unless_allowed(repos):
     snap = proc.stdout.strip().splitlines()[-1]
     info = json.load(open(os.path.join(snap, "DEPLOY_INFO.json")))
     assert info["git_dirty"] is True and info["git_dirty_tracked"] is True
+    assert info["git_dirty_worktree"] is True
     # HEAD is exported, NOT the dirty working tree
     assert "uncommitted" not in open(os.path.join(snap, "run.py")).read()
 
@@ -532,7 +533,15 @@ def test_untracked_files_are_a_note_not_a_refusal(repos):
     assert "untracked path(s) in sv3 are NOT exported" in proc.stdout
     snap = proc.stdout.strip().splitlines()[-1]
     assert not os.path.exists(os.path.join(snap, "scratch_notes.md"))
-    assert json.load(open(os.path.join(snap, "DEPLOY_INFO.json")))["git_dirty"] is True
+    info = json.load(open(os.path.join(snap, "DEPLOY_INFO.json")))
+    # `git_dirty` describes the EXPORT, which is `git archive HEAD` and therefore
+    # cannot contain the untracked file: a record made from this snapshot must not
+    # claim it ran uncommitted code (the live tree always carries agents' scratch
+    # files, so the other reading marks every campaign record dirty and says nothing).
+    assert info["git_dirty"] is False and info["git_dirty_tracked"] is False
+    # the working tree's own state is still on the record, separately
+    assert info["git_dirty_worktree"] is True
+    assert info["git_untracked_paths"] == 1
 
 
 def test_deploy_refuses_a_results_root_that_does_not_exist(repos):
