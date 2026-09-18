@@ -62,3 +62,11 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 * 09-18 ~16:40 — Stage 0: all 10 implementers finished; adversarial reviews in progress (real catches so far: 0-d
   device tensors in `svd_info` crash the runner on GPU; sparse `svs` vs per-step `_split_diagnostics` seam;
   `n_train > 50,000` silently clamps -> overparam MNIST top point must become N=50000). Nothing committed yet.
+* 09-18 ~19:15 — Stage 0 committed for 8/10 tracks (sv3: grid a4ef395, optim d9f9a58, data 5c96eeb, loops 14c49b9,
+  claims-prov 5efa1bd, ckpt-sampler 6361496; sven: nn f963f18, opt 203a4e6). analysis-core / analysis-offline still in
+  review+fix (workflows w3tpbpmse, w4cwpfbcs). NOTE: a workflow runs only (CPUs-2) agents at once = 2 on this 4-CPU
+  interactive job -> launch ONE WORKFLOW PER TRACK for parallelism.
+* 09-18 ~19:20 — Stage 1 launched as three workflows: runner integrator (w8one9rnb: training wiring -> lifecycle ->
+  2-lens review -> fix), configs (wmc0k1wky), launcher+reconcile (wnakx85ev). Contracts for them are in
+  campaign/CONTRACTS.md "Stage 1 contracts". After they finish: commit, Stage 2 = full-diff review + Gate 1 GPU smoke
+  matrix on gpu_test (needs a deploy snapshot), then ask the user for the go on the pilot (toy + polynomial).
