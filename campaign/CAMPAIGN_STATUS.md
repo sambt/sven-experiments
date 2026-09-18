@@ -70,3 +70,11 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   2-lens review -> fix), configs (wmc0k1wky), launcher+reconcile (wnakx85ev). Contracts for them are in
   campaign/CONTRACTS.md "Stage 1 contracts". After they finish: commit, Stage 2 = full-diff review + Gate 1 GPU smoke
   matrix on gpu_test (needs a deploy snapshot), then ask the user for the go on the pilot (toy + polynomial).
+* 09-18 ~20:55 — **Legacy results frozen** at the user's request: `sven_experiments` renamed to
+  `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments_legacy_2026-09-18` (repo symlink
+  `experiment_results_legacy_2026-09-18`, write bits removed except `_cache/`), new EMPTY `sven_experiments`
+  behind the unchanged `experiment_results` symlink. Legacy analysis: `SV3_RESULTS_ROOT=../experiment_results_legacy_2026-09-18`.
+  All 10 Stage-0 tracks committed (analysis-core 4767461, analysis-offline 40675bd).
+* 09-18 ~21:05 — **STANDING GO from the user:** run the Gate-1 smoke tests as soon as Stage 1 is committed; once they
+  pass, launch the six headline scans together (toy_1d_scan + polynomial_scan double as the pilot; the user reviews
+  their tables while MNIST/CIFAR run). This go covers the HEADLINE scans only - nanoGPT and P1-P3 still need a go.
