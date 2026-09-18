@@ -1,0 +1,68 @@
+## 1. What is in the repo, and its git state
+
+`git -C sven status` **clean**, no untracked/ignored-but-modified files; branch **`stochastic_params`** @ `ca8742b` (= sven SHA in `CHANGES_NEEDED.md`), in sync with `origin/stochastic_params`. `main` is behind at `76e30f2`; a `jax` branch exists (`08074b3`). Remote `git@github.com:sambt/sven.git`. No `conftest.py`, no `[tool.pytest.ini_options]`, no CI config. `pyproject.toml` pins `torch==2.8.0`; `jax` is an optional extra and is **not installed** in `/n/home11/sambt/iaifi/sv3/.venv`, and `tests/test_jax_*.py` import `jax` at module level with no `importorskip` — so a bare `pytest tests/` errors at collection today.
+
+**Verified by running** (`pytest tests/test_torch_*.py -q`, this CPU node): **129 passed, 1 skipped, 34.4 s** test time / 55 s wall, MAXRSS 1.1 GB, CPU-only, everything float64 (`DT = torch.float64`, `DEVICE = "cpu"` in every file). Slowest two: 9.5 s and 7.1 s (the latter is a *timing* assertion, `test_hooks_step_faster_than_chunked_on_train_tier` — fragile on a loaded node). So the sven test suite is a free pre-commit gate.
+
+### Class map
+
+| class | file:line | consumes / does | diagnostics today | syncs / cache |
+|---|---|---|---|---|
+| `Sven` | `opt/sven.py:14` | `SvenWrapper.grads` (B,P) → `pinv()` factored truncated SVD; `variable_k` greedy rank-1 with re-eval (`:120-148`) | `svs` = **rtol+k-truncated** `1/S_inv[S_inv>0]` (`:194`), `num_nonzero_svs`, `k_used`, `variable_k_substep_losses` | `.cpu().numpy()` `:194`, `.item()` `:195`; `empty_cache()` **twice per step** `:176`, `:203` |
+| `SvenGram` | `:206` | `model.gram` (M,M) fp64 → fp64 `eigh` `:260` → `w = U S⁻² Uᵀr` `:284` → `delta_from_w` `:285`; raises `RuntimeError` on empty spectrum `:272` | `svs` = full M-vector `sigma_full` `:290`, `num_nonzero_svs` `:291` | `nonzero()` `:271` **and** `.max().item()` `:277` sync **every** step; `sigma_full.cpu()` `:290`; `empty_cache()` `:296` |
+| `SvenGramReg` | `:299` | + damping/`weight_decay`/`fisher_decay`/`decoupled_weight_decay`/`relative`; coupled soft-filter branch `:444-451` vs stock hard-cut branch `:452-467`; extra fwd-mode `jvp` in `_rows_jvp` `:403-410` | `svs` full, `num_nonzero_svs` = count of `sigma² > c` | `.max().item()` `:457`, `.cpu()` `:489`, `empty_cache()` `:499`. **Not referenced anywhere in sv3** (`grep -rn SvenGramReg experiments/` → empty) |
+| `SvenWrapper` | `nn/sven_wrapper.py:14` | flat-param tie `:372`; `_func_call` re-fetches live buffers every call `:146-147`; `evaluate()` `:150-153` **does no mode switch**; `_rows` (kappa / `residual_fn`) `:171`; 3 Jacobian routes (flat `:213`, tensor-blocks `:229`, rows-twins `:269`) | — | `actual_param_fraction` set in `_make_param_mask_by_block` `:424` and `_make_param_mask_by_rows` `:492` but **not** in `_make_param_mask` (elementwise) `:393-398` → stays `1.0` |
+| `GramSvenWrapper` | `nn/gram_wrapper.py:78` | `capture` hooks / chunked / full (**"full" = chunked with one group**, `:166-170`); `_hooks_kernel` 1 fwd + 1 bwd to layer outputs `:472`; `_chunked_gram` per-group `jacrev`, buffers injected into the param dict `:973-974`; `delta_from_w` = Jᵀw via 1 fwd + 1 bwd `:245`; `_frozen_norm_stats` `:357-370` wraps `loss_and_grad` (`:218`, `:232`) and `delta_from_w` (`:267`) but **not `evaluate`** | `microbatch` pools the kernel by block-sum `:226`; `actual_param_fraction` set for all three mask modes `:428/:460` | `.item()` on mask sums only |
+
+`masked_modules.py` (168 lines) is self-contained and untouched by any change below.
+
+## 2. Verified BatchNorm behaviour (the C-E2 core)
+
+I ran a CPU probe (`/tmp/claude-66176/.../scratchpad/bn_probe2.py`, recovering the update count from `running_mean` under a known EMA) with sv3's `experiments/nn/batchnorm._BatchNorm`. **Running-stat updates per optimizer step:**
+
+| configuration | capture pass | `delta_from_w` | `evaluate()` (per val batch) | total/step |
+|---|---|---|---|---|
+| chunked, `freeze=False`, 5 groups | **5** (one per `jacrev` group) | 1 | 1 | **6** |
+| `full`, `freeze=False` (= **headline CIFAR**, `cifar10_resnet_ce_scan.yaml:15-16`) | 1 | 1 | 1 | **2** |
+| hooks, `freeze=True` (= **`exp_finetune_cifar_smallN.yaml:29`**) | 0 | 0 | **1** | **0 from training** |
+| classic `SvenWrapper` + `Sven` | 1 | – | 1 | 1 |
+| classic + `variable_k` (`k_used=6`) | 1 | – | – | **7** (`evaluate_and_loss` per substep) |
+| `SvenGramReg` (`fisher_decay>0`), `full` | 1 | 1 + 1 (`_rows_jvp`) | – | **3** |
+
+Mechanism: buffers **are** passed functionally (`param_dict[bname] = buffer`, `gram_wrapper.py:973-974`, `sven_wrapper.py:146-147`) but they are *the module's own tensors*, so `F.batch_norm`'s in-place running-stat write persists past `functional_call`. Momentum is therefore applied **once per `jacrev` group plus once per extra forward** — effective momentum `1-(1-m)^n`, i.e. 0.19 instead of 0.10 on headline CIFAR. Two further verified facts: (a) `num_batches_tracked` is assigned out-of-place and **reverted** by `functional_call`'s reparametrize (stays 0 forever) — so `momentum=None` (cumulative average) would silently degenerate to factor 1.0, and the buffer is meaningless in a checkpoint; (b) stock `nn.BatchNorm2d` **raises** inside `jacrev` (`num_batches_tracked.add_` → "attempted to call in-place operation … mutate a captured Tensor"), which is why sv3 vendors its own BN — the whole batch-stat path depends on that vendored class.
+
+**What must change for "exactly one update per step from training batches":** suppress updates in *every* wrapper pass and add one explicit `torch.no_grad()` train-mode forward on the batch per step. The context must be **batch-stat-preserving**: `_frozen_norm_stats()` switches to `.eval()`, which changes the *normalisation* and so changes the Gram. The correct primitive is `mod.track_running_stats = False` for the pass (both stock `_NormBase.forward` and sv3's read it at `batchnorm.py:35,62,64`; `bn_training` stays `True`, `running_mean` is passed as `None`, nothing is written). Cost: one forward/step (negligible next to a (B,P) `jacrev`). The zero-cost alternative — let group 1 update and suppress groups 2+ — works today but relies on an in-place write inside a functorch transform and breaks on stock BN. Note the Gram is unaffected either way: in train mode the running stats are written, never read.
+
+## 3. Per-change insertion points in this repo
+
+| change | insertion points (`file:line`) | size | hidden difficulty |
+|---|---|---|---|
+| **C-L1** `log_this_step` | `Sven.__init__:33-43` (+`log_this_step` attr or `step(..., log=False)`); `svd_info` keys `:53-58`; `SvenGram.step:266` keep `U_full = evecs.flip(1)` and compute `utr = U_fullᵀ r` before the k-slice `:267`; `sv_min_kept` from `sigma[s_inv_sq>0].min()` after `:280`; `update_norm` after `:285`, `resid_norm` from `residuals`; gate `:289-291`. Same in `SvenGramReg:430/:488-494`. Classic fp64 spectrum: insert **before** `del jacobian` at `:174` | **M** | Gating `:290` does **not** remove the per-step sync: `nonzero()` `:271` + `.max().item()` `:277` sync unconditionally. Replace the kmax *slice* with a boolean-mask multiply into `filt` to make the step sync-free. Classic `J Jᵀ` in fp64 must be **row-block accumulated** — `J.double()` is 5.9 GB at B=64, P=11.2M. `svs` width is **M = B/microbatch**, not B. For `SvenGramReg` with `jvp_coef≠0` the solved rhs is `r + jvp_coef·Mθ`, so `utr` is ambiguous (log both) and `sv_min_kept` has no hard cut (define as min kept after the eps drop at `:448-450`) |
+| **C-E2** eval-mode `evaluate` + no-stat-update context | new `_no_norm_stat_updates()` beside `_frozen_norm_stats` `gram_wrapper.py:357`; `SvenWrapper.evaluate:150-153` and `evaluate_and_loss:155-159`; wrap `delta_from_w:267`, `_chunked_gram` group loop `:983-997` (and the empty-mask fallback `:1008-1011`), `_rows_jvp:409`, `Sven._update_params_variable_k:140` | **M** | **`variable_k` and `evaluate()` need opposite contexts.** `variable_k`'s line search calls `evaluate_and_loss` → `evaluate`; if `evaluate` becomes eval-mode, the accept/reject test is computed under a different normalisation than the capture. Needs a separate internal "train-mode, no buffer write" forward. Also: under hooks capture the frozen-stats requirement makes "one update per step" **impossible** — `bn_mode: batch` forces chunked/full (headline CIFAR already is), `bn_mode: frozen` must then be applied to the baselines too (O2), and the fine-tune study is the only `bn_mode: frozen` case |
+| **C-T3** optional `empty_cache` | `opt/sven.py:175-176`, `:202-203`, `:295-296`, `:498-499` — constructor flag `empty_cache: bool = True` | **S** | Four sites, two of them in the same `Sven.step`; keep the default `True` so existing behaviour is reproducible and let the runner pass `False` |
+| **C-R4** `actual_param_fraction` | `sven_wrapper.py:393-398` (**currently never sets it** → classic elementwise masked runs report 1.0); add running-mean accumulator (`_apf_sum`/`_apf_n` + property) set in `_sample_param_mask` `gram_wrapper.py:410-429` and `loss_and_grad` `sven_wrapper.py:344-354` | **S** | Mask is redrawn per step, so a single attribute cannot answer "mean fraction"; accumulate in the wrapper (a Python float, no sync) |
+| **C-S1** global RNG | `sven_wrapper.py:397`, `:413`, `:485`; `gram_wrapper.py:454`; `pinv.py:105`, `:163` (`torch.randn` for randomized SVD) | **S** in sven (**M** if generators added) | **Verified**: identical `manual_seed` + different stream position → different mask. Two generators matter (masks are CPU `randperm`, `Omega` is on `A.device`). Every scan config uses `use_gram: true`, `svd_mode: torch`, `variable_k: false`, so `pinv.py`'s RNG affects only `optimizer_profile.py`'s `classic` variant, not the scans. Optional cleaner fix: an explicit `torch.Generator` on the wrapper (device-matched), which makes the C-S1 test a unit test rather than a process-order test. `torch.randperm(11.2M)` per step is also a real CPU cost at ResNet scale |
+
+**Tests the spec demands here:** C-L1 — `svs == torch.linalg.svdvals(J)` in fp64 on a small MLP, and `delta == Jᵀ U diag(1/s²) utr` on the kept directions (`CHANGES_NEEDED.md:261-263`). C-E2 — one-update assertion for `full` and `chunked` capture, buffer-bit-identical `evaluate`, batch-companion independence (`:186-190`); the `SmallResNet`/LBFGS half belongs in sv3's new `tests/` (`SmallResNet` is `experiments/nn/nets.py:213`), the context-manager semantics belong in `sven/tests` on a small BN CNN. C-S1 — same-mask-regardless-of-position. Add `[tool.pytest.ini_options]` + `importorskip("jax")` so `pytest tests/` runs green without the jax extra.
+
+## 4. Spec problems, ambiguities, risks
+
+1. **The `variable_k` / `evaluate` conflict** (above) is not distinguished in `CHANGES_NEEDED.md:178-182`; implementing it literally makes the line search inconsistent with the capture.
+2. **"Exactly one update per step" is unreachable under hooks capture.** The spec's goal statement (`:171-173`) and its frozen-stats clause (`:182-184`) coexist only if `bn_mode` selects which goal applies. Make that explicit before coding.
+3. **C-L1 underestimates the sync problem** — the rtol-slice syncs are the bigger ones and are not mentioned.
+4. **`num_batches_tracked` is silently dead** under `functional_call`; C-L3 saves buffers to checkpoints, so decide whether to reconstruct it (it also makes `momentum=None` unsafe).
+5. **`SvenGramReg` is unused by the runner**, so its C-L1 work is only needed for the tier-3 "hard truncation vs damping" study (`:495`) — deprioritise it.
+6. **Classic-path fp64 `eigh`** is likewise only reachable via the profiler and `variable_k` (all configs are `use_gram: true`), but it *is* needed for profile comparability (C-T2/C-T3).
+7. **Risk:** the batch-stat path's correctness depends on the vendored `experiments/nn/batchnorm.py`; the C-E2 test must assert the guard fires for stock `nn.BatchNorm2d` rather than leaving it to a runtime crash.
+8. **Risk:** `test_hooks_step_faster_than_chunked_on_train_tier` is a wall-clock assertion and will flake in CI/on shared nodes.
+
+## 5. Proposed work packages (this repo) and sv3 dependencies
+
+- **S0 — branch + test hygiene** (`stochastic_params` → feature branch; pytest config, jax `importorskip`). Blocks nothing, 30 min.
+- **S1 — C-E2 primitives**: `_no_norm_stat_updates()`, eval-mode `evaluate()`, separate train-mode-no-write forward for `variable_k`, suppression at all four repeated-forward sites, optional `update_running_stats(batch)` helper + tests. **This gates all of sv3 Phase 1 CIFAR/fine-tune work** (`bn_mode` in `run_id`, baseline BN policy) and Gate 1's "one CIFAR run per `bn_mode`".
+- **S2 — C-L1 logging**: `log_this_step`, `utr`/`update_norm`/`resid_norm`/`sv_min_kept`, sync removal, fp64 classic spectrum + tests. **Gates sv3 C-L2** (`svd_spectra_schedule`, `_split_diagnostics` rewrite, `generic_scan.py:172-226`) and the phase-5 diagnostic pass.
+- **S3 — C-R4 + C-S1 surface**: `actual_param_fraction` fix and accumulator; optional explicit generators. **Gates sv3 C-R4 record fields** and makes C-S1's sv3 test meaningful.
+- **S4 — C-T3**: `empty_cache` flag + a one-off measurement. Gates sv3 C-T1/phase-5 timing only.
+- **S5 (defer)** — `SvenGramReg` logging parity, for tier 3 after the campaign.
+
+Order: S0 → S1 → S2 → S3 → S4. S1 and S2 touch disjoint lines and can run as two parallel subagents if each owns its files (S1: `nn/*.py` + `opt/sven.py:140`; S2: `opt/sven.py:154-499`) — but both edit `opt/sven.py`, so serialise S2 after S1 unless you split by explicit line ranges. Record the new sven SHA in every sv3 result (C-R3) — the editable install means an un-pinned sven is invisible in results today.
