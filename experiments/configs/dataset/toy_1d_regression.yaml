@@ -1,5 +1,9 @@
+# Fixed training pool of 10,000 plus validation and test sets from SEPARATE generators
+# (C-D3): targets are normalised by the pool mean/std and n_train subsamples the pool, so
+# the val/test tensors and the target scale are identical at every n_train.
 _target_: experiments.datasets.Toy1DRegressionDataset
-n_train: 10000
+n_train: 10000        # subsamples the pool; >= pool_size means the whole pool
 n_val: 10000
 n_test: 10000
-seed: ${data_seed}
+pool_size: 10000
+seed: ${data_seed}    # the three generator seeds derive from it; recorded as split_seed

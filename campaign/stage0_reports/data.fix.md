@@ -1,0 +1,24 @@
+**FIXER track `data` — all 4 high/medium findings were real and are fixed; 3 lows fixed too.**
+
+## Files changed (only track-owned)
+`experiments/datasets/all_datasets.py`, `experiments/datasets/__init__.py`, `experiments/data_prep/prepare_tokens.py`, `tools/check_token_split.py`, `tests/test_datasets.py`, `experiments/configs/dataset/fineweb_edu.yaml`.
+
+## Fixes
+1. **HIGH silent clamp** — `subsample_indices(n_pool, n_train, subsample_seed)` now raises `ValueError` unless `1 <= n_train <= n_pool` (`None` or `== n_pool` → `arange`); `_subsample` delegates, so MNIST/CIFAR/Shakespeare inherit it. `n_data=60000` on MNIST (train part 50,000) now dies at startup instead of stamping a 20%-wrong P/N point.
+2. **MED `split_seed` not uniform** — added `split_seed=None` to Toy1D, RandomPolynomial, AdditiveCubic, CharText, TokenBin (MNIST/CIFAR already had `1234`). Synthetic: `self.split_seed = int(seed if split_seed is None else split_seed)`; the pool/val/test generator seeds now derive from `split_seed` while the polynomial coefficients stay on `seed`. Verified value-preserving (`derive_seeds` is per-name, so splitting the call changes nothing): all current configs produce bit-identical data. Re-validated all 7 dataset yamls against `inspect.signature` → 0 unknown keys.
+3. **MED `write_split` untestable / no dry-stream guard** — lifted to module level: `write_split(texts, path, budget, encode, eot) -> int`; `main` passes one shared generator `texts = (ex[text_key] for ex in iter(ds))`. Raises on `budget < 1` and on 0 tokens written, warns loudly when short. `_BlockDataset(data, block_size, n_blocks=None, name=...)` now raises instead of returning a negative length.
+4. **MED overwrite** — `existing_bins(out_dir)` + `--force`; refusal happens before the tiktoken/HF imports.
+5. **LOW** doc-level check `document_hashes(a, eot, min_tokens=8)` + `shared_doc_fraction`, zero-tail > `--max_zero_tail` is now a FAIL, `legacy_additive_powers` exported, `sys.stdout.reconfigure` guarded.
+
+**New finding from the stronger check:** v2 is not a split bug but is not perfectly disjoint — 3/7,729 val and 4/7,932 test documents also occur in train (0.04%), 1 val∩test; **no** document repeats inside a split (job log `slurm_logs/devtests/devtest-UCYCKV.out`), i.e. residual exact duplicates of FineWeb-edu itself (~1.5% of docs have a twin in the 10BT stream). So the tool fails only above `--max_shared_doc_frac` (default 0.2%); v1's F4 shares 100%. Verified on the real bins (`devtest-41w5Ls.out`): v2 → `DISJOINT (up to 8 residual duplicate documents…)`, exit 0; v1 → `FAIL documents: 7,729 (100.000%)` + prefix + blocks, exit 1. Recorded in `fineweb_edu.yaml`.
+
+## Tests — observed `37 passed in 4.04s` (`.venv/bin/python -m pytest tests/test_datasets.py -q`; 17.3 s cold)
+New/strengthened: `test_n_train_above_the_pool_raises` (50k/60k message, `n_train=0`, toy+poly `pool_size`), `test_image_dataset_subsample_path_raises_above_the_pool` (`_subsample` via CharText, n_train == pool ok), `test_subsample_is_nested_and_deterministic` (clamp assertion replaced by exact-pool), `test_every_dataset_class_accepts_split_seed[7 classes]`, `test_split_seed_defaults_to_seed_and_reseeds_the_synthetic_splits` (identical data at `split_seed=seed`; different split moves x, not `coeffs`), `test_legacy_additive_powers_is_exported_from_the_package`, `test_token_bin_dataset_rejects_a_file_too_short_for_one_block`, `test_document_hashes_find_a_single_shared_document`, `test_check_tool_exit_codes` (0 / doc-overlap 1 / zero-tail 1), `test_check_tool_tolerates_residual_corpus_duplicates` (0.17% → 0, 100% → 1), `test_write_split_draws_the_three_splits_from_disjoint_documents` (docs pairwise disjoint, file == n*2 bytes, not a prefix), `test_write_split_short_stream_and_empty_stream`, `test_prepare_tokens_refuses_to_overwrite_existing_bins`. All 23 pre-existing assertions kept.
+
+## Deviations
+Unchanged from the implementer's report (AdditiveCubic keeps the legacy single-RNG draw order, so its `split_seed` is recorded only; CharText/TokenBin record `None` unless passed). No new ones.
+
+## Integrator
+- **Launchers must cap MNIST at `N=50000`** (`submit_fresh_suite.sh:108`, `submit_rebuttal_all.sh:24`, `submit_reruns_2026-09-17_part2.sh:30`) — otherwise those jobs now raise. Synthetic sweeps (≤1350) are fine; `bench/bench_sharding.py:38` raises if `--cifar_steps > 351`.
+- Repo-level (reviewer low, not my file): no `pythonpath` config — `python -m pytest` from the root works, bare `.venv/bin/pytest tests/` fails collection. Add `[tool.pytest.ini_options] pythonpath = ["."]` in `pyproject.toml` (one track should own it).
+- `generic_scan.py` call sites and `_scan_facts` additions (`n_test`, `split_seed`) as previously reported; new API additions this round: `write_split`, `existing_bins` (prepare_tokens), `document_hashes`, `shared_doc_fraction` (check tool), `split_seed=` on all classes, `_BlockDataset(..., name=)`.
