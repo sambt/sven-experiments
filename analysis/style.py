@@ -1,10 +1,41 @@
 import json
+import os
 import pickle
+import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+# ---------------------------------------------------------------------------
+# ONE results root for the whole analysis layer (CHANGES_NEEDED 4.1)
+# ---------------------------------------------------------------------------
+# `experiment_results` is renamed to `experiment_results_legacy_2026-09-18/` for
+# the campaign and a fresh, empty root takes its place, so every module has to
+# agree on which root it reads -- and the legacy root has to stay switchable
+# from one place (it used to be hard-coded four times: here twice,
+# `scan_analysis.RESULTS_ROOT`, `sv_diagnostics.RESULTS_ROOT`).  `scan_analysis`
+# and `sv_diagnostics` import :data:`RESULTS_ROOT` from here; every loader takes
+# ``results_root=None`` and resolves it at CALL time, so setting the env var in
+# a notebook cell (or a test) takes effect without re-importing anything.
+DEFAULT_RESULTS_ROOT = '../experiment_results'
+RESULTS_ROOT_ENV = 'SV3_RESULTS_ROOT'
+
+
+def resolve_results_root(root=None):
+    """The results root to read: an explicit ``root``, else ``$SV3_RESULTS_ROOT``,
+    else :data:`DEFAULT_RESULTS_ROOT` (``'../experiment_results'``, relative to
+    ``analysis/`` as every notebook runs)."""
+    if root is not None:
+        return root
+    return os.environ.get(RESULTS_ROOT_ENV) or DEFAULT_RESULTS_ROOT
+
+
+#: The root as resolved at import time -- for ``from style import RESULTS_ROOT``
+#: and for printing.  Loaders re-resolve per call; prefer
+#: :func:`resolve_results_root` over this constant in new code.
+RESULTS_ROOT = resolve_results_root()
 
 # The bulk of every SVD result file is diagnostics the analysis rarely needs:
 # svd_info.svs (~2.4 MB/file, the per-step singular values) plus the per-BATCH
@@ -43,21 +74,32 @@ _CACHE_VERSION = 3  # bump when the slim schema / signature scheme changes
 _DIAG_LOSS_KEYS = ('train_batch', 'val_batch', 'batch_times_train',
                    'batch_times_val', 'train_batch_per_model')
 
+# F20: `sv_min` and `sv_min_kept` are DIFFERENT quantities and must never share a
+# column name.  Old records' `sv_min` is the smallest SV the optimizer *kept*
+# (only the survivors of the rtol cut were recorded); new records log the full
+# spectrum, so their `sv_min` is sigma_B -- numerical noise -- and the smallest
+# inverted value is recorded separately as `sv_min_kept` (C-L1).  Both are passed
+# through unchanged; a plot that wants "the smallest inverted SV" must ask for
+# `sv_min_kept` and treat its absence as "legacy record, use `sv_min`" explicitly.
+SV_MIN_KEYS = ('sv_min', 'sv_min_kept')
+_DIAG_SV_SCALARS = ('sv_max', *SV_MIN_KEYS)
 
-def load_diagnostics(row, name=None, results_root='../experiment_results'):
+
+def load_diagnostics(row, name=None, results_root=None):
     """Heavy per-batch diagnostics for one run, as a dict of numpy arrays.
 
     ``row`` is a record/Series from :func:`load_results`. New-format runs are
     read from ``{results_root}/{name}/diag/{run_id}.npz`` (``name`` defaults to
     ``row['_scan']``, set by load_results); legacy inline runs are re-read from
     their JSONL. Keys (when present): train_batch, val_batch, batch_times_train,
-    batch_times_val, num_nonzero_svs, sv_max, sv_min, svs (2-D, NaN-padded),
-    svs_step, k_used, variable_k_substep_losses.
+    batch_times_val, num_nonzero_svs, sv_max, sv_min, sv_min_kept (new records
+    only -- see :data:`SV_MIN_KEYS`), svs (2-D, NaN-padded), svs_step, utr (2-D,
+    NaN-padded, new records only), k_used, variable_k_substep_losses.
     """
     name = name or row.get('_scan')
     if name is None:
         raise ValueError("pass name= (scan directory name) or use a row from load_results")
-    scan_dir = Path(results_root) / name
+    scan_dir = Path(resolve_results_root(results_root)) / name
     diag_file = row.get('diag_file')
     if diag_file:
         with np.load(scan_dir / diag_file) as z:
@@ -114,7 +156,9 @@ def _attach_diagnostics(rec, scan_dir):
               'k_used': d['k_used'].tolist() if 'k_used' in d else [],
               'variable_k_substep_losses': (d['variable_k_substep_losses'].tolist()
                                             if 'variable_k_substep_losses' in d else [])}
-        for k in ('sv_max', 'sv_min'):
+        if 'utr' in d:       # C-L1: U^T r, one row per saved step (NaN-padded)
+            si['utr'] = spectra_list({'svs': d['utr']})
+        for k in _DIAG_SV_SCALARS:   # sv_min / sv_min_kept stay separate (F20)
             if k in d:
                 si[k] = d[k].tolist()
         rec['svd_info'] = si
@@ -139,11 +183,42 @@ def _dir_signature(files):
     return (len(files), h.hexdigest())
 
 
-def load_results(name, results_root='../experiment_results', selection_fn=None,
-                 slim=True, use_cache=True):
+_cache_warned = set()
+
+
+def _write_cache(cache, payload):
+    """Write the slim cache, tolerating a READ-ONLY results root.
+
+    The legacy root becomes read-only for the campaign (CHANGES_NEEDED 4.1), and
+    an unguarded ``mkdir`` / write there raises in the middle of a load that had
+    already succeeded.  A failure is reported once per path and then ignored --
+    the caller still gets its DataFrame, just no cache (pass ``cache_dir=`` to
+    put the pickles on a writable disk instead).
+    """
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        # Written atomically so a concurrent reader never sees a partial pickle.
+        tmp = cache.with_suffix('.pkl.tmp')
+        tmp.write_bytes(pickle.dumps(payload))
+        tmp.replace(cache)
+    except OSError as exc:
+        if str(cache) not in _cache_warned:
+            _cache_warned.add(str(cache))
+            print(f'[style] could not write the slim cache {cache} ({exc.strerror}); '
+                  f'loading uncached -- pass cache_dir= for a writable location')
+
+
+def load_results(name, results_root=None, selection_fn=None,
+                 slim=True, use_cache=True, cache_dir=None):
     """Load experiment results into a DataFrame (new per-run directory format,
     with a fallback to the legacy single ``{name}.jsonl`` file).
 
+    results_root: the scan directory's parent; ``None`` resolves it through
+        :func:`resolve_results_root` (``$SV3_RESULTS_ROOT``, else
+        ``'../experiment_results'``).
+    cache_dir: where the slim cache pickles go.  Default ``{results_root}/_cache``;
+        point it elsewhere when the results root is read-only (the write is
+        guarded either way, see :func:`_write_cache`).
     slim (default True): drop the heavy diagnostics (``svd_info`` and the per-batch
         arrays) — ~98% of the bytes, unused by most notebooks. Pass ``slim=False``
         for the sv-spectra / batch-wise analyses that need them: for new-format
@@ -156,7 +231,7 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
         so it invalidates on new files, removed files, AND in-place re-runs of an
         existing run_id. First build reads every file once; reloads are near-instant.
     """
-    root = Path(results_root)
+    root = Path(resolve_results_root(results_root))
     scan_dir = root / name
     cacheable = slim and use_cache and selection_fn is None and scan_dir.is_dir()
 
@@ -166,7 +241,7 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
     files = sorted(scan_dir.glob('*.jsonl')) if scan_dir.is_dir() else []
 
     if cacheable:
-        cache = root / '_cache' / f'{name}.slim.pkl'
+        cache = Path(cache_dir or (root / '_cache')) / f'{name}.slim.pkl'
         sig = _dir_signature(files)
         if cache.is_file():
             try:
@@ -197,12 +272,8 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
                   f"{', slim' if slim else ''})")
             df = pd.DataFrame(records)
             if cacheable:
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                # Re-signature from the same `files` list (unchanged since the glob),
-                # written atomically so a concurrent reader never sees a partial pickle.
-                tmp = cache.with_suffix('.pkl.tmp')
-                tmp.write_bytes(pickle.dumps({'sig': sig, 'df': df}))
-                tmp.replace(cache)
+                # Re-signature from the same `files` list (unchanged since the glob).
+                _write_cache(cache, {'sig': sig, 'df': df})
             return df
 
     # Old format: single JSONL file
@@ -221,20 +292,262 @@ def load_results(name, results_root='../experiment_results', selection_fn=None,
         f"No results found for '{name}': tried {scan_dir}/ and {jsonl_path}"
     )
 
-def load_results_jsonl(name, results_root='../experiment_results', slim=True):
+def load_results_jsonl(name, results_root=None, slim=True):
     """Back-compat shim. Results are now stored per-run in a ``{name}/`` directory
     (the fresh Gram-backend runs); the old single ``{name}.jsonl`` file is gone.
     Delegates to :func:`load_results` (which handles both layouts + the slim cache).
     """
     return load_results(name, results_root=results_root, slim=slim)
 
-# Scalar quantity columns added by add_derived_columns — excluded from auto-detected config cols.
-_DERIVED_QUANTITY_COLS = {
-    'final_val_loss', 'final_train_loss',
-    'final_val_acc', 'final_train_acc',
-    'total_time', 'avg_batch_time_train',
-    'effective_bs',
-}
+
+# ---------------------------------------------------------------------------
+# The manifest: what the scan INTENDS to contain (C-R2 / C-A2)
+# ---------------------------------------------------------------------------
+# Each job writes the run_ids it is responsible for to `{scan}/manifest/{job}.json`
+# (`experiments/experiment_code/claims.py`); the union over jobs is the intended
+# grid.  Without it a configuration whose runs never produced a file is simply
+# absent from every table -- `n_missing` could only ever count the seeds MISSING
+# FROM A CONFIG THAT HAS AT LEAST ONE FILE.  Reading it here (rather than
+# importing `claims.read_manifest_union`) keeps the analysis free of
+# `experiments.experiment_code`, whose package __init__ imports torch.
+MANIFEST_DIRNAME = 'manifest'
+
+
+def manifest_run_ids(name, results_root=None):
+    """The union of ``{name}/manifest/*.json`` ``run_ids`` -- the scan's intended
+    grid -- as a set.  Empty when the scan has no manifest (every legacy scan)."""
+    out = set()
+    d = Path(resolve_results_root(results_root)) / name / MANIFEST_DIRNAME
+    if not d.is_dir():
+        return out
+    for f in sorted(d.glob('*.json')):
+        if f.name.startswith('.tmp-'):
+            continue
+        try:
+            payload = json.loads(f.read_text())
+        except (OSError, ValueError):
+            print(f'[style] unreadable manifest {f}')
+            continue
+        out.update(payload.get('run_ids') or ())
+    return out
+
+
+_SEED_SUFFIX_RE = re.compile(r'_mseed-?\d+(_lseed-?\d+)?')
+
+
+def config_key(run_id):
+    """A run_id with its seed suffix (``_mseed1000_lseed1000``) removed.
+
+    Two runs of the SAME configuration differ only in that suffix, so this is a
+    configuration's identity as a *string* -- available for a run that has no
+    record at all, which the hyperparameter columns are not.  Verified on
+    ``toy_1d_scan``: 734 files -> 148 keys, the same 148 configurations
+    :func:`analysis_helpers.config_table` finds by grouping on columns.
+    """
+    return _SEED_SUFFIX_RE.sub('', str(run_id))
+
+
+def expected_per_config(run_ids):
+    """``{config_key: number of runs the manifest expects}`` for that config."""
+    out = {}
+    for rid in run_ids:
+        key = config_key(rid)
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def expected_runs(config_keys, per_config, seed_count):
+    """How many runs ONE ROW of a config table was supposed to have (C-A2).
+
+    ``config_keys`` must be EVERY :func:`config_key` in that row's group, not just
+    the first one: a selector may group more coarsely than a run configuration
+    (`scan_analysis.SVEN_CONFIG` is only ``k``/``lr``/``rtol``, so one row can span
+    several ``n_train`` / ``kappa`` / ``microbatch_size`` values, as
+    ``exp_finetune_cifar_smallN`` and the kappa / microbatch scans do).  Reading one
+    key then under-counts the row and hides the missing runs of every other
+    configuration in it -- exactly the invisibility C-A2 removes.
+
+    Without a manifest (``per_config`` empty) there is nothing to read, so the
+    binding rule stands (section 1 of CHANGES_NEEDED.md): a configuration is
+    eligible when more than half of the scan's SEEDS finished, i.e. ``seed_count``
+    is the expectation.  ``seed_count`` is also the per-key fallback for a key a
+    partial manifest does not list.
+    """
+    if not per_config:
+        return int(seed_count)
+    return int(sum(per_config.get(key, seed_count) for key in config_keys))
+
+
+def missing_run_ids(df, expected):
+    """The run_ids in ``expected`` (a manifest union) that have no record in ``df``."""
+    if not expected:
+        return []
+    have = set(df['run_id']) if 'run_id' in df.columns else set()
+    return sorted(set(expected) - have)
+
+
+# ---------------------------------------------------------------------------
+# Run status (C-R1, schema 2) -- inert on legacy records, which have no `status`
+# ---------------------------------------------------------------------------
+STATUS_OK = 'ok'
+STATUS_DIVERGED = 'diverged'
+#: An `oom` / `error` run is an *incomplete attempt*: the runner retries it
+#: (C-R1).  It is excluded from every mean and counted separately -- not folded
+#: into `n_diverged`, which is a statement about the optimizer, not the cluster.
+FAILED_STATUSES = ('oom', 'error')
+
+
+def status_of(row):
+    """A record's ``status``, defaulting to ``'ok'`` for legacy records (no such
+    field) and for a NaN left by pandas when only some records carry one."""
+    s = row.get('status') if hasattr(row, 'get') else None
+    if s is None or (isinstance(s, float) and np.isnan(s)):
+        return STATUS_OK
+    return str(s)
+
+
+def is_failed(status):
+    """Whether ``status`` marks an incomplete attempt (:data:`FAILED_STATUSES`)."""
+    return str(status) in FAILED_STATUSES
+
+
+# ---------------------------------------------------------------------------
+# Configuration identity: an ALLOW-LIST of hyperparameters (C-A2)
+# ---------------------------------------------------------------------------
+# This USED to be auto-detected ("every scalar column that is not on a small
+# denylist"), here and in `analysis_helpers.config_columns`.  Schema 2 adds
+# `status`, `run_hash`, `git_sha`, `host`, timestamps, `n_test`,
+# `steps_per_epoch`, ... to every record, and auto-detection would take each of
+# them as part of a configuration's identity: every run would become its own
+# configuration, every seed mean would be a single run, and every table would
+# silently collapse (scout report, section 4a).  An allow-list cannot fail that
+# way: a column nobody listed is ignored, and if it varies it is reported by
+# :func:`_warn_unlisted_columns` rather than fragmenting the grouping.
+#
+# To add a hyperparameter: put it here.  Everything a RUN records about ITSELF
+# (where it ran, when, which code, how big the data was) belongs in
+# :data:`PROVENANCE_COLUMNS`.
+HPARAM_COLUMNS = (
+    # what is being optimised, and how
+    'optimizer', 'loss', 'batch_size', 'lr', 'weight_decay',
+    # Sven
+    'k', 'k_fraction', 'rtol', 'kappa', 'svd_mode', 'decomposition', 'use_gram',
+    'variable_k', 'signed_residual', 'microbatch_size', 'param_fraction',
+    'mask_mode', 'gram_freeze_norm_stats',
+    # baselines
+    'lbfgs_max_iter', 'lbfgs_history_size', 'lbfgs_line_search_fn',
+    'polyak_f_star', 'polyak_max_lr', 'polyak_eps',
+    'aggregator', 'inner_optimizer', 'tau', 'rmsProp', 'alpha_rmsProp',
+    # model / data / schedule axes that studies sweep
+    'mlp_width', 'n_train', 'n_data', 'num_epochs', 'split_seed', 'data_seed',
+    # schema 2
+    'bn_mode',
+)
+
+#: Backend / memory-layout choices that compute the SAME update (chunked vs full
+#: Gram capture and the chunk size).  Not part of a configuration's identity: the
+#: CIFAR label-reg scan captured some seeds of a config 'chunked' and others
+#: 'full', and keying on them split every such config into 3+2 / 4+1 seed
+#: fragments that were then reported as "missing seeds" and mostly ineligible.
+BACKEND_COLUMNS = ('gram_capture', 'gram_chunk_numel')
+
+#: Bookkeeping, provenance (C-R3) and recorded facts (C-R4).  Never a
+#: configuration; never warned about.  `n_train` is deliberately NOT here -- the
+#: overparam studies sweep it -- but `n_val` / `n_test` / `n_params` /
+#: `steps_per_epoch` are consequences of the config, not knobs.
+PROVENANCE_COLUMNS = (
+    'run_id', 'model_seed', 'loader_seed', '_scan', 'diag_file', 'ckpt_file',
+    'status', 'error', 'diverged_at_step', 'run_hash', 'schema_version',
+    'git_sha', 'git_dirty', 'git_source', 'sven_git_sha', 'sven_git_dirty',
+    'sven_git_source', 'host', 'slurm_job_id', 'n_shards', 'shard_id',
+    'python_version', 'torch_version', 'cuda_version', 'gpu_name',
+    'collected_at', 'start_time', 'start_unix', 'end_time', 'end_unix',
+    'wall_time_s', 'n_params', 'n_val', 'n_test', 'steps_per_epoch',
+    'actual_param_fraction', 'eval_batch_size', 'checkpoints', 'svd_info',
+)
+
+#: Scalar quantity columns added by the derived-column helpers -- outcomes, never
+#: configuration.  `final_test_*` are outcomes shown BESIDE a selected config
+#: (C-E1); no selector may rank on them (:func:`assert_selection_metric`).
+OUTCOME_COLUMNS = (
+    'final_val_loss', 'final_train_loss', 'final_val_acc', 'final_train_acc',
+    'final_test_loss', 'final_test_acc', 'val_ppl',
+    'total_time', 'avg_epoch_time', 'avg_batch_time_train', 'avg_batch_time_val',
+    'peak_gpu_mem_mb', 'effective_bs', 'diverged', 'failed', 'method',
+)
+# Back-compat alias (was the auto-detection denylist).
+_DERIVED_QUANTITY_COLS = set(OUTCOME_COLUMNS)
+
+_HPARAM_SET = set(HPARAM_COLUMNS)
+_NEVER_CONFIG = set(PROVENANCE_COLUMNS) | set(BACKEND_COLUMNS) | set(OUTCOME_COLUMNS)
+_SCALAR = (str, bool, int, float, np.integer, np.floating)
+_unlisted_warned = set()
+
+
+def _warn_unlisted_columns(df, skip):
+    """One-time warning for a VARYING scalar column that is neither an allow-listed
+    hyperparameter nor known bookkeeping -- i.e. a new knob whose runs would be
+    averaged together.  The allow-list's one failure mode, made visible."""
+    for col in df.columns:
+        if col in _HPARAM_SET or col in _NEVER_CONFIG or col in skip:
+            continue
+        if col in _unlisted_warned or col.endswith(('_std', '_min')):
+            continue
+        vals = df[col].dropna()
+        if vals.empty or not isinstance(vals.iloc[0], _SCALAR):
+            continue
+        if vals.nunique() > 1:
+            _unlisted_warned.add(col)
+            print(f"[style] column {col!r} varies but is not in style.HPARAM_COLUMNS: "
+                  f"its values are being AVERAGED OVER.  Add it there if it is a "
+                  f"hyperparameter, or to PROVENANCE_COLUMNS if it is not.")
+
+
+def hparam_columns(df, seed_col='model_seed', extra_skip=(), warn=True):
+    """The columns that jointly identify a configuration: the allow-listed
+    hyperparameters (:data:`HPARAM_COLUMNS`) this DataFrame actually carries with
+    a non-null value, in column order.  See the note above the allow-list."""
+    skip = {seed_col, *extra_skip}
+    if warn:
+        _warn_unlisted_columns(df, skip)
+    out = []
+    for col in df.columns:
+        if col not in _HPARAM_SET or col in skip:
+            continue
+        vals = df[col].dropna()
+        if vals.empty or not isinstance(vals.iloc[0], _SCALAR):
+            continue
+        out.append(col)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The selection metric may never come from the test split (C-E1 / C-A2)
+# ---------------------------------------------------------------------------
+# Selection uses VALIDATION only; test numbers are reported for the configuration
+# validation already chose.  The chokepoints are `Scan.configs(metric)` and
+# `analysis_helpers.config_table(metric)` -- both also reached through the
+# `quantity=` argument of `plot_knob_summary` / `plot_time_vs_k`, which is why
+# the check lives inside them and not in the notebooks.
+_TEST_METRIC_RE = re.compile(r'(^|_)test(_|$)')
+
+
+def is_test_metric(metric):
+    """Whether ``metric`` names a quantity derived from the test split."""
+    return bool(_TEST_METRIC_RE.search(str(metric)))
+
+
+def assert_selection_metric(metric, where=''):
+    """Raise unless ``metric`` may be used to RANK configurations.
+
+    Returns ``metric`` so it can wrap an assignment."""
+    if is_test_metric(metric):
+        raise ValueError(
+            f"{where or 'selection'}: {metric!r} is derived from the test split. "
+            f"Selection uses the seed-mean final VALIDATION loss "
+            f"(CHANGES_NEEDED section 1); test outcomes are reported beside the "
+            f"configuration validation chose, never used to choose it.")
+    return metric
 
 
 def _stack_arrays(arrays):
@@ -331,8 +644,9 @@ def average_over_seeds(df, seed_col='model_seed', config_cols=None):
         Column that identifies the random seed to average over.
     config_cols : list[str] or None
         Columns that jointly identify a unique configuration (groupby keys).
-        If *None*, auto-detected as all scalar columns except *seed_col* and
-        known derived quantity columns.
+        If *None*, :func:`hparam_columns` -- the allow-list, NOT auto-detection:
+        the provenance columns of schema 2 would otherwise make every run its
+        own "configuration" (C-A2).
 
     Returns
     -------
@@ -344,16 +658,7 @@ def average_over_seeds(df, seed_col='model_seed', config_cols=None):
     df = df.copy()
 
     if config_cols is None:
-        config_cols = []
-        for col in df.columns:
-            if col == seed_col or col in _DERIVED_QUANTITY_COLS:
-                continue
-            first = df[col].dropna()
-            if first.empty:
-                continue
-            first = first.iloc[0]
-            if isinstance(first, (str, bool, int, float, np.integer, np.floating)):
-                config_cols.append(col)
+        config_cols = hparam_columns(df, seed_col)
 
     quantity_cols = [c for c in df.columns if c != seed_col and c not in config_cols]
 
@@ -507,13 +812,20 @@ def final_value(curve):
     return v if np.isfinite(v) else np.nan
 
 
-def is_diverged(train_curve, val_curve):
-    """The one definition of a diverged run: its train or val curve ends non-finite, OR
+def is_diverged(train_curve, val_curve, status=None):
+    """The one definition of a diverged run: it is RECORDED as diverged
+    (``status == 'diverged'``, C-R1), or its train or val curve ends non-finite, OR
     its validation loss ends more than ``DIVERGED_FACTOR`` times above the pre-training
     value at ``val[0]`` (a finite blow-up -- the paramfrac scans end some runs at
     1e7..1e15 without ever producing a NaN).  Only the val curve is used for the ratio:
     it starts with the untrained model, whereas ``train[0]`` is already the post-epoch-1
-    loss and makes a poor reference."""
+    loss and makes a poor reference.
+
+    ``status`` is the schema-2 field (None / absent on every legacy record, where the
+    curve rules alone decide, exactly as before).  A recorded ``diverged`` run stops
+    early with a *finite* partial curve, so the curves alone would call it healthy."""
+    if status is not None and str(status) == STATUS_DIVERGED:
+        return True
     fv, ft = final_value(val_curve), final_value(train_curve)
     if not (np.isfinite(fv) and np.isfinite(ft)):
         return True
@@ -560,7 +872,16 @@ DATASET_TITLES = {
 }
 # Axis labels for the final-loss metrics ("seed mean" is appended by the plot helpers).
 METRIC_LABELS = {'final_val_loss': 'Final validation loss', 'final_train_loss': 'Final train loss',
-                 'final_val_acc': 'Final validation accuracy'}
+                 'final_val_acc': 'Final validation accuracy',
+                 # reported for the selected config only (C-E1); never a selector
+                 'final_test_loss': 'Final test loss',
+                 'final_test_acc': 'Final test accuracy'}
+
+#: Relative size of the float32 round-off floor of a spectrum: singular values
+#: below ~1e-7 * sigma_max are numerical noise, not structure (F19).  Drawn as a
+#: horizontal line on every full-width spectrum plot so the tail is not read as
+#: a measurement.
+FLOAT32_NOISE_FLOOR = 1e-7
 
 
 def metric_label(metric, seed_mean=True):

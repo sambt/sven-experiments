@@ -8,7 +8,10 @@ A run is written as two files (see ``experiments/experiment_code/generic_scan``)
 * ``{scan}/diag/{run_id}.npz`` -- heavy: the per-BATCH arrays
   (``train_batch``/``val_batch``/batch times), the per-STEP ``num_nonzero_svs``
   /``sv_max``/``sv_min``, and the spectra ``svs`` (NaN-padded, one row per saved
-  step) with their step indices ``svs_step``.
+  step) with their step indices ``svs_step``.  New records add ``utr`` (``U^T r``,
+  same shape as ``svs``) and ``sv_min_kept`` -- the smallest singular value
+  actually inverted, which is what old records' ``sv_min`` meant and new ones'
+  does NOT (F20; :data:`style.SV_MIN_KEYS`).
 
 The rule this module follows -- and the one the notebooks should follow -- is:
 **load the scan light, pull diagnostics only for the handful of runs you plot.**
@@ -39,14 +42,19 @@ import warnings
 
 import numpy as np
 
-from style import load_diagnostics, lr_labels
+import style
+from style import FLOAT32_NOISE_FLOOR, load_diagnostics, lr_labels
 
-RESULTS_ROOT = '../experiment_results'
+#: The results root, resolved from ``$SV3_RESULTS_ROOT`` at import (:mod:`style`
+#: owns it).  Every function below takes ``results_root=None`` and resolves it at
+#: call time, so setting the env var later still works.
+RESULTS_ROOT = style.RESULTS_ROOT
 
 __all__ = ['RESULTS_ROOT', 'sven_runs', 'select', 'n_epochs', 'n_steps',
            'rank_per_batch', 'rank_per_epoch', 'batch_curve', 'epoch_spectra',
-           'seed_mean', 'smooth', 'sci', 'plot_rank_vs_batch',
-           'plot_used_vs_batch', 'plot_epoch_spectra', 'epoch_colorbar']
+           'epoch_utr', 'seed_mean', 'smooth', 'sci', 'plot_rank_vs_batch',
+           'plot_used_vs_batch', 'plot_epoch_spectra', 'plot_epoch_utr',
+           'epoch_colorbar']
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +81,14 @@ def select(df, **constraints):
 
 
 def n_epochs(row):
-    """Number of training epochs recorded for a run."""
-    return len(row['losses']['train'])
+    """Number of training epochs recorded for a run, 0 if none.
+
+    Robust to a PARTIAL record: a run that stopped early (C-R1) has a short
+    ``train`` curve, and one that failed before its first epoch end has none at
+    all.  ``len(row['losses']['train'])`` used to raise / mis-size the epoch
+    binning in :func:`epoch_spectra` there."""
+    curve = (row.get('losses') or {}).get('train') if hasattr(row, 'get') else None
+    return 0 if curve is None else len(curve)
 
 
 def n_steps(row):
@@ -96,7 +110,7 @@ def n_steps(row):
 # ---------------------------------------------------------------------------
 # Per-run diagnostics
 # ---------------------------------------------------------------------------
-def rank_per_batch(row, results_root=RESULTS_ROOT):
+def rank_per_batch(row, results_root=None):
     """Per-step ``num_nonzero_svs`` for one run, as a float array, or None.
 
     Reads the run's ``diag/*.npz``.  One value per train batch; this is the
@@ -122,7 +136,7 @@ def rank_per_epoch(row):
     return None if not curve else np.asarray(curve, dtype=float)
 
 
-def batch_curve(row, which='train_batch', results_root=RESULTS_ROOT):
+def batch_curve(row, which='train_batch', results_root=None):
     """A per-batch series (``train_batch``, ``val_batch``, ``batch_times_*``).
 
     These moved out of ``losses`` into the npz; this is the replacement for the
@@ -133,18 +147,39 @@ def batch_curve(row, which='train_batch', results_root=RESULTS_ROOT):
     return None if arr is None else np.asarray(arr, dtype=float)
 
 
-def epoch_spectra(row, results_root=RESULTS_ROOT, normalize=True):
+def _epoch_bin(values, step, row):
+    """Per-epoch mean of a ``(n_saved_step, width)`` array, shape ``(n_epoch, width)``.
+
+    Rows are averaged over the saved steps that fall inside each epoch, ignoring
+    the NaN padding -- so index ``i`` is averaged only over the steps whose rank
+    actually reached ``i`` (the old code's ``denoms`` bookkeeping, vectorised).
+    Steps are binned by ``step`` against the run's total step count, because
+    spectra are saved only on the logged steps.  Epochs with no saved row stay NaN.
+    Returns None when the run has no epoch to bin into (a record that failed
+    before its first epoch end -- C-R1).
+    """
+    n_ep = n_epochs(row)
+    if n_ep < 1:
+        return None
+    total = n_steps(row) or (int(step[-1]) + 1)
+    per_epoch = max(total / n_ep, 1e-9)
+    epoch_of = np.minimum((np.asarray(step) // per_epoch).astype(int), n_ep - 1)
+    out = np.full((n_ep, values.shape[1]), np.nan)
+    with warnings.catch_warnings():  # all-NaN columns are expected (ragged ranks)
+        warnings.simplefilter('ignore', RuntimeWarning)
+        for ep in range(n_ep):
+            rows = values[epoch_of == ep]
+            if len(rows):
+                out[ep] = np.nanmean(rows, axis=0)
+    return out
+
+
+def epoch_spectra(row, results_root=None, normalize=True):
     """Per-epoch mean spectrum *shape*, shape ``(n_epoch, width)``.
 
     Each saved spectrum is a descending ``sigma``; its shape is
-    ``sigma_i / sigma_0``.  Shapes are averaged over the saved steps that fall
-    inside each epoch, ignoring the NaN padding -- so index ``i`` is averaged
-    only over the steps whose rank actually reached ``i`` (the old code's
-    ``denoms`` bookkeeping, vectorised).
-
-    Steps are binned by ``svs_step`` against the run's total step count, because
-    spectra are saved only every ``spectra_every``-th step.  Rows for epochs with
-    no saved spectrum stay NaN.
+    ``sigma_i / sigma_0``.  See :func:`_epoch_bin` for the averaging and the
+    step-to-epoch binning.
 
     Pass ``normalize=False`` for the raw sigma scale instead of the shape.
     """
@@ -153,20 +188,33 @@ def epoch_spectra(row, results_root=RESULTS_ROOT, normalize=True):
     if svs is None or step is None or svs.size == 0:
         return None
     svs = np.asarray(svs, dtype=float)
-    n_ep = n_epochs(row)
-    total = n_steps(row) or (int(step[-1]) + 1)
-    steps_per_epoch = total / n_ep
-    epoch_of = np.minimum((np.asarray(step) // steps_per_epoch).astype(int), n_ep - 1)
+    return _epoch_bin(svs / svs[:, :1] if normalize else svs, step, row)
 
-    shape = svs / svs[:, :1] if normalize else svs
-    out = np.full((n_ep, svs.shape[1]), np.nan)
-    with warnings.catch_warnings():  # all-NaN columns are expected (ragged ranks)
-        warnings.simplefilter('ignore', RuntimeWarning)
-        for ep in range(n_ep):
-            rows = shape[epoch_of == ep]
-            if len(rows):
-                out[ep] = np.nanmean(rows, axis=0)
-    return out
+
+def epoch_utr(row, results_root=None, normalize=True):
+    """Per-epoch mean ``|u_i . r|``, shape ``(n_epoch, width)``, or None.
+
+    ``utr = U^T r`` -- the residual's overlap with each left singular direction --
+    is logged for the full spectrum on every logged step (C-L1).  It is what says
+    whether the directions the ``k`` / rtol cut throws away carried any of the
+    residual: the spectrum alone cannot.
+
+    ``normalize`` (default) divides each step's row by its own L2 norm
+    ``||U^T r||``, so the y-axis is the fraction of the (projected) residual in
+    direction ``i`` and steps with very different residual scales are comparable;
+    ``normalize=False`` gives the raw magnitudes.
+    """
+    diag = load_diagnostics(row, results_root=results_root)
+    utr, step = diag.get('utr'), diag.get('svs_step')
+    if utr is None or step is None or np.size(utr) == 0:
+        return None
+    utr = np.abs(np.asarray(utr, dtype=float))
+    if normalize:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            norm = np.sqrt(np.nansum(utr ** 2, axis=1, keepdims=True))
+        utr = utr / np.where(norm > 0, norm, np.nan)
+    return _epoch_bin(utr, step, row)
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +280,7 @@ def sci(value):
 
 def plot_rank_vs_batch(df, ax, k, lr, rtols, colors=None, styles=None,
                        smooth_frac=0.02, normalize_by=None, raw_alpha=0.15,
-                       x_progress=False, results_root=RESULTS_ROOT, **plot_kw):
+                       x_progress=False, results_root=None, **plot_kw):
     """Rank (nonzero SVs) vs train batch, one line per ``rtol``, averaged over seeds.
 
     With ``k`` set to the batch size the count is not clipped by the cap, so it
@@ -269,7 +317,7 @@ def plot_rank_vs_batch(df, ax, k, lr, rtols, colors=None, styles=None,
 
 def plot_used_vs_batch(df, ax, lr, rtol, ks, colors=None, smooth_frac=0.02,
                        show_cap=True, raw_alpha=0.15, x_progress=False,
-                       normalize_by=None, results_root=RESULTS_ROOT, **plot_kw):
+                       normalize_by=None, results_root=None, **plot_kw):
     """Used SVs vs train batch, one line per ``k``, averaged over seeds.
 
     ``show_cap`` draws each ``k`` as a dotted horizontal line, which is where the
@@ -306,59 +354,154 @@ def plot_used_vs_batch(df, ax, lr, rtol, ks, colors=None, smooth_frac=0.02,
     return handles
 
 
+def _epoch_lines(ax, values, x, cmap, lo, hi, lw, clip=None, **plot_kw):
+    """One line per epoch, coloured by epoch; returns the Normalize for the bar."""
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+
+    cmap = plt.get_cmap(cmap)
+    n_ep = values.shape[0]
+    norm = mcolors.Normalize(vmin=1, vmax=n_ep)
+    for ep in range(n_ep):
+        row = values[ep]
+        valid = ~np.isnan(row)
+        if not valid.any():
+            continue
+        y = row[valid] if clip is None else np.clip(row[valid], *clip)
+        ax.plot(x[valid], y, color=cmap(lo + (hi - lo) * norm(ep + 1)), lw=lw, **plot_kw)
+    return norm
+
+
+def _k_cut(ax, k, width, x_fraction, label=True):
+    """The vertical line at the ``k`` cut: index ``k - 1`` is the last direction the
+    optimizer can invert.  Nothing is drawn when the cut is outside the spectrum
+    (``k >= width``, i.e. ``k = B`` with a full-width spectrum)."""
+    if not k or k >= width:
+        return None
+    x = (k - 1) / max(width - 1, 1) if x_fraction else k - 1
+    return ax.axvline(x, color='0.2', lw=1.2, ls='-', zorder=0,
+                      label=f'$k = {int(k)}$' if label else None)
+
+
+def spectrum_floor(spectra, k, floor=None, legacy=1e-6):
+    """The lower clip / y limit for a spectrum plot -- what is "too small to draw".
+
+    An explicit ``floor`` always wins.  Otherwise it follows the record generation,
+    because one fixed number cannot serve both: a full-width spectrum (C-L1) falls
+    all the way to round-off, and clipping it at the old 1e-4 / 1e-6 would hide the
+    tail and the float32 floor line -- the whole point of logging it (C-A3).  So a
+    full record gets a decade below its own smallest value, never above the float32
+    noise floor; a legacy record, truncated just above rtol, keeps ``legacy``.
+    """
+    if floor is not None:
+        return floor
+    if spectra.shape[1] < (k or 0):
+        return legacy
+    pos = spectra[np.isfinite(spectra) & (spectra > 0)]
+    lo = min(float(pos.min()), FLOAT32_NOISE_FLOOR) if pos.size else FLOAT32_NOISE_FLOOR
+    # a near-zero (an exactly rank-deficient direction) must not squash the log axis
+    return max(lo / 10, 1e-20)
+
+
 def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
-                       floor=1e-6, x_fraction=True, show_rtol=True,
-                       results_root=RESULTS_ROOT, **plot_kw):
+                       floor=None, legacy_floor=1e-6, x_fraction=True,
+                       show_rtol=True, show_k=True,
+                       show_noise_floor=True, results_root=None, **plot_kw):
     """Per-epoch spectrum shapes ``sigma_i / sigma_0``, coloured by epoch.
 
     One line per epoch, averaged over the batches in that epoch and over seeds.
-    ``x_fraction`` puts SV rank on a 0..1 axis as a fraction of the cap ``k`` (so
-    different ``k`` overlay; with ``k = B`` it is the fraction of the batch size);
-    otherwise the raw rank index is used.  ``lo``/``hi`` restrict the colormap
-    range so early epochs stay visible against a light background.
+    ``lo``/``hi`` restrict the colormap range so early epochs stay visible against
+    a light background.
 
-    The optimizer records only the SVs it keeps (``sigma_i > rtol * sigma_0``), so
-    the stored width is the largest rtol-rank any saved step reached, NOT ``k`` --
-    the axis is therefore normalised by ``k``, never by that width.  For the same
-    reason every curve stops at ``rtol`` (drawn dotted when ``show_rtol``), and its
-    tail is an average over only the steps whose rank reached that index.
+    Two record generations, told apart by the stored width (C-A3):
+
+    * **full spectrum** (width >= ``k``; C-L1 logs all ``B`` values before the
+      ``k`` / rtol cut).  ``x_fraction`` normalises the rank axis by the SPECTRUM
+      WIDTH, so the axis really runs 0..1; the ``k`` cut is drawn as a vertical
+      line (:func:`_k_cut`), ``rtol`` and the float32 noise floor
+      (:data:`style.FLOAT32_NOISE_FLOOR` x ``sigma_max``) as horizontals.  Both
+      matter: everything below rtol is discarded, and everything below the floor
+      is round-off rather than structure (F19).
+    * **legacy, truncated at rtol** (width < ``k``): only the SVs the optimizer
+      kept were recorded, so the width is the largest rtol-rank any saved step
+      reached and the tail of every curve is a survivorship average pinned just
+      above rtol.  Normalising by the width would then stretch a partial spectrum
+      across the whole axis, so these keep the old normalisation by ``k`` (and the
+      old warning), with no k line and no floor.
+
+    ``floor`` (the lower clip) defaults to the record generation via
+    :func:`spectrum_floor`: below the float32 floor for a full spectrum, so its tail
+    is visible, ``legacy_floor`` for a truncated one.
 
     Returns ``(spectra, norm)`` -- the ``(n_epoch, width)`` array and the
     :class:`~matplotlib.colors.Normalize` for the epoch colourbar.
     """
-    import matplotlib.colors as mcolors
-    import matplotlib.pyplot as plt
-
     runs = select(df, k=k, lr=lr, rtol=rtol)
     spectra = seed_mean(runs, epoch_spectra, results_root=results_root)
     if spectra is None:
         return None, None
-    if spectra.shape[1] < k:
+    width = spectra.shape[1]
+    full = width >= (k or 0)
+    if not full:
         # Runs made before the full-spectrum fix (sven/opt/sven.py, SvenGram.step)
-        # recorded only the SVs above rtol: the tail of every curve is a survivorship
-        # average pinned just above rtol.  See RERUNS_NEEDED.md.
+        # recorded only the SVs above rtol.  See RERUNS_NEEDED.md.
         print(f'  [plot_epoch_spectra] recorded spectra are truncated at rtol '
-              f'({spectra.shape[1]} of {k} SVs, k={k}, lr={lr}, rtol={rtol}) -- '
+              f'({width} of {k} SVs, k={k}, lr={lr}, rtol={rtol}) -- '
               f'rerun these runs with the full-spectrum logging to fix the tail')
-    cmap = plt.get_cmap(cmap)
-    n_ep, width = spectra.shape
-    norm = mcolors.Normalize(vmin=1, vmax=n_ep)
-    lw = plot_kw.pop('lw', 1.3)
-    for ep in range(n_ep):
-        shape = spectra[ep]
-        valid = ~np.isnan(shape)
-        if not valid.any():
-            continue
-        y = np.clip(shape[valid], floor, 1.0)
-        x = (np.arange(width)[valid] / max(k - 1, 1) if x_fraction
-             else np.arange(width)[valid])
-        ax.plot(x, y, color=cmap(lo + (hi - lo) * norm(ep + 1)), lw=lw, **plot_kw)
+    denom = max((width if full else k) - 1, 1)
+    x = np.arange(width) / denom if x_fraction else np.arange(width)
+    floor = spectrum_floor(spectra, k, floor, legacy_floor)
+    norm = _epoch_lines(ax, spectra, x, cmap, lo, hi, plot_kw.pop('lw', 1.3),
+                        clip=(floor, 1.0), **plot_kw)
     if show_rtol and rtol is not None and rtol >= floor:
-        ax.axhline(rtol, color='0.4', lw=1, ls=':', zorder=0)
+        ax.axhline(rtol, color='0.4', lw=1, ls=':', zorder=0,
+                   label=r'rtol $\sigma_{\max}$')
+    if full and show_noise_floor:
+        ax.axhline(FLOAT32_NOISE_FLOOR, color='0.4', lw=1, ls='--', zorder=0,
+                   label=r'float32 floor ($10^{-7}\sigma_{\max}$)')
+    if full and show_k:
+        _k_cut(ax, k, width, x_fraction)
     ax.set_yscale('log')
-    ax.set_xlabel('SV rank' + (' / $k$' if x_fraction else ''))
+    ax.set_xlabel(_rank_label(x_fraction, full))
     ax.set_ylabel(r'$\sigma_i \ / \ \sigma_0$')
     return spectra, norm
+
+
+def _rank_label(x_fraction, full):
+    if not x_fraction:
+        return 'SV rank'
+    return 'SV rank / width' if full else 'SV rank / $k$'
+
+
+def plot_epoch_utr(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
+                   floor=1e-8, x_fraction=True, show_k=True, normalize=True,
+                   results_root=None, **plot_kw):
+    """Per-epoch mean ``|u_i . r|`` vs SV index, coloured by epoch, with the k cut.
+
+    The companion of :func:`plot_epoch_spectra` (C-A3): the spectrum says how
+    strongly a direction is damped, this says how much residual is in it -- so it
+    is what shows whether the ``k`` / rtol cut discards anything that mattered.
+    Needs the ``utr`` logged by C-L1; returns ``(None, None)`` on legacy records
+    that have none.
+
+    ``normalize`` (default) plots ``|u_i . r| / ||U^T r||`` (see :func:`epoch_utr`).
+    Values below ``floor`` are clipped so the log axis survives exact zeros.
+    """
+    runs = select(df, k=k, lr=lr, rtol=rtol)
+    utr = seed_mean(runs, epoch_utr, results_root=results_root, normalize=normalize)
+    if utr is None:
+        return None, None
+    width = utr.shape[1]
+    x = np.arange(width) / max(width - 1, 1) if x_fraction else np.arange(width)
+    norm = _epoch_lines(ax, utr, x, cmap, lo, hi, plot_kw.pop('lw', 1.3),
+                        clip=(floor, None), **plot_kw)
+    if show_k:
+        _k_cut(ax, k, width, x_fraction)
+    ax.set_yscale('log')
+    ax.set_xlabel(_rank_label(x_fraction, True))
+    ax.set_ylabel(r'$|u_i^{\top} r| \ / \ \|U^{\top} r\|$' if normalize
+                  else r'$|u_i^{\top} r|$')
+    return utr, norm
 
 
 def epoch_colorbar(fig, ax, norm, cmap='plasma', lo=0.25, hi=1.0, label='Epoch',

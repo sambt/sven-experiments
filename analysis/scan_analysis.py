@@ -29,10 +29,16 @@ import numpy as np
 import pandas as pd
 
 import sv_diagnostics as sv
-from style import (clipped_band, clipped_yerr, config_eligible, final_value, is_diverged,
-                   load_results, lr_labels, method_color, metric_label)
+import style
+from style import (assert_selection_metric, clipped_band, clipped_yerr, config_eligible,
+                   final_value, is_diverged, is_failed, load_results, lr_labels,
+                   method_color, metric_label, resolve_results_root, status_of)
 
-RESULTS_ROOT = '../experiment_results'
+#: The results root, resolved from ``$SV3_RESULTS_ROOT`` at import (one root for
+#: the whole analysis layer -- see :mod:`style`).  ``None`` anywhere below means
+#: "resolve it now", so a notebook that sets the env var after importing this
+#: module still reads the right root.
+RESULTS_ROOT = style.RESULTS_ROOT
 
 # seaborn's "deep" palette, inlined so this module needs only numpy/pandas/
 # matplotlib (the notebooks may still import seaborn for their own tweaks).
@@ -40,9 +46,15 @@ DEEP = ['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B3',
         '#937860', '#DA8BC3', '#8C8C8C', '#CCB974', '#64B5CD']
 
 # Hyperparameters that jointly identify one configuration, per optimizer family.
+# Explicit lists: unlike auto-detection they cannot absorb a new provenance column
+# (C-A2).  They must stay a subset of the analysis-wide allow-list -- asserted
+# below, so a knob added to one place and not the other is caught at import.
 SVEN_CONFIG = ['k', 'lr', 'rtol']
 BASELINE_CONFIG = ['optimizer', 'lr', 'weight_decay', 'lbfgs_max_iter', 'lbfgs_history_size',
                    'tau', 'aggregator', 'inner_optimizer']  # AdamW/Muon wd; HIG tau; JD aggregator/inner
+assert not set(SVEN_CONFIG + BASELINE_CONFIG) - set(style.HPARAM_COLUMNS), (
+    f'not in style.HPARAM_COLUMNS: '
+    f'{sorted(set(SVEN_CONFIG + BASELINE_CONFIG) - set(style.HPARAM_COLUMNS))}')
 
 
 def method_colors(baselines, colors=None, sven=None):
@@ -84,15 +96,26 @@ def curve_of(row, which='val'):
     return np.asarray(losses[which], dtype=float)
 
 
+def usable(rows):
+    """The runs of a table that produced a result: neither diverged nor ``oom`` /
+    ``error`` (C-R1).  Both are kept in the tables so they can be counted, and
+    both must be out of every mean."""
+    keep = ~rows['diverged'] if 'diverged' in rows.columns else True
+    if 'failed' in rows.columns:
+        keep = keep & ~rows['failed']
+    return rows[keep] if keep is not True else rows
+
+
 def _seed_stack(rows, which):
     """Seed curves of one configuration, stacked (truncated to the shortest).
 
-    Diverged runs are left out -- of the loss curves AND of the time series, so a
-    curve and its time axis are always averaged over the same seeds.
+    Diverged and failed (``oom`` / ``error``) runs are left out -- of the loss
+    curves AND of the time series, so a curve and its time axis are always
+    averaged over the same seeds.
     """
     curves = []
     for _, r in rows.iterrows():
-        if r.get('diverged', False):
+        if r.get('diverged', False) or r.get('failed', False):
             continue
         c = curve_of(r, which)
         if c is not None:
@@ -126,18 +149,86 @@ def seed_band(rows, which='val'):
     return mean, lower, upper
 
 
+# Curves whose index 0 is the UNTRAINED model, so they are one entry longer than
+# the per-epoch `train` curve (C-E1).  Used only when the length comparison below
+# cannot decide -- which happens once a configuration has partial curves.
+PRE_TRAINING_CURVES = ('val', 'val_acc', 'test', 'test_acc', 'train_eval')
+
+
+def _n_epochs(rows):
+    """The longest ``train`` curve among ``rows`` -- the number of epochs the
+    configuration ran.  Reading ``rows.iloc[0]`` instead breaks as soon as one run
+    stops early (C-R1 records partial curves), which mis-sizes every axis."""
+    lengths = [len(c) for c in (curve_of(r, 'train') for _, r in rows.iterrows())
+               if c is not None]
+    return max(lengths) if lengths else 0
+
+
+def _has_pre_training(rows, curve, which):
+    """Whether ``curve`` starts with the untrained model (index 0 = epoch 0)."""
+    n_ep = _n_epochs(rows)
+    if n_ep:
+        if len(curve) == n_ep + 1:
+            return True
+        if len(curve) == n_ep:
+            return False
+    return which in PRE_TRAINING_CURVES   # partial / truncated: go by the key
+
+
+def steps_per_epoch(rows):
+    """Optimizer steps per epoch for a configuration, or None.
+
+    Prefers the recorded ``steps_per_epoch`` (C-R4); falls back to
+    ``n_train // batch_size`` (drop_last=True for every optimizer, C-S3) when only
+    those are recorded.  None means "not derivable" -- the caller must skip rather
+    than plot epoch indices as steps."""
+    for col in ('steps_per_epoch',):
+        if col in rows.columns and rows[col].notna().any():
+            return int(rows[col].dropna().iloc[0])
+    if all(c in rows.columns and rows[c].notna().any() for c in ('n_train', 'batch_size')):
+        n, b = int(rows['n_train'].dropna().iloc[0]), int(rows['batch_size'].dropna().iloc[0])
+        return max(1, n // b)
+    return None
+
+
+def examples_per_epoch(rows):
+    """Training examples actually STEPPED ON per epoch, or None.
+
+    That is ``steps_per_epoch x batch_size``, not ``n_train``: every optimizer runs
+    with ``drop_last=True`` (C-S3), so the last partial batch is never seen and an
+    ``n_train`` that is not a multiple of the batch size overstates the axis -- at
+    the small-N points (n_train=100, B=64: 64 examples per epoch, not 100) by more
+    than 50%.  ``n_train`` is the last resort, for records with no batch size.
+    """
+    spe = steps_per_epoch(rows)
+    if spe is not None and 'batch_size' in rows.columns and rows['batch_size'].notna().any():
+        return spe * int(rows['batch_size'].dropna().iloc[0])
+    if 'n_train' in rows.columns and rows['n_train'].notna().any():
+        return int(rows['n_train'].dropna().iloc[0])
+    return None
+
+
 def epoch_axis(rows, curve, which='val', versus='epoch', time_key='epoch_times'):
     """x-values for a seed-averaged epoch curve.
 
-    ``val``/``val_acc`` are recorded once before training starts, so they are one
-    entry longer than ``train`` and must be plotted from epoch 0 -- and, against
-    wall time, from t=0 rather than from the end of epoch 1.  Getting this wrong
-    silently shifts every validation curve by one epoch (and, on a time axis,
-    plots epoch indices as seconds).
+    ``versus``:
+
+    * ``'epoch'``   -- the epoch index;
+    * ``'step'``    -- optimizer steps (epoch x :func:`steps_per_epoch`);
+    * ``'examples'``-- training examples processed (epoch x :func:`examples_per_epoch`);
+    * ``'time'``    -- cumulative ``time_key`` (see :func:`resolve_time_key`).
+
+    ``val``/``val_acc``/``test``/``test_acc`` are recorded once before training
+    starts, so they are one entry longer than ``train`` and must be plotted from
+    epoch 0 -- and, against wall time, from t=0 rather than from the end of epoch 1.
+    Getting this wrong silently shifts every validation curve by one epoch (and, on
+    a time axis, plots epoch indices as seconds).
+
+    Returns None when the requested axis cannot be built (no timings, no recorded
+    ``steps_per_epoch`` / ``n_train``); the caller then skips that curve instead of
+    drawing epochs in the wrong unit.
     """
-    train = curve_of(rows.iloc[0], 'train')
-    n_ep = 0 if train is None else len(train)
-    pre_training = len(curve) == n_ep + 1
+    pre_training = _has_pre_training(rows, curve, which)
     if versus == 'time':
         times, _ = seed_curve(rows, time_key)
         if times is None:
@@ -149,7 +240,24 @@ def epoch_axis(rows, curve, which='val', versus='epoch', time_key='epoch_times')
             x = np.concatenate([[0.0], x])
     else:
         x = np.arange(len(curve)) if pre_training else np.arange(1, len(curve) + 1)
+        if versus in ('step', 'examples'):
+            per_epoch = (steps_per_epoch(rows) if versus == 'step'
+                         else examples_per_epoch(rows))
+            if per_epoch is None:
+                return None
+            x = x * per_epoch
     return x[:len(curve)]
+
+
+AXIS_LABELS = {'epoch': 'Epoch', 'step': 'Optimizer steps',
+               'examples': 'Examples processed'}
+
+
+def axis_label(versus, time_key='epoch_times'):
+    """The x label for a ``versus`` axis (F21: steps, examples and synchronised
+    training time are separate axes, and the label has to say which)."""
+    return (time_axis_label(time_key) if versus == 'time'
+            else AXIS_LABELS.get(versus, versus))
 
 
 def sliding_average(data, window=10):
@@ -181,20 +289,38 @@ class Scan:
     plot_dir: Path
     df: pd.DataFrame
     metric: str = 'final_val_loss'
-    results_root: str = RESULTS_ROOT
+    #: None -> resolved from $SV3_RESULTS_ROOT at construction (:mod:`style`)
+    results_root: str | None = None
     sven: pd.DataFrame = field(init=False)
     baseline: pd.DataFrame = field(init=False)
+    #: the run_ids the scan intends to contain, from ``{scan}/manifest/*.json``
+    #: (C-R2); empty for a legacy scan, which then counts seeds as before.
+    expected_run_ids: set = field(init=False)
 
     def __post_init__(self):
         self.plot_dir = Path(self.plot_dir)
         self.plot_dir.mkdir(parents=True, exist_ok=True)
+        self.results_root = resolve_results_root(self.results_root)
+        self.expected_run_ids = style.manifest_run_ids(self.name, self.results_root)
         d = self.df
         d['final_val_loss'] = d.apply(lambda r: final(curve_of(r, 'val')), axis=1)
         d['final_train_loss'] = d.apply(lambda r: final(curve_of(r, 'train')), axis=1)
         d['final_val_acc'] = d.apply(lambda r: final(curve_of(r, 'val_acc')), axis=1)
-        # diverged = failed (style.is_diverged): left out of every seed mean, counted per config
-        d['diverged'] = d.apply(lambda r: is_diverged(curve_of(r, 'train'), curve_of(r, 'val')), axis=1)
-        d.loc[d['diverged'], ['final_val_loss', 'final_train_loss', 'final_val_acc']] = np.nan
+        nan_cols = ['final_val_loss', 'final_train_loss', 'final_val_acc']
+        # test outcomes, when the runs recorded a test curve: reported beside the
+        # configuration the VALIDATION loss selected, never selected on (C-E1)
+        for col, which in (('final_test_loss', 'test'), ('final_test_acc', 'test_acc')):
+            if d['losses'].apply(lambda L, w=which: isinstance(L, dict)
+                                 and L.get(w) is not None).any():
+                d[col] = d.apply(lambda r, w=which: final(curve_of(r, w)), axis=1)
+                nan_cols.append(col)
+        # diverged = failed (style.is_diverged): left out of every seed mean, counted per
+        # config.  `failed` = an oom/error record (C-R1): an incomplete attempt, counted
+        # separately and also left out of the means.
+        d['diverged'] = d.apply(lambda r: is_diverged(curve_of(r, 'train'),
+                                                      curve_of(r, 'val'), status_of(r)), axis=1)
+        d['failed'] = d.apply(lambda r: is_failed(status_of(r)), axis=1)
+        d.loc[d['diverged'] | d['failed'], nan_cols] = np.nan
         d['total_time'] = d['losses'].apply(lambda L: L.get('total_time', np.nan))
         d['avg_epoch_time'] = d['losses'].apply(lambda L: L.get('avg_epoch_time', np.nan))
         d['avg_batch_time_train'] = d['losses'].apply(
@@ -210,7 +336,11 @@ class Scan:
 
     @property
     def n_epochs(self):
-        return len(self.df['losses'].iloc[0]['train'])
+        """The number of epochs the scan ran = the LONGEST train curve in it.
+
+        Not ``losses.iloc[0]['train']``: schema 2 records partial curves for runs
+        that stopped early (C-R1), and the first row may be one of them."""
+        return _n_epochs(self.df)
 
     @property
     def ks(self):
@@ -244,6 +374,18 @@ class Scan:
     def has_acc(self):
         return self.df['final_val_acc'].notna().any()
 
+    @property
+    def has_test(self):
+        """Whether the runs recorded a test split (C-E1); its outcomes are then
+        shown beside the selected configuration in :func:`summary_table`."""
+        return ('final_test_loss' in self.df.columns
+                and self.df['final_test_loss'].notna().any())
+
+    @property
+    def missing_run_ids(self):
+        """Runs the manifest expects that produced no record at all (C-A2)."""
+        return style.missing_run_ids(self.df, self.expected_run_ids)
+
     # -- selection -------------------------------------------------------
     def runs(self, df=None, **constraints):
         """All seed-runs matching ``column=value`` constraints.
@@ -270,26 +412,47 @@ class Scan:
         This is what replaces picking a single run: a configuration's score is the
         mean over its seeds, so `best_*` never latches onto a lucky seed.
 
-        ``n_seeds`` counts the seeds that finished, ``n_diverged`` those that did not
-        (diverged = failed: they are not in the mean).  Because dropping a config's
-        failures from its mean flatters it, configs are ranked by **fewest diverged
-        seeds first, then seed mean**: a config that blows up on 2 of 5 seeds never
-        beats one that finishes all 5.  ``eligible`` is False when no more than half of
-        the scan's seeds finished; such a config is listed last and is never returned
-        by `best_*`.
+        ``metric`` may not be a test quantity: selection uses validation only
+        (:func:`style.assert_selection_metric`).  This is the chokepoint -- every
+        ``quantity=`` argument in this module ends up here.
+
+        ``n_seeds`` (= ``finished``) counts the seeds that finished, ``n_diverged``
+        those that diverged, ``n_failed`` the ``oom`` / ``error`` records (incomplete
+        attempts, C-R1: not in the mean and not divergences).  Because dropping a
+        config's failures from its mean flatters it, configs are ranked by **fewest
+        diverged seeds first, then seed mean**: a config that blows up on 2 of 5 seeds
+        never beats one that finishes all 5.  ``attempted`` is what the scan's manifest
+        expects of every configuration the row covers (C-R2, :func:`style.expected_runs`;
+        the seed count when there is no manifest -- ``keys`` can be coarser than a run
+        configuration) and ``n_missing`` the runs that produced no record.  ``eligible`` is False when
+        no more than half of them finished; such a config is listed last and is never
+        returned by `best_*`.
         """
-        metric = metric or self.metric
+        metric = assert_selection_metric(metric or self.metric, f'{self.name}.configs')
         keys = [k for k in keys if k in df.columns]
-        ok = df[~df['diverged']].dropna(subset=[metric])
+        failed = df['failed'] if 'failed' in df.columns else pd.Series(False, index=df.index)
+        ok = df[~df['diverged'] & ~failed].dropna(subset=[metric])
         out = (ok.groupby(keys, dropna=False)[metric]
                .agg(score='mean', score_std='std', score_min='min', score_max='max',
                     n_seeds='size'))
-        n_all = df.groupby(keys, dropna=False).size().rename('n_runs')
-        out = out.join(n_all, how='outer').reset_index()
+        g_all = df.assign(_failed=failed.astype(int)).groupby(keys, dropna=False)
+        out = out.join(g_all.size().rename('n_runs'), how='outer')
+        out = out.join(g_all['_failed'].sum().rename('n_failed'))
+        out = out.join(g_all['run_id'].agg(
+            lambda s: frozenset(style.config_key(r) for r in s)).rename('_keys'))
+        out = out.reset_index()
         out['n_seeds'] = out['n_seeds'].fillna(0).astype(int)
-        out['n_diverged'] = out.pop('n_runs') - out['n_seeds']
-        out['n_missing'] = len(self.seeds) - out['n_seeds'] - out['n_diverged']  # no result file
-        out['eligible'] = config_eligible(out['n_seeds'], len(self.seeds))
+        out['n_failed'] = out['n_failed'].fillna(0).astype(int)
+        out['n_diverged'] = out.pop('n_runs') - out['n_seeds'] - out['n_failed']
+        per_config = style.expected_per_config(self.expected_run_ids)
+        # Every config_key in the group, not the first row's: `keys` may be coarser
+        # than a run configuration (SVEN_CONFIG ignores n_train / kappa / ...).
+        out['attempted'] = [style.expected_runs(ks, per_config, len(self.seeds))
+                            for ks in out.pop('_keys')]
+        out['finished'] = out['n_seeds']
+        out['n_missing'] = (out['attempted'] - out['n_seeds'] - out['n_diverged']
+                            - out['n_failed']).clip(lower=0)   # no result file
+        out['eligible'] = config_eligible(out['n_seeds'], out['attempted'])
         # Exact ties are common, not a corner case: whenever the rtol-rank stays
         # below k, every larger k (and every rtol that cuts nothing extra) is the
         # *same trajectory*.  Break them deterministically -- smallest k, then
@@ -345,14 +508,21 @@ class Scan:
         return path
 
 
-def load_scan(name, title, plot_dir, results_root=RESULTS_ROOT, metric='final_val_loss'):
+def load_scan(name, title, plot_dir, results_root=None, metric='final_val_loss',
+              cache_dir=None):
     """Load one scan directory light and wrap it in a :class:`Scan`.
 
-    Diverged runs (non-finite final loss) stay in the table, flagged ``diverged``:
-    they are left out of every seed mean / curve and counted per configuration in
-    ``n_diverged`` (see :meth:`Scan.configs`).
+    ``results_root=None`` resolves through ``$SV3_RESULTS_ROOT`` (see
+    :func:`style.resolve_results_root`); ``cache_dir`` puts the slim cache on a
+    writable disk when the root is read-only.
+
+    Diverged runs (non-finite final loss, or ``status: diverged``) stay in the table,
+    flagged ``diverged``: they are left out of every seed mean / curve and counted per
+    configuration in ``n_diverged`` (see :meth:`Scan.configs`).  ``oom`` / ``error``
+    records are flagged ``failed`` and counted in ``n_failed``.
     """
-    df = load_results(name, results_root=results_root)
+    results_root = resolve_results_root(results_root)
+    df = load_results(name, results_root=results_root, cache_dir=cache_dir)
     scan = Scan(name=name, title=title, plot_dir=plot_dir, df=df, metric=metric,
                 results_root=results_root)
     print(f'{scan.name}: {len(scan.df)} runs  |  B={scan.B}, {scan.n_epochs} epochs, '
@@ -361,6 +531,16 @@ def load_scan(name, title, plot_dir, results_root=RESULTS_ROOT, metric='final_va
     if len(bad):
         print(f'  {len(bad)} diverged run(s), excluded from seed means: '
               f'{bad["optimizer"].value_counts().to_dict()}')
+    bad = scan.df[scan.df['failed']]
+    if len(bad):
+        print(f'  {len(bad)} oom/error run(s) (retryable), excluded from seed means: '
+              f'{bad["optimizer"].value_counts().to_dict()}')
+    if scan.expected_run_ids:
+        missing = scan.missing_run_ids
+        print(f'  manifest: {len(scan.df)} of {len(scan.expected_run_ids)} intended runs '
+              f'present, {len(missing)} with no record')
+        if missing:
+            print(f'    first missing: {missing[:3]}')
     return scan
 
 
@@ -372,16 +552,33 @@ def has_standalone(scan):
     return 'standalone_total_time' in scan.df.columns and scan.df['standalone_total_time'].notna().any()
 
 
+def has_curve(scan, key):
+    """Whether the scan's runs recorded the per-epoch series ``key``."""
+    return bool(scan.df['losses'].apply(
+        lambda L: isinstance(L, dict) and L.get(key) is not None).any())
+
+
 def resolve_time_key(scan, time_key='auto'):
-    """``'auto'`` -> the standalone epoch times when attached, else the scan's own."""
+    """Which per-epoch time series a time axis should use.
+
+    ``'auto'``: the standalone epoch times when :func:`attach_standalone_times`
+    attached them; else ``train_times`` -- the sum of *synchronised* per-batch
+    TRAINING times (C-T1) -- when the runs recorded it, since evaluation is now a
+    large and identical overhead for every method and does not belong on a
+    convergence-vs-time axis; else the scan's own wall-clock ``epoch_times``.
+    """
     if time_key == 'auto':
-        return 'epoch_times_standalone' if has_standalone(scan) else 'epoch_times'
+        if has_standalone(scan):
+            return 'epoch_times_standalone'
+        return 'train_times' if has_curve(scan, 'train_times') else 'epoch_times'
     return time_key
 
 
 def time_axis_label(time_key):
-    return ('Wall time (s), standalone' if time_key == 'epoch_times_standalone'
-            else 'Wall time (s), sharded scan')
+    return {'epoch_times_standalone': 'Wall time (s), standalone',
+            'train_times': 'Training time (s), synchronised',
+            'epoch_times': 'Wall time (s), sharded scan'}.get(
+                time_key, 'Wall time (s), sharded scan')
 
 
 def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
@@ -389,7 +586,11 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
     """Best Sven vs the best of each baseline, seed-averaged, with a seed band.
 
     ``which``   -- ``'train'``, ``'val'``, ``'val_acc'``, ...
-    ``versus``  -- ``'epoch'`` or ``'time'`` (cumulative epoch wall time).
+    ``versus``  -- ``'epoch'``, ``'step'``, ``'examples'`` or ``'time'`` (the four
+                 axes of F21 / C-A5; see :func:`epoch_axis`).  A curve whose axis
+                 cannot be built (no timings, no recorded ``steps_per_epoch`` /
+                 ``n_train``) is skipped with a note instead of being drawn in the
+                 wrong unit.
     ``time_key`` -- which per-epoch time series to use for ``versus='time'``:
                  ``'auto'`` (default: standalone if :func:`attach_standalone_times`
                  found any, else the scan's own), ``'epoch_times'`` (the scan's
@@ -409,7 +610,8 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
             return
         x = epoch_axis(rows, mean, which, versus, time_key)
         if x is None:
-            print(f'  [plot_best_curves] no {time_key!r} for {label} -- not drawn')
+            missing = time_key if versus == 'time' else f'{versus} axis'
+            print(f'  [plot_best_curves] no {missing!r} for {label} -- not drawn')
             return
         n = len(x)
         ax.plot(x, mean[:n], color=color, lw=lw, label=label, zorder=zorder, **plot_kw)
@@ -430,10 +632,12 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
         chosen[opt] = cfg
         draw(scan.baseline_rows(cfg), opt, cmap[opt], 2, 2)
 
-    ax.set_xlabel(time_axis_label(time_key) if versus == 'time' else 'Epoch')
+    ax.set_xlabel(axis_label(versus, time_key))
     ax.set_ylabel({'train': 'Train loss', 'val': 'Validation loss',
-                   'val_acc': 'Validation accuracy'}.get(which, which))
-    if which != 'val_acc':
+                   'val_acc': 'Validation accuracy', 'test': 'Test loss',
+                   'test_acc': 'Test accuracy',
+                   'train_eval': 'Train loss (eval mode)'}.get(which, which))
+    if not which.endswith('_acc'):
         ax.set_yscale('log')
     return chosen
 
@@ -694,7 +898,7 @@ def plot_time_summary(scan, ax, quantity='total_time', baselines=None, source='a
         raise ValueError(f'{col} missing -- call attach_standalone_times(scan) first')
 
     def values(rows):
-        rows = rows[~rows['diverged']]
+        rows = usable(rows)
         if col == 'time_excl_first_epoch':
             v = np.array([time_excl_first_epoch(r) for _, r in rows.iterrows()], dtype=float)
         else:
@@ -878,10 +1082,10 @@ def plot_efficiency(scan, ax, metric=None, quantity='total_time', baselines=None
     metric = metric or scan.metric
     baselines = baselines if baselines is not None else scan.baselines
     cmap = method_colors(baselines)
-    sven = scan.sven[~scan.sven['diverged']]
+    sven = usable(scan.sven)
     ax.scatter(sven[quantity], sven[metric], c=cmap['Sven'], alpha=0.6, s=40, label='Sven')
     for opt in baselines:
-        sub = scan.baseline[(scan.baseline['optimizer'] == opt) & ~scan.baseline['diverged']]
+        sub = usable(scan.baseline[scan.baseline['optimizer'] == opt])
         ax.scatter(sub[quantity], sub[metric], c=cmap[opt], alpha=0.5, s=30,
                    marker='s', label=opt)
     ax.set_xlabel('Total training time (s), sharded scan')
@@ -931,50 +1135,109 @@ def plot_sv_used(scan, ax, lr, rtol, ks=None, cmap='viridis', **kw):
     return handles
 
 
-def plot_sv_spectra(scan, fig, ax, lr, rtol, k=None, floor=1e-4, colorbar=True, **kw):
+def _rank_ticks(ax, denom, B, full=True):
+    """0..1 rank ticks labelled in the unit the x-axis was actually normalised by.
+
+    ``denom`` is that unit -- the spectrum width for a full-width record, ``k`` for a
+    legacy truncated one, which :func:`sv_diagnostics.plot_epoch_spectra` still
+    normalises by ``k`` so a partial spectrum is not stretched over the whole axis.
+    Labelling a legacy axis in units of the stored width would misread every legacy
+    figure (x=0.25 is k/4 there, not W/4).
+    """
+    cap = 'B' if denom == B else ('W' if full else 'k')
+    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0],
+                  labels=['$1$', f'${cap}/4$', f'${cap}/2$', f'$3{cap}/4$', f'${cap}$'])
+    ax.set_xlabel('SV rank')
+
+
+def plot_sv_spectra(scan, fig, ax, lr, rtol, k=None, floor=None, legacy_floor=1e-4,
+                    colorbar=True, legend=False, **kw):
     """Per-epoch spectrum shapes ``sigma_i / sigma_0``, coloured by epoch.
 
     Drawn for the ``k = B`` runs (unless ``k`` is given) at the given ``lr``/
     ``rtol``, averaged over the batches in each epoch (binned via ``svs_step``,
-    since spectra are subsampled) and over seeds.  The x-axis is the SV index as
-    a fraction of ``k``; the dotted line is ``rtol``.  Only the SVs that survive
-    the rtol cut are ever recorded, so every curve ends at that line by
-    construction -- see :func:`sv_diagnostics.plot_epoch_spectra`.
+    since spectra are logged on a schedule) and over seeds.
+
+    On full-spectrum records (C-L1) the x-axis is the SV index as a fraction of
+    the spectrum width, with the ``k`` cut as a vertical line and ``rtol`` /
+    the float32 noise floor as horizontals; legacy records, which stored only the
+    SVs above rtol, keep the old fraction-of-``k`` axis, the old ``legacy_floor``
+    and end at the rtol line by construction.  With ``floor=None`` (the default, and
+    what the notebooks use) the y range follows the record generation
+    (:func:`sv_diagnostics.spectrum_floor`) instead of clipping a full spectrum -- and
+    its noise-floor line -- away at 1e-4.  See :func:`sv_diagnostics.plot_epoch_spectra`.
     """
     k = k if k is not None else scan.B
     spectra, norm = sv.plot_epoch_spectra(
-        scan.sven, ax, k=k, lr=lr, rtol=rtol,
-        floor=floor, results_root=scan.results_root, **kw)
+        scan.sven, ax, k=k, lr=lr, rtol=rtol, floor=floor,
+        legacy_floor=legacy_floor, results_root=scan.results_root, **kw)
     if spectra is None:
         print(f'  no spectra for k={k}, lr={lr}, rtol={rtol}')
         return None
-    ax.set_ylim(floor, 2)
+    full = spectra.shape[1] >= (k or 0)
+    ax.set_ylim(sv.spectrum_floor(spectra, k, floor, legacy_floor), 2)
     ax.set_xlim(-0.03, 1.03)
-    cap = 'B' if k == scan.B else 'k'
-    ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0],
-                  labels=['$1$', f'${cap}/4$', f'${cap}/2$', f'$3{cap}/4$', f'${cap}$'])
-    ax.set_xlabel('SV rank')
-    k_label = f'k = B = {int(k)}' if cap == 'B' else f'k = {int(k)}'
+    # the DENOMINATOR the x-axis really used, which is k on a truncated record
+    _rank_ticks(ax, spectra.shape[1] if full else k, scan.B, full=full)
+    k_label = f'k = B = {int(k)}' if k == scan.B else f'k = {int(k)}'
     ax.set_title(f'{scan.title}: SV spectra (${k_label}$, '
                  f'$\\eta = {fmt(lr)}$, rtol $= {fmt(rtol)}$)')
+    if legend:
+        ax.legend(loc='lower left', fontsize=10)
     if colorbar:
         sv.epoch_colorbar(fig, ax, norm)
     return spectra
+
+
+def plot_sv_utr(scan, fig, ax, lr, rtol, k=None, colorbar=True, **kw):
+    """Per-epoch ``|u_i . r|`` vs SV index for one Sven configuration (C-A3).
+
+    The companion of :func:`plot_sv_spectra`: it is the residual overlap, not the
+    spectrum, that says whether the directions beyond the ``k`` cut carried
+    anything.  Needs ``utr`` (C-L1) and so returns None on legacy records.
+    """
+    k = k if k is not None else scan.B
+    utr, norm = sv.plot_epoch_utr(scan.sven, ax, k=k, lr=lr, rtol=rtol,
+                                  results_root=scan.results_root, **kw)
+    if utr is None:
+        print(f'  no utr logged for k={k}, lr={lr}, rtol={rtol} '
+              f'(legacy records do not have it)')
+        return None
+    ax.set_xlim(-0.03, 1.03)
+    _rank_ticks(ax, utr.shape[1], scan.B)
+    k_label = f'k = B = {int(k)}' if k == scan.B else f'k = {int(k)}'
+    ax.set_title(f'{scan.title}: residual overlap (${k_label}$, '
+                 f'$\\eta = {fmt(lr)}$, rtol $= {fmt(rtol)}$)')
+    if colorbar:
+        sv.epoch_colorbar(fig, ax, norm)
+    return utr
 
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 def summary_table(scan, metric=None, baselines=None):
-    """Best configuration per method, as a DataFrame (seed mean +/- std)."""
-    metric = metric or scan.metric
+    """Best configuration per method, as a DataFrame (seed mean +/- std).
+
+    ``finished / attempted`` (C-R2 / C-A2) is on every row: how many of the runs
+    the scan's manifest expects of that configuration produced a usable result.
+    ``n_failed`` counts ``oom`` / ``error`` records separately from ``n_diverged``.
+    ``final_test_loss`` / ``final_test_acc`` appear when the runs recorded a test
+    split: outcomes of the configuration the VALIDATION loss selected (C-E1).
+    """
+    metric = assert_selection_metric(metric or scan.metric, 'summary_table')
     baselines = baselines if baselines is not None else scan.baselines
+    per_config = style.expected_per_config(scan.expected_run_ids)
     rows = []
 
     def add(method, cfg, runs):
         if runs.empty:
             return
-        ok = runs[~runs['diverged']]          # diverged = failed: not in the means
+        # diverged = failed: not in the means; oom/error likewise, counted apart
+        ok = runs[~runs['diverged'] & ~runs['failed']]
+        n_failed = int(runs['failed'].sum())
+        attempted = style.expected_runs(
+            {style.config_key(r) for r in runs['run_id']}, per_config, len(scan.seeds))
         entry = {
             'method': method,
             # string-valued hparams (JD aggregator / inner_optimizer) have no ':g'
@@ -983,8 +1246,11 @@ def summary_table(scan, metric=None, baselines=None):
                                 if k != 'optimizer' and pd.notna(v)
                                 and not (k == 'weight_decay' and v == 0)),   # wd=0 is the norm
             'n_seeds': len(ok),
-            'n_diverged': len(runs) - len(ok),
-            'n_missing': len(scan.seeds) - len(runs),
+            'n_diverged': len(runs) - len(ok) - n_failed,
+            'n_failed': n_failed,
+            'n_missing': max(attempted - len(runs), 0),
+            'finished': len(ok),
+            'attempted': attempted,
             metric: float(ok[metric].mean()),
             f'{metric}_std': float(ok[metric].std(ddof=1)) if len(ok) > 1 else 0.0,
             f'{metric}_min': float(ok[metric].min()),   # for the clipped error bar
@@ -997,6 +1263,9 @@ def summary_table(scan, metric=None, baselines=None):
             entry['standalone_time_s'] = float(ok['standalone_total_time'].mean())
         if scan.has_acc:
             entry['final_val_acc'] = float(ok['final_val_acc'].mean())
+        for col in ('final_test_loss', 'final_test_acc'):   # outcomes only (C-E1)
+            if col in ok.columns and ok[col].notna().any():
+                entry[col] = float(ok[col].mean())
         rows.append(entry)
 
     cfg = scan.best_sven(metric)

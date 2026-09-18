@@ -9,8 +9,10 @@ shared conventions of ANALYSIS_FIXES.md (diverged = failed; clipped seed bands).
 import numpy as np
 import pandas as pd
 
+import style
 from scan_analysis import seed_band  # noqa: F401  (re-exported: mean + clipped seed band of a curve)
-from style import clipped_yerr, config_eligible, final_value, is_diverged
+from style import (assert_selection_metric, clipped_yerr, config_eligible, final_value,
+                   hparam_columns, is_diverged, is_failed, status_of)
 from style import method_color  # noqa: F401  (re-exported: the global optimizer colours)
 
 
@@ -38,18 +40,33 @@ def _scalar(L, key):
 
 def add_derived(df):
     """Add flat columns used across the notebooks (final losses/acc, time, mem,
-    a tidy `method` label, LM perplexity, and the `diverged` flag)."""
+    a tidy `method` label, LM perplexity, and the `diverged` / `failed` flags).
+
+    Schema 2 (C-R1): a record's ``status`` decides ``diverged`` too, and an
+    ``oom`` / ``error`` record -- an incomplete attempt the runner retries -- is
+    flagged ``failed``; both are kept in the table (so they can be counted) and
+    left out of every mean.  ``final_test_*`` are added when the records carry a
+    test curve: OUTCOMES, reported beside a selected configuration, never a
+    selection metric (C-E1).
+    """
     df = df.copy()
     df['final_val_loss'] = df.apply(lambda r: _final(r, 'val'), axis=1)
     df['final_train_loss'] = df.apply(lambda r: _final(r, 'train'), axis=1)
     df['final_val_acc'] = df.apply(lambda r: _final(r, 'val_acc'), axis=1)
+    nan_cols = ['final_val_loss', 'final_train_loss', 'final_val_acc', 'val_ppl']
+    for col, which in (('final_test_loss', 'test'), ('final_test_acc', 'test_acc')):
+        if df['losses'].apply(lambda L, w=which: _scalar(L, w) is not None).any():
+            df[col] = df.apply(lambda r, w=which: _final(r, w), axis=1)
+            nan_cols.append(col)
     df['total_time'] = df['losses'].apply(lambda L: _scalar(L, 'total_time'))
     df['peak_gpu_mem_mb'] = df['losses'].apply(lambda L: _scalar(L, 'peak_gpu_mem_mb'))
     df['method'] = df['optimizer'].apply(lambda o: 'Sven' if o == 'SVD' else str(o))
     df['val_ppl'] = np.exp(df['final_val_loss'].clip(upper=20))  # LM only
     # diverged = failed (style.is_diverged, the same definition as scan_analysis.Scan)
-    df['diverged'] = df.apply(lambda r: is_diverged(loss_curve(r, 'train'), loss_curve(r, 'val')), axis=1)
-    df.loc[df['diverged'], ['final_val_loss', 'final_train_loss', 'final_val_acc', 'val_ppl']] = np.nan
+    df['diverged'] = df.apply(
+        lambda r: is_diverged(loss_curve(r, 'train'), loss_curve(r, 'val'), status_of(r)), axis=1)
+    df['failed'] = df.apply(lambda r: is_failed(status_of(r)), axis=1)
+    df.loc[df['diverged'] | df['failed'], [c for c in nan_cols if c in df.columns]] = np.nan
     return df
 
 
@@ -62,68 +79,146 @@ def valid(df, metric='final_val_loss', max_val=1e6):
 
 
 # Columns that are outcomes or run bookkeeping, never part of a configuration.
-OUTCOMES = ['final_val_loss', 'final_train_loss', 'final_val_acc', 'total_time',
+# `final_test_*` are OUTCOMES: present only when the records carry a test curve,
+# shown beside the selected configuration, never selected on (C-E1).
+OUTCOMES = ['final_val_loss', 'final_train_loss', 'final_val_acc',
+            'final_test_loss', 'final_test_acc', 'total_time',
             'peak_gpu_mem_mb', 'val_ppl']
-# Backend / memory-layout choices that compute the same update (chunked vs full Gram
-# capture, and the chunk size).  They are NOT part of a configuration's identity: the
-# CIFAR label-reg scan captured some seeds of the same config 'chunked' and others 'full',
-# and keying on them split every such config into 3+2 / 4+1 seed fragments that were then
-# reported as "missing seeds" and mostly ineligible.
-_BACKEND = {'gram_capture', 'gram_chunk_numel'}
-_NOT_CONFIG = {'model_seed', 'loader_seed', 'run_id', 'diag_file', 'method', 'diverged',
-               '_scan', *OUTCOMES, *_BACKEND}
-_SCALAR = (str, bool, int, float, np.integer, np.floating)
+# Back-compat aliases; configuration identity now comes from the allow-list in
+# style (see style.HPARAM_COLUMNS for why auto-detection had to go).
+_BACKEND = set(style.BACKEND_COLUMNS)
+_NOT_CONFIG = set(style.PROVENANCE_COLUMNS) | _BACKEND | {'method', 'diverged', 'failed',
+                                                          *OUTCOMES}
 
 
 def config_columns(df, seed_col='model_seed'):
-    """The hyperparameter columns that jointly identify a configuration: every scalar
-    column that is not the seed, run bookkeeping, an outcome, or a backend choice."""
-    skip = _NOT_CONFIG | {seed_col}
-    return [c for c in df.columns if c not in skip and df[c].notna().any()
-            and df[c].dropna().map(lambda v: isinstance(v, _SCALAR)).all()]
+    """The hyperparameter columns that jointly identify a configuration.
+
+    The ALLOW-LIST :data:`style.HPARAM_COLUMNS`, not auto-detection: schema 2 puts
+    ``status``, ``run_hash``, ``git_sha``, ``host``, timestamps, ``n_test``,
+    ``steps_per_epoch``, ... on every record, and the old "every scalar column that
+    is not on a small denylist" rule would have taken each of them as part of a
+    configuration's identity -- one configuration per run, every seed mean a single
+    run, every table in this module silently collapsed (C-A2)."""
+    return hparam_columns(df, seed_col)
 
 
-def config_table(df, metric='final_val_loss', minimize=True, seed_col='model_seed'):
+_manifest_memo = {}
+
+
+def expected_run_ids(df, results_root=None):
+    """The run_ids the scan(s) in ``df`` intend to contain, from their manifests
+    (C-R2), or an empty set for a legacy scan that has none.  Memoised per
+    ``(scan, root)``: :func:`config_table` is called several times per notebook."""
+    out = set()
+    if '_scan' not in df.columns:
+        return out
+    root = style.resolve_results_root(results_root)
+    for name in df['_scan'].dropna().unique():
+        key = (str(name), str(root))
+        if key not in _manifest_memo:
+            _manifest_memo[key] = style.manifest_run_ids(name, results_root=root)
+        out |= _manifest_memo[key]
+    return out
+
+
+def missing_configs(df, expected=None, results_root=None):
+    """Configurations the manifest expects that have **no record at all** -- the ones
+    :func:`config_table` cannot show, because a configuration with no file has no
+    hyperparameter columns to group on.  Identified by
+    :func:`style.config_key` (the run_id minus its seed suffix).
+
+    Returns a DataFrame ``[config_key, n_missing]`` (empty without a manifest)."""
+    expected = expected_run_ids(df, results_root) if expected is None else expected
+    have = {style.config_key(r) for r in df.get('run_id', [])}
+    rows = [{'config_key': key, 'n_missing': n}
+            for key, n in sorted(style.expected_per_config(expected).items())
+            if key not in have]
+    return pd.DataFrame(rows, columns=['config_key', 'n_missing'])
+
+
+def config_table(df, metric='final_val_loss', minimize=True, seed_col='model_seed',
+                 expected=None, results_root=None):
     """One row per CONFIGURATION (not per run), ranked best-first.
 
     Runs are grouped by :func:`config_columns`.  For every outcome ``q`` in
     :data:`OUTCOMES` the row carries the seed mean ``q``, the seed std ``q_std``
     (ddof=1) and the lowest seed ``q_min`` (for :func:`style.clipped_band`).
+    ``metric`` may not be a test quantity (:func:`style.assert_selection_metric`).
 
     Diverged = failed (see ANALYSIS_FIXES.md, A4): a diverged run is not in the means.
-    ``n_seeds`` counts the seeds that finished and ``n_diverged`` the ones that did not;
-    ``n_missing`` the seeds with no result file -- for configs that have at least one
-    file: a configuration with no result file at all is invisible here, so compare
-    against the grid size for a complete count.  ``run_ids`` lists the finished runs
-    (see :func:`config_runs`).  Ranking is
+    Counts per configuration:
 
-    1. ``eligible`` -- more than half of the scan's seeds finished;
+    * ``n_seeds`` / ``finished`` -- seeds that finished;
+    * ``n_diverged`` -- seeds that diverged (curve rule or ``status: diverged``);
+    * ``n_failed`` -- ``oom`` / ``error`` records: incomplete attempts (C-R1), not
+      in the means and NOT counted as divergences;
+    * ``n_missing`` -- runs with no result file, and ``attempted`` the number the
+      **manifest** expects (C-R2), falling back to the seed count when the scan has
+      no manifest.  A configuration with no file *at all* still cannot appear as a
+      row; :func:`missing_configs` lists those, also on ``.attrs['missing_configs']``.
+
+    ``run_ids`` lists the finished runs (see :func:`config_runs`).  Ranking is
+
+    1. ``eligible`` -- more than half of the configuration's runs finished;
     2. fewest diverged seeds (dropping a config's failures from its mean flatters it,
        so a config that blows up on some seeds never beats one that finishes them all);
     3. seed-mean ``metric``; remaining exact ties broken by the config values, so the
        result is the same on every machine.
     """
+    assert_selection_metric(metric, 'config_table')
     df = df if 'diverged' in df.columns else add_derived(df)
+    failed = df['failed'] if 'failed' in df.columns else pd.Series(False, index=df.index)
     config = config_columns(df, seed_col)
     outcomes = [q for q in OUTCOMES if q in df.columns]
-    ok = df[~df['diverged'] & df[metric].notna()]
+    ok = df[~df['diverged'] & ~failed & df[metric].notna()]
     g = ok.groupby(config, dropna=False)
+    g_all = df.assign(_failed=failed.astype(int)).groupby(config, dropna=False)
     out = g[outcomes].mean()
     out = out.join(g[outcomes].std(ddof=1).add_suffix('_std'))
     out = out.join(g[outcomes].min().add_suffix('_min'))
     out = out.join(g.size().rename('n_seeds'))
     out = out.join(g['run_id'].agg(list).rename('run_ids'))
-    out = out.join(df.groupby(config, dropna=False).size().rename('n_runs'), how='outer')
+    out = out.join(g_all.size().rename('n_runs'), how='outer')
+    out = out.join(g_all['_failed'].sum().rename('n_failed'))
+    out = out.join(g_all['run_id'].agg(
+        lambda s: frozenset(style.config_key(r) for r in s)).rename('_keys'))
     out = out.reset_index()
     out['n_seeds'] = out['n_seeds'].fillna(0).astype(int)
-    out['n_diverged'] = out.pop('n_runs') - out['n_seeds']
-    out['n_missing'] = df[seed_col].nunique() - out['n_seeds'] - out['n_diverged']  # no result file
-    out['eligible'] = config_eligible(out['n_seeds'], df[seed_col].nunique())
+    out['n_failed'] = out['n_failed'].fillna(0).astype(int)
+    out['n_diverged'] = out.pop('n_runs') - out['n_seeds'] - out['n_failed']
+    # How many runs this configuration was supposed to have: the manifest when the
+    # scan has one (so a seed that never wrote a file is visible), else -- as ever --
+    # the number of distinct seeds anywhere in the table.  Summed over EVERY
+    # config_key in the row (:func:`style.expected_runs`), since a schema-drifted
+    # column set can split one configuration over two rows and back.
+    expected = expected_run_ids(df, results_root) if expected is None else expected
+    per_config, n_seeds_total = style.expected_per_config(expected), df[seed_col].nunique()
+    out['attempted'] = [style.expected_runs(ks, per_config, n_seeds_total)
+                        for ks in out.pop('_keys')]
+    out['finished'] = out['n_seeds']
+    out['n_missing'] = (out['attempted'] - out['n_seeds'] - out['n_diverged']
+                        - out['n_failed']).clip(lower=0)
+    out['eligible'] = config_eligible(out['n_seeds'], out['attempted'])
     out['method'] = out['optimizer'].apply(lambda o: 'Sven' if o == 'SVD' else str(o))
     order = ['eligible', 'n_diverged', metric] + config
     ascending = [False, True, minimize] + [True] * len(config)
-    return out.sort_values(order, ascending=ascending, kind='mergesort',
-                           na_position='last').reset_index(drop=True)
+    out = out.sort_values(order, ascending=ascending, kind='mergesort',
+                          na_position='last').reset_index(drop=True)
+    out.attrs['missing_configs'] = missing_configs(df, expected)
+    out.attrs['missing_run_ids'] = style.missing_run_ids(df, expected)
+    # No notebook reads `.attrs` (and pandas drops it through a merge), while a
+    # configuration with no result file has no ROW here -- so say it out loud too,
+    # the way `scan_analysis.load_scan` reports the same thing for a whole scan.
+    # Unprinted, a wholly missing configuration stays exactly as invisible as
+    # before C-A2.
+    miss = out.attrs['missing_configs']
+    if len(miss):
+        print(f'  [config_table] {len(miss)} configuration(s) with no result file at '
+              f'all ({int(miss["n_missing"].sum())} runs): '
+              f'{list(miss["config_key"][:3])}'
+              f'{" ..." if len(miss) > 3 else ""}')
+    return out
 
 
 def best_per_method(df, by='final_val_loss', minimize=True, extra_group=None):
@@ -203,12 +298,12 @@ def epochs_to_target_table(df, mult=1.2, which='val', group=('method', 'batch_si
     metric = {'val': 'final_val_loss', 'train': 'final_train_loss'}[which]
     cfg = config_table(df, metric=metric)
     target = float(cfg.loc[cfg['eligible'], metric].min()) * mult
-    n_expected = df['model_seed'].nunique()
     e2t = df.set_index('run_id').apply(lambda r: epochs_to_target(r, target, which), axis=1)
     rows = []
     for _, c in cfg.iterrows():
         v = e2t.reindex(c['run_ids']).to_numpy(dtype=float) if isinstance(c['run_ids'], list) else np.array([])
-        ok = len(v) == n_expected and np.isfinite(v).all()
+        # every run the configuration was supposed to have must reach the target
+        ok = len(v) == int(c['attempted']) and np.isfinite(v).all()
         rows.append({'reached': ok, 'e2t': v.mean() if ok else np.nan,
                      'e2t_std': v.std(ddof=1) if ok and len(v) > 1 else 0.0 if ok else np.nan,
                      'e2t_min': v.min() if ok else np.nan})
