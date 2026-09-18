@@ -188,16 +188,57 @@ def has_torchjd():
 # What should exist
 # ---------------------------------------------------------------------------
 
-def expected_runs(scan, groups, loader, grid, *, use_grid=True, jd=None):
+def injected_dataset_facts(scan_dir):
+    """The `cfg.model` keys the RUNNER injected before hashing, or `{}`.
+
+    `generic_scan.run_grid` mutates `cfg.model` with the dataset's `vocab_size` (and
+    `block_size`) before anything is instantiated or hashed, because
+    `experiments/configs/model/nanogpt.yaml` deliberately omits them -- the dataset owns
+    them (`grid.inject_dataset_facts`).  Composing the config here and hashing it
+    unchanged therefore gives EVERY language-model run a different hash8, so a finished
+    nanoGPT scan reports as `stale-hash`, i.e. "work remains", for ever -- and a chained
+    job renews itself for ever on it.
+
+    The values cannot be derived without loading the data (the char vocabulary IS the
+    corpus), so they are read back from the post-mutation config the runner saved in
+    `{scan}/configs/*.yaml`.  A scan whose model config never carried them -- every MLP,
+    ResNet and GPT-2 scan -- yields `{}` and nothing is injected.
+    """
+    seen = set()
+    for path in sorted(_listdir(os.path.join(scan_dir, "configs"))):
+        if not path.endswith(".yaml"):
+            continue
+        try:
+            import yaml
+            with open(os.path.join(scan_dir, "configs", path)) as fh:
+                saved = yaml.safe_load(fh) or {}
+        except (OSError, ValueError, ImportError):
+            continue
+        model = saved.get("model") or {}
+        if not isinstance(model, dict) or model.get("vocab_size") is None:
+            continue
+        seen.add((int(model["vocab_size"]),
+                  None if model.get("block_size") is None else int(model["block_size"])))
+    if len(seen) != 1:
+        return {}                      # nothing saved, or two generations: do not guess
+    vocab_size, block_size = seen.pop()
+    return {"vocab_size": vocab_size, "block_size": block_size}
+
+
+def expected_runs(scan, groups, loader, grid, *, use_grid=True, jd=None, scan_dir=None):
     """`({run_id: info}, warnings)` -- the union over override groups.
 
     `info` carries the family, the current run hash, the batch size, the optimizer and
     the hyperparameters, i.e. everything the edge report needs without opening a record.
+
+    `scan_dir` is where the runner's own resolved configs live; it is what makes the
+    hash of a language-model run reproducible here (:func:`injected_dataset_facts`).
     """
     expected, warnings = {}, []
     if not use_grid:
         return expected, warnings
     jd = has_torchjd() if jd is None else jd
+    facts = injected_dataset_facts(scan_dir) if scan_dir else {}
     for overrides in groups:
         try:
             rcfg = loader.compose(scan, overrides)
@@ -205,6 +246,12 @@ def expected_runs(scan, groups, loader, grid, *, use_grid=True, jd=None):
             warnings.append(f"cannot compose {scan} with {overrides!r}: "
                             f"{type(exc).__name__}: {exc}")
             continue
+        model = rcfg.get("model")
+        if facts and isinstance(model, dict) and model.get("vocab_size") is None:
+            # exactly `run_grid`'s mutation, so `grid.run_hash` sees the model the runs
+            # actually instantiated
+            rcfg = dict(rcfg)
+            rcfg["model"] = grid.inject_dataset_facts(model, **facts)
         try:
             specs = grid.expand_grid(rcfg, verbose=False, has_torchjd=jd)
         except Exception as exc:
@@ -457,7 +504,8 @@ def reconcile_scan(scan, groups, root, *, grid, loader, use_grid=True, use_manif
     # advisory (an unreadable manifest or record) and do not change the verdict.
     fatal, warnings = [], []
 
-    expected, fatal_warn = expected_runs(scan, groups, loader, grid, use_grid=use_grid)
+    expected, fatal_warn = expected_runs(scan, groups, loader, grid, use_grid=use_grid,
+                                         scan_dir=scan_dir)
     fatal += fatal_warn
     state = disk_state(scan_dir)
     manifest, warn = (manifest_run_ids(scan_dir) if use_manifest else (set(), []))

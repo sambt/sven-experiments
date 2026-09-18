@@ -461,3 +461,115 @@ def test_a_broken_override_is_a_warning_not_a_silent_empty_grid(scan):
          "--no-manifest"], capture_output=True, text=True, timeout=300)
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "CANNOT ANSWER" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# The language-model hash (the runner injects the dataset's vocab_size)
+# ---------------------------------------------------------------------------
+
+#: a scan whose model config omits `vocab_size`, exactly as `model/nanogpt.yaml` does:
+#: the dataset owns it and `generic_scan.run_grid` injects it before hashing.
+LM_CONFIG = """
+name: scan
+mode: svd
+device: cpu
+print_config: false
+num_epochs: 2
+batch_size: 4
+result_id_fields: []
+loss: lm_ce
+use_gram: true
+gram_capture: hooks
+k_values: [4]
+lrs: [0.1]
+rtol: [0.001]
+svd_mode: [torch]
+dataset:
+  _target_: experiments.datasets.CharTextDataset
+  block_size: 8
+model:
+  _target_: experiments.nn.NanoGPT
+  n_layer: 1
+  block_size: 8
+loader_seed: 5
+model_seeds: [5]
+"""
+
+LM_SCAN = "tiny_lm_scan"
+
+
+@pytest.fixture
+def lm_scan(tmp_path_factory, grid):
+    """A FINISHED one-run LM scan, whose markers carry the runner's (injected) hash."""
+    base = tmp_path_factory.mktemp("recon_lm")
+    cfg_dir = base / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / f"{LM_SCAN}.yaml").write_text(LM_CONFIG)
+    scan_dir = base / "results" / LM_SCAN
+    for sub in ("done", "started", "claims", "configs"):
+        (scan_dir / sub).mkdir(parents=True)
+
+    with reconcile.ConfigLoader(str(cfg_dir)) as loader:
+        rcfg = loader.compose(LM_SCAN, "")
+    # what the RUNNER hashes: the model config after inject_dataset_facts
+    runner_rcfg = dict(rcfg)
+    runner_rcfg["model"] = grid.inject_dataset_facts(rcfg["model"], vocab_size=65,
+                                                     block_size=8)
+    specs = grid.expand_grid(runner_rcfg, verbose=False)
+    assert len(specs) == 1, specs
+    spec = specs[0]
+    run_hash = grid.hash8(spec, runner_rcfg)
+    assert run_hash != grid.hash8(spec, rcfg), "the injection must change the hash"
+
+    (scan_dir / f"{spec.run_id}.jsonl").write_text(json.dumps(
+        {"run_id": spec.run_id, **spec.record_extra, "status": "ok",
+         "losses": {"train": [0.4, 0.2], "val": [1.0, 0.5, 0.1]}}) + "\n")
+    (scan_dir / "done" / f"{spec.run_id}.{run_hash}.ok").touch()
+    # the post-mutation config the runner saves (generic_scan._save_resolved_config)
+    import yaml
+    (scan_dir / "configs" / "svd.lm_ce.mseed5.yaml").write_text(
+        yaml.safe_dump(runner_rcfg))
+    return {"cfg_dir": str(cfg_dir), "root": str(base / "results"),
+            "scan_dir": scan_dir, "spec": spec, "hash": run_hash}
+
+
+def _run_lm(lm_scan, **kwargs):
+    grid_mod = reconcile.load_grid()
+    with reconcile.ConfigLoader(lm_scan["cfg_dir"]) as loader:
+        return reconcile.reconcile_scan(LM_SCAN, [""], lm_scan["root"], grid=grid_mod,
+                                        loader=loader, quiet=True, use_manifest=False,
+                                        do_best=False, **kwargs)
+
+
+def test_a_finished_language_model_scan_is_not_reported_as_stale_hash(lm_scan):
+    """The nanoGPT `stale-hash` defect: a finished LM scan must reconcile clean.
+
+    `run_grid` injects the dataset's `vocab_size` into `cfg.model` before hashing, so a
+    consumer that composes the config and hashes it unchanged gets a different hash8 for
+    every LM run and reports the whole scan as "work remains" -- for ever, and a chained
+    job renews itself on it for ever. Reading the runner's own saved resolved config is
+    what makes the hash reproducible.
+    """
+    assert reconcile.injected_dataset_facts(str(lm_scan["scan_dir"])) == \
+        {"vocab_size": 65, "block_size": 8}
+    rep = _run_lm(lm_scan)
+    assert rep["totals"]["ok"] == 1
+    assert rep["totals"]["stale_hash"] == 0
+    assert rep["n_missing"] == 0 and rep["ok"] is True
+
+
+def test_without_the_saved_config_nothing_is_guessed(lm_scan):
+    """No saved config = no facts: the run still classifies (as stale-hash), and the
+    injection never fires on a scan whose model never had a vocab_size."""
+    for path in (lm_scan["scan_dir"] / "configs").iterdir():
+        path.unlink()
+    assert reconcile.injected_dataset_facts(str(lm_scan["scan_dir"])) == {}
+    rep = _run_lm(lm_scan)
+    assert rep["totals"]["stale_hash"] == 1 and rep["ok"] is False
+
+
+def test_a_non_language_model_scan_is_untouched_by_the_injection(scan):
+    """The MLP scans' model configs carry no vocab_size, so `{}` and no mutation --
+    injecting one would change every hash in the campaign."""
+    assert reconcile.injected_dataset_facts(str(scan["scan_dir"])) == {}
+    assert _run(scan)["ok"] is True
