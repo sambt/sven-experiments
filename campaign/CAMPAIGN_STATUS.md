@@ -116,3 +116,10 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   as `diverged` (known from legacy, accepted); Shampoo (~35 min/run) and HIG (~22 min/run) are the slow MLP items on MIG.
 * WAITING on results (not launched): standalone timing of best configs, diagnostics + confirmation seeds, polynomial
   data-seed replicates (needs `data_seed` in `result_id_fields` first). Deferred: CIFAR fine-tune (extension phase).
+* Log locations (all under `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/`):
+  job-level pool log `logs/campaign/<jobname>-<jobid>.out`; per-process runner logs
+  `logs/<jobname>.<jobid>/item<NN>_<scan>_gpu<g>_p<k>.log` (+ `hydra/`); work-item files and launch records
+  `work/campaign/<list>.items.txt|.launched.json`; smoke roots `smoke_*`; probe `probe_results/`.
+  Dev-test CPU job logs: repo `slurm_logs/devtests/`.
+* 09-18 20:20 EDT — user will quit and RESUME THIS CONVERSATION in a new 2-day CPU job; then monitor, resubmit the
+  MIG list every 12 h and keep the A100 queue fed. For workflow parallelism ask for >= 8 cores (cap = CPUs-2 per workflow).
