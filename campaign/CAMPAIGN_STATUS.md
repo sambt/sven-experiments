@@ -96,3 +96,23 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   kappa/microbatch/paramfrac; gpu_test allows only 2 jobs), enable Fig-5 at k=64/lr=1/rtol=1e-3, commit, re-deploy,
   `tools/launch_campaign.py campaign/plan_campaign.yaml` dry run, then `--submit` P0 first, then P1, P3.
   Interactive job ends 22:19 EDT: MIG jobs last 12 h and need ONE resubmit tomorrow morning (same command).
+
+## CAMPAIGN LAUNCHED — Fri 2026-09-18 20:05 EDT
+* Gate 1: smoke matrix GREEN, independent audit **GO** (`campaign/stage1_reports/gate1.{smoke,audit}.md`). The smoke run
+  caught a launch-killing bug (`scheduler=claims` rejected by Hydra struct mode -> every runner exited 1), fixed in f29298c.
+* **Production snapshot:** `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61` (sv3 2c6faf59,
+  sven 203a4e61, git_dirty false). ALL campaign jobs must use this snapshot (`--snapshot <path>`); if code or configs
+  change, the launcher refuses to mix snapshots - wait for the queue to drain or cancel first.
+* Results root: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments` (repo symlink `experiment_results`).
+  Pool logs: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs/campaign/`.
+* Jobs (names carry list + snapshot sha): CIFAR Sven x6 47080825-32; CIFAR baselines x2 47080834-35; nanoGPT x2
+  47080839-40; MIG combined list `all_mlp_mig` x2 47080843-44 (12 h, ends Sat ~08:00 EDT -> RESUBMIT the same command
+  until reconcile is clean); MLP A100 overflow P0 x4 47080846-50, P1 x2 47080867/69, P3 x1 47080871; Fig-5 x2 47080858/60.
+* Launch / resubmit command (dry run without `--submit`):
+  `.venv/bin/python tools/launch_campaign.py campaign/plan_campaign.yaml --snapshot <SNAP> --list <name> [--n-jobs N] --submit`
+  Progress: `.venv/bin/python tools/reconcile.py --all campaign/plan_campaign.yaml --no-best` (add `--phase P0`).
+* First-hour watch list (auditor): pool log "results root" = sven_experiments; CIFAR Sven ~190 ms/step (>250 = allocator
+  env lost); `[poisoned]` lines / non-empty `attempts/`; KFAC on MNIST dies deterministically in cusolver eigh -> recorded
+  as `diverged` (known from legacy, accepted); Shampoo (~35 min/run) and HIG (~22 min/run) are the slow MLP items on MIG.
+* WAITING on results (not launched): standalone timing of best configs, diagnostics + confirmation seeds, polynomial
+  data-seed replicates (needs `data_seed` in `result_id_fields` first). Deferred: CIFAR fine-tune (extension phase).
