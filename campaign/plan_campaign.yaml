@@ -217,6 +217,20 @@ work_lists:
   # The gpu_test lane admits only 2 jobs per user, so "queue everything at once, headline first"
   # (user, 2026-09-18) is ONE ordered list for that lane: P0 items, then P1, then P3. Launch it by
   # name (`--list all_mlp_mig`); the per-phase mig lists below stay for targeted resubmits.
+  # 2026-09-19: MNIST HIG costs ~2.25 h per run at NPROC 6 on a MIG slice (SVD of a 640 x 27,562 Jacobian per step),
+  # i.e. ~14 h of the whole MIG lane for the two scans, and it sat in front of the P1 overparam scans (R1 crux).
+  # v2 = everything still open, reordered: P1, then P3, then the two MNIST HIG items last.
+  - name: all_mlp_mig_v2
+    phase: P9
+    lane: mig
+    n_jobs: 2
+    note: "remaining MLP work after the first 12 h: P1 -> P3 -> MNIST HIG last"
+    items:
+      - *items_p1_mlp
+      - *items_p3_mlp
+      - {config: mnist_scan_labelRegression,  overrides: *O_HIG,    nproc: {a100: 4, mig: 4}}
+      - {config: mnist_scan_ce,               overrides: *O_HIG,    nproc: {a100: 4, mig: 4}}
+
   - name: all_mlp_mig
     phase: P9                 # spans P0+P1+P3: select it with `--list all_mlp_mig`, never by phase
     lane: mig

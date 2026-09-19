@@ -123,3 +123,5 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   Dev-test CPU job logs: repo `slurm_logs/devtests/`.
 * 09-18 20:20 EDT — user will quit and RESUME THIS CONVERSATION in a new 2-day CPU job; then monitor, resubmit the
   MIG list every 12 h and keep the A100 queue fed. For workflow parallelism ask for >= 8 cores (cap = CPUs-2 per workflow).
+* 09-19 01:27 EDT check-in: toy_1d_scan 1080/1080 and polynomial_scan 1200/1200 COMPLETE (77 / 154 diverged records, 0 oom/error); MNIST CE 1210/1360, label-reg 1211/1360; CIFAR label-reg Sven 59; 5 A100 + 2 MIG jobs running, 14 pending on the node cap; no alarms.
+* 09-19 03:55 EDT: MNIST HIG (~2.25 h/run at NPROC 6 on MIG) was blocking the MIG lane ahead of P1. Cancelled MIG jobs 47080843/44 (lost ~48 partial HIG runs; stale claims expire after 10 min) and resubmitted list `all_mlp_mig_v2` = P1 -> P3 -> MNIST HIG last (NPROC 4): jobs 47143141/45, end ~15:55 EDT -> resubmit `--list all_mlp_mig_v2` then. Headline status: toy/poly complete; MNIST scans complete except HIG (label-reg 26/150, CE 0/150); CIFAR label-reg Sven ~90/90 soon, CE started.
