@@ -1,8 +1,13 @@
-# GPT-2 small (untied, dropout-0) optimizer comparison — Sven-Gram vs the modern set,
-# all training the identical model (fair head-to-head). Fixed token budget (one pass
-# over train.bin). Report val loss -> perplexity vs steps and wall-time.
-# NOTE: batch_size is a placeholder pending the GPU probe (lm_head=768x50304 is the
-# Gram memory bottleneck); tune before launch.
+# GPT-2 small (untied, dropout-0) optimizer comparison -- Sven-Gram vs the modern set,
+# all training the identical model (fair head-to-head) for one pass over the v2 token
+# stream: 210,000 blocks x 1024 tokens = ~215M tokens = 13,125 steps at B=16. Report
+# val/test loss -> perplexity vs steps AND wall-time.
+#
+# Re-admitted to the campaign by the user on 2026-09-19 (the 2026-09-18 scope update had
+# CUT it) and brought to Stage-1 standard here: the v2 dataset with a test split (F4 --
+# the v1 bins had val as a prefix of train), step-based evaluation (C-E4 -- a single
+# epoch would otherwise give a two-point val curve), and the C-B5 Muon grouping. Launched
+# by `campaign/plan_gpt2.yaml`, NOT by plan_campaign.yaml.
 defaults:
   - dataset: fineweb_edu
   - model: gpt2_small
@@ -14,19 +19,45 @@ device: cuda
 print_config: true
 
 num_epochs: 1                 # one pass over train.bin = the token budget
-batch_size: 16                # <-- set from the probe
+batch_size: 16                # the Gram bottleneck is lm_head = 768 x 50304; ~33 GB
 loss: lm_ce
 
 use_gram: true
 gram_capture: hooks           # untied + dropout-0 keeps the fast path
 
+# C-E1/C-E3: one sample is 1024 tokens and the logits of one eval batch are
+# B x 1024 x 50304 floats (206 MB per block), so the 2048 default is impossible here.
+# 16 blocks = 16,384 tokens per eval batch, i.e. the training batch's token count, which
+# is the largest shape already proven to fit next to the Sven state.
+eval_batch_size: 16
+# the fixed train subset for the train_eval pass. 200 blocks matches val/test
+# (fineweb_edu.yaml: 200 each), so one evaluation is 3 x 13 = 39 forward batches.
+train_eval_size: 200
+# C-E4: 13,125 steps in ONE epoch, so epoch-end evaluation alone gives a two-point
+# curve. 500 steps = 26 mid-epoch points on val AND test; the whole evaluation costs a
+# few seconds (39 forward batches) against ~500 x 0.3-2.6 s of training between points.
+eval_every_steps: 500
+
+# `checkpoints` stays at the `final` default: one state is 163M params = 652 MB, so the
+# 27 runs of this scan are ~18 GB of ckpt/ and a `log` ladder is out of the question.
+
 k_fractions: [1.0]            # k = B (full Gram rank, soft-truncated by rtol)
 lrs: [0.1, 0.5, 1.0]
 rtol: [1e-3]
-svd_mode: [torch]
+svd_mode: [torch]             # irrelevant under Gram
 
-optimizers_standard: [AdamW, Muon, MuonW, SOAP]     # Sophia = follow-up (needs Hessian-update integration)
-lrs_standard: [3e-4, 1e-3, 3e-3, 1e-2]       # spans AdamW..Muon/SOAP ranges; bad ones diverge (caught)
+# Muon/MuonW go through the C-B5 grouping: both nn.Embeddings (tok_emb, pos_emb) and the
+# last projection (lm_head) are AdamW's, so Muon sees only the 48 hidden 2-D matrices --
+# which is what makes ONE shared lr meaningful here (the legacy `all2d+adamw:original`
+# construction orthogonalised the 50304 x 768 head at ~8x its lr). Sophia stays out (it
+# needs Hessian-update integration); no SGD, hence no SGDm; no `weight_decays` list, so
+# AdamW runs at 0.01, MuonW at 0.1 and Muon at 0.
+optimizers_standard: [AdamW, Muon, MuonW, SOAP]
+# C-B3 + optim.fix.md (c): `adjust_lr_fn=match_rms_adamw` scales Muon's effective step by
+# 0.2*sqrt(max(A,B)) = 5.5x (768 x 768) to 11.1x (3072 x 768) on this model, so the grid
+# has to reach well below the 3e-4 that the legacy list started at; SOAP's optimum on the
+# nanoGPT LM was the old 1e-4 bottom edge. Same six points as exp_nanogpt_speedrun.
+lrs_standard: [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3]
 
 loader_seed: 6000
-model_seeds: [6000]           # single seed (keep the job count bounded)
+model_seeds: [6000]           # one seed: a Sven run is ~9.3 h of A100 on its own

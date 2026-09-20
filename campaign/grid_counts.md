@@ -5,11 +5,17 @@ Run counts per in-scope scan, **generated from the configs** by `expand_grid`, n
 fails if a config edit moves a number without moving this file — so the launcher and the
 cost plan can read it as ground truth.
 
-Scope is `campaign/CONTRACTS.md` "Scope update": eight configs are CUT and are deliberately
+Scope is `campaign/CONTRACTS.md` "Scope update": seven configs are CUT and are deliberately
 left at their pre-campaign state (`exp_critbatch_mnist`, `exp_critbatch_nanogpt`,
-`exp_gpt2_small_comparison`, the four one-seed `cifar10_resnet_{kappa,paramFrac}*`, and
-`mnist_scan_brier`); `mnist_microbatch_scan` and `rebuttal_mnist_batchk_probe` are stale and
-in no launcher; `profile_*.yaml` is out of scope.
+the four one-seed `cifar10_resnet_{kappa,paramFrac}*`, and `mnist_scan_brier`);
+`mnist_microbatch_scan` and `rebuttal_mnist_batchk_probe` are stale and in no launcher;
+`profile_*.yaml` is out of scope.
+
+`exp_gpt2_small_comparison` was the eighth CUT config until **2026-09-19**, when the user
+re-admitted it. It is now in scope and in the launch plan — but in a plan file of its own,
+`campaign/plan_gpt2.yaml` (a100 lane, NPROC 1, one GPU per job), because its runs are an
+order of magnitude longer than anything in `plan_campaign.yaml` and it must be launchable
+without touching the campaign plan while the extension round is in flight.
 
 "In scope" and "in the launch plan" are **not** the same set any more:
 `exp_finetune_cifar_smallN` was moved to the extension phase by the user on 2026-09-18
@@ -39,6 +45,7 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 | `rebuttal_overparam_mnist_scan` | P1 | 360 | 2400 | 810 | 30 | - | - | **3600** | 20 |
 | `rebuttal_overparam_polynomial_scan` | P1 | 1800 | 1600 | 900 | 20 | - | - | **4320** | 0.9 |
 | `rebuttal_overparam_toy_1d_scan` | P1 | 720 | 1600 | 900 | 20 | - | - | **3240** | 0.5 |
+| `exp_gpt2_small_comparison` | P1 | 3 | 24 | - | - | - | - | **27** | 125 |
 | `mnist_kappaScan_labelRegression` | P3 | 210 | - | - | - | - | - | **210** | 2.2 |
 | `mnist_microbatch_ce_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
 | `mnist_microbatch_labelreg_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
@@ -50,10 +57,12 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 | `toy_1d_paramfrac_scan` | P3 | 100 | - | - | - | - | - | **100** | 0.3 |
 | `exp_finetune_cifar_smallN` | P3-parked | 48 | 360 | - | - | - | - | **408** | 1.4 |
 
-* In the launch plan: **23215** runs across 21 scans, GPU-h floor ~237 (see the caveats
-  below — the number to reserve against is 1,100–1,500).
+* In the launch plan: **23242** runs across 22 scans, GPU-h floor ~362 (see the caveats
+  below — the number to reserve against is 1,100–1,500). 23,215 of those runs and ~237
+  GPU-h are `plan_campaign.yaml`; the other 27 runs and ~125 GPU-h are the GPT-2 scan in
+  `plan_gpt2.yaml`, which is a third of the floor in 0.1% of the runs.
 * Parked (extension phase, `exp_finetune_cifar_smallN`): **408** runs, floor 1.4 GPU-h.
-* Described by the in-scope configs in total: **23623** runs across 22 scans.
+* Described by the in-scope configs in total: **23650** runs across 23 scans.
 
 Cell conventions:
 
@@ -104,7 +113,12 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
   plus SOAP 1.4x, Shampoo 3.2x, KFAC 3.8x), `lbfgs` 3.0 (max_iter 1/2/3), `jd` 1.8, `hig` 4.1,
   `polyak` 1.05.
 * `steps_per_run` uses the **post-C-E1** split sizes (`data.impl.md`): MNIST 782 steps/epoch
-  at B=64, CIFAR 352 at B=128, shakespeare 108 at B=64.
+  at B=64, CIFAR 352 at B=128, shakespeare 108 at B=64. GPT-2-small is **13,125 steps in a
+  single epoch** (210,000 blocks of 1024 tokens at B=16), which is why 27 runs cost a third
+  of the whole floor: `ms_per_step` there is ~2,550 for Sven (the ~9.3 h/run recorded in
+  `experiments/configs/dataset/fineweb_edu.yaml`) and ~1,100 for a first-order baseline, at
+  T = 1.0 (NPROC 1, one GPU per job). **Estimate, not a probe** — re-derive it from the
+  2026-09-19 GPU smoke of this scan before reserving against it.
 * the nine rows the C-B3 extension round moved were **re-derived, not re-measured**: the
   per-run unit cost of a scan's first-order family is solved from its Stage-1 floor and
   its Stage-1 counts (so the old number is reproduced exactly), Sven's unit is that times
@@ -178,6 +192,10 @@ scan gets one point below its bottom edge rather than two.
 | | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (0.1303) | +60 |
 | | svd | `rtol` | 1e-5 | Sven `rtol:EDGE-LOW` at 1e-4 (0.1040) | +120 |
 | **in-plan total** | | | | | **15735 -> 23215 (+7480)** |
+
+(`plan_campaign.yaml` only. The 27 runs of `exp_gpt2_small_comparison`, re-admitted on
+2026-09-19 and launched from `plan_gpt2.yaml`, are not part of this round and are not in
+the 23,215; the per-scan table and the totals above include them.)
 
 Notes on the judgement calls:
 
@@ -298,10 +316,11 @@ ResNet scans keep `final`:
 | ... the two 200-epoch full-batch overparam scans | `log` | ~209 | ~563 KB | 7,560 | ~4.3 GB |
 | MNIST MLP (27,562 params) | `final` + `checkpoints_svd: log` | ~34 (svd only) | ~3.7 MB | 2,490 svd | ~9.2 GB |
 | nanoGPT (826,368 params) | `epochs` | 50 | ~165 MB | 140 | ~23 GB |
+| GPT-2 small (163.0M params) | `final` | 1 | ~652 MB | 27 | ~18 GB |
 | ResNet18 (11.18M params) | `final` | 1 | ~45 MB | 1,763 | ~79 GB |
 
-About **116 GB** for everything the configs describe, of which the parked fine-tune scan is
-408 ResNet states ~18 GB — so **~98 GB in the launch plan** — plus one
+About **134 GB** for everything the configs describe, of which the parked fine-tune scan is
+408 ResNet states ~18 GB — so **~116 GB in the launch plan** — plus one
 `ckpt/init_mseed{seed}.pt` per model seed under `final`. The nanoGPT and ResNet rows are the
 ones to check against the quota before launch; the MNIST baselines and both CIFAR scans
 deliberately keep `final` because `log` holds every state in RAM until flush
@@ -345,3 +364,10 @@ deliberately keep `final` because `log` holds every state in RAM until flush
    config would claim them. See the `(N)` note under the table. Either enable
    `p3_cifar_jd_hig` and budget ~100 GPU-h, or decide the JD/HIG comparison stays on the four
    MLP scans, in which case the three keys can be deleted from both CIFAR configs.
+5. **GPT-2-small is one seed and one grid-extension round short.** Re-admitted 2026-09-19
+   and budgeted at 27 runs / ~125 GPU-h, which is already a third of the floor, so a
+   second seed or a wider `lrs_standard` costs more than every P3 ablation put together.
+   Two consequences the orchestrator should plan for: (a) nothing here can be seed-averaged,
+   so a tie between Sven and a baseline is unresolvable without doubling the scan; (b) if
+   the reconcile comes back with an lr edge, one half-decade for one optimizer is ~4 GPU-h
+   and for all four is ~16. Its floor is an estimate, not a probe — see the cost section.

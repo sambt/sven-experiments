@@ -1,0 +1,64 @@
+# GPT-2-small (124M + untied 38.6M head), as work the launcher can submit.
+#
+#   tools/launch_campaign.py campaign/plan_gpt2.yaml --phase P1            # print
+#   tools/launch_campaign.py campaign/plan_gpt2.yaml --phase P1 --submit
+#   tools/reconcile.py --all campaign/plan_gpt2.yaml --phase P1
+#
+# WHY ITS OWN PLAN FILE. `exp_gpt2_small_comparison` was CUT on 2026-09-18 and re-admitted
+# by the user on 2026-09-19, while the C-B3 extension round is still running from the
+# snapshot in `campaign/CURRENT_SNAPSHOT`. Adding items to `plan_campaign.yaml` would mean
+# editing a file whose lists are live; a separate plan touches nothing. The two plans are
+# safe to run side by side from DIFFERENT snapshots because the C-R3 hash ping-pong is
+# per-scan and the launcher's guard is per-work-list: no list name and no scan directory
+# is shared, so neither lane can retire the other's results to `_stale/`.
+#
+# WHAT IT COSTS. One run is ONE epoch = 210,000 blocks / B=16 = **13,125 optimizer steps**
+# over ~215M tokens: ~9.3 h for a Sven run and ~4 h for a first-order baseline (see
+# campaign/grid_counts.md "Cost"). That is ~125 GPU-h for 27 runs -- a third of the whole
+# campaign floor -- so `n_jobs` below is sized so that no job ever starts a run it cannot
+# finish before its wall clock, which is the only way to waste time here.
+#
+# `campaign/grid_counts.md` is the ground truth for the run counts (svd 3 + standard 24 =
+# 27); `tests/test_tools_launch.py` asserts that this plan's enabled items cover exactly
+# those numbers, family by family.
+version: 1
+plan: gpt2
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
+
+lanes:
+  # Full A100-80GB, one GPU per job. NPROC is 1 for EVERY item: the Sven runs hold ~33 GB
+  # (the Gram bottleneck is lm_head = 768 x 50304) and a first-order run at B=16 already
+  # carries B x 1024 x 50304 logits (3.3 GB) plus SOAP's preconditioner state, so nothing
+  # here shares a device. The MIG lane is not offered at all -- 19.6 GB does not hold one
+  # run of this model.
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    mem: 96G
+    time: "24:00:00"
+    cpus_extra: 3          # cpus-per-task = 1 + 3; the token bins are memmapped
+    note: "one GPU per job, NPROC 1; 24 h holds two Sven runs or five baselines"
+
+work_lists:
+  # 3 runs, 3 jobs: at ~9.3 h a run this is exactly one run per job, so no job reaches the
+  # point of claiming a second one and being killed at the wall with 9 h of work lost.
+  # (A killed run is retried, but three `error` attempts under one hash mark it `poisoned`.)
+  - name: p1_gpt2_sven
+    phase: P1
+    lane: a100
+    n_jobs: 3
+    note: "Sven-Gram at k = B = 16, lr 0.1/0.5/1.0, rtol 1e-3; hooks capture (untied + dropout 0)"
+    items:
+      - {config: exp_gpt2_small_comparison, overrides: "mode=svd", nproc: 1}
+
+  # 24 runs, 5 jobs: ~5 runs of ~4 h each per job, i.e. ~20 h of a 24 h wall. AdamW/Muon/
+  # MuonW/SOAP at six lrs; Muon and MuonW go through the C-B5 grouping (both embeddings and
+  # lm_head to AdamW), which is what makes one shared lr meaningful on this model.
+  - name: p1_gpt2_baselines
+    phase: P1
+    lane: a100
+    n_jobs: 5
+    note: "AdamW / Muon / MuonW / SOAP, lrs 1e-5..3e-3; SOAP is the memory risk (3072-dim preconditioners)"
+    items:
+      - {config: exp_gpt2_small_comparison,
+         overrides: "mode=standard optimizers_standard=[AdamW,Muon,MuonW,SOAP]", nproc: 1}

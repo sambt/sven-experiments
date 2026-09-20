@@ -22,6 +22,12 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(REPO, "tools")
 PLAN_FILE = os.path.join(REPO, "campaign", "plan_campaign.yaml")
+#: Every plan file that launches campaign work. `plan_gpt2.yaml` is separate on purpose
+#: (grid_counts.md "Scope"): GPT-2-small was re-admitted on 2026-09-19 while the
+#: extension round was live from another snapshot, and its runs are ~4-9 h each, so it
+#: gets its own lists and its own `n_jobs`. The coverage and grid_counts tests below
+#: must see the UNION, or a scan launched by the second plan would look unlaunched.
+PLAN_FILES = (PLAN_FILE, os.path.join(REPO, "campaign", "plan_gpt2.yaml"))
 
 
 def _load(name):
@@ -222,6 +228,31 @@ def test_nproc_follows_the_probe_table():
             assert "cifar" not in item.config and "nanogpt" not in item.config
 
 
+def test_the_gpt2_plan_gives_every_run_a_whole_a100():
+    """`campaign/plan_gpt2.yaml` (GPT-2-small, re-admitted 2026-09-19).
+
+    Three properties, each of which would cost GPU-days if it broke: nothing shares a
+    device (a Sven run holds ~33 GB and a baseline already carries 3.3 GB of logits, so
+    the NPROC-per-GPU packing every other scan uses is wrong here); the MIG lane is not
+    offered at all (19.6 GB per slice); and the Sven list has one job per Sven run, so no
+    job can start a ~9.3 h run it will be killed in the middle of.
+    """
+    plan = campaign_plan.load_plan(os.path.join(REPO, "campaign", "plan_gpt2.yaml"))
+    assert set(plan.lanes) == {"a100"}
+    assert plan.lanes["a100"].gres == "gpu:1" and plan.lanes["a100"].time == "24:00:00"
+    assert plan.results_root and plan.results_root.endswith("sven_experiments")
+    by_list = {wl.name: wl for wl in plan.work_lists}
+    assert set(by_list) == {"p1_gpt2_sven", "p1_gpt2_baselines"}
+    for wl in plan.work_lists:
+        assert wl.lane == "a100" and wl.phase == "P1" and not wl.chain
+        for item in wl.items:
+            assert item.config == "exp_gpt2_small_comparison", item.config
+            assert item.nproc == 1, (wl.name, item.nproc)
+    # one job per Sven run; the baselines are ~4 h each and pack ~5 to a 24 h job
+    assert by_list["p1_gpt2_sven"].n_jobs == 3
+    assert by_list["p1_gpt2_baselines"].n_jobs == 5
+
+
 def _grid_counts_table():
     """The per-scan totals of `campaign/grid_counts.md` (the orchestrator's ground truth,
     itself generated from the configs and pinned by tests/test_configs.py)."""
@@ -313,6 +344,24 @@ def _plan_and_full_grids(plan):
     return launched, described
 
 
+def _all_plans_and_full_grids():
+    """`_plan_and_full_grids` over every plan file, merged per scan.
+
+    No scan appears in two plans today, but merging rather than asserting that keeps the
+    helper correct if one ever does (two plans launching different families of one scan
+    is exactly how the GPT-2 split could have been written).
+    """
+    launched, described, plans = {}, {}, []
+    for path in PLAN_FILES:
+        plan = campaign_plan.load_plan(path)
+        plans.append(plan)
+        one_launched, one_described = _plan_and_full_grids(plan)
+        for dst, src in ((launched, one_launched), (described, one_described)):
+            for scan, runs in src.items():
+                dst.setdefault(scan, set()).update(runs)
+    return launched, described, plans
+
+
 def test_the_plan_covers_every_run_its_own_configs_describe():
     """The whole point of the plan: no in-scope run is left unlaunched.
 
@@ -321,8 +370,7 @@ def test_the_plan_covers_every_run_its_own_configs_describe():
     plan does not name -- it found SOAP missing from the CIFAR baselines when it was
     first written) and not when another track's bookkeeping is behind.
     """
-    plan = campaign_plan.load_plan(PLAN_FILE)
-    launched, described = _plan_and_full_grids(plan)
+    launched, described, _plans = _all_plans_and_full_grids()
 
     missing = {}
     for scan, full in described.items():
@@ -352,9 +400,8 @@ def test_grid_counts_md_is_in_sync_with_the_plan():
     plan) against the plan's own totals. A failure here means grid_counts.md is STALE --
     the coverage property is asserted intrinsically by the test above, so this one never
     means "the plan lost runs"."""
-    plan = campaign_plan.load_plan(PLAN_FILE)
     table = _grid_counts_table()
-    launched, _described = _plan_and_full_grids(plan)
+    launched, _described, plans = _all_plans_and_full_grids()
     per_scan = {scan: len(runs) for scan, runs in launched.items()}
 
     mismatched = {s: (n, table[s]) for s, n in per_scan.items()
@@ -366,7 +413,8 @@ def test_grid_counts_md_is_in_sync_with_the_plan():
     # every scan the plan launches is one grid_counts knows about ...
     assert not set(per_scan) - set(table)
     # ... and the only in-scope scans the plan does NOT launch are the parked ones
-    parked = {it.scan for wl in plan.work_lists for it in wl.disabled_items()}
+    parked = {it.scan for plan in plans for wl in plan.work_lists
+              for it in wl.disabled_items()}
     assert set(table) - set(per_scan) <= parked | {"exp_finetune_cifar_smallN"}
 
 

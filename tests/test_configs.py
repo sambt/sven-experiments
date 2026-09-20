@@ -77,8 +77,10 @@ def load_rcfg(name, *overrides):
 
 #: CUT from the campaign. These configs are deliberately left at their
 #: pre-campaign state, so no rule below may be asserted about them.
+#: (`exp_gpt2_small_comparison` was in this set until 2026-09-19, when the user
+#: re-admitted it; it is now an in-plan P1 scan launched by campaign/plan_gpt2.yaml.)
 CUT = frozenset({
-    "exp_critbatch_mnist", "exp_critbatch_nanogpt", "exp_gpt2_small_comparison",
+    "exp_critbatch_mnist", "exp_critbatch_nanogpt",
     "cifar10_resnet_kappaScan_labelReg", "cifar10_resnet_ce_kappaScan",
     "cifar10_resnet_paramFrac_scan_labelReg", "cifar10_resnet_ce_paramFrac_scan",
     "mnist_scan_brier",
@@ -117,6 +119,9 @@ IN_SCOPE = {
         2500, 5000, 10000, 20000, 40000, 50000)]),
     "rebuttal_fig5_cifar_paramfrac_scan": ("svd", [()]),
     "rebuttal_batchsize_polynomial_scan": ("both", [()]),
+    # P1, re-admitted by the user on 2026-09-19; launched by campaign/plan_gpt2.yaml
+    # (its own plan file, its own lane) rather than by plan_campaign.yaml.
+    "exp_gpt2_small_comparison": ("both", [()]),
     # P2: standalone timing companions (thin aliases; same grid, own results dir)
     "toy_1d_scan_timing": ("all", [()]),
     "polynomial_scan_timing": ("all", [()]),
@@ -344,6 +349,8 @@ EXPECTED_CHECKPOINTS = {
     "mnist_kappaScan_labelRegression": ("final", "log"),
     "rebuttal_overparam_mnist_scan": ("final", "log"),
     "exp_nanogpt_speedrun": ("epochs", None),
+    # one 163M-param state is 652 MB, so this scan keeps `final` for every family
+    "exp_gpt2_small_comparison": ("final", None),
     "cifar10_resnet_scan_labelRegression": ("final", None),
     "cifar10_resnet_ce_scan": ("final", None),
     "rebuttal_fig5_cifar_paramfrac_scan": ("final", None),
@@ -435,6 +442,10 @@ MUST_CONTAIN = [
     ("cifar10_resnet_scan_labelRegression", "lrs_lbfgs", [2.0]),
     # SOAP on the old bottom edge on nanoGPT; Muon needs headroom below 3e-4
     ("exp_nanogpt_speedrun", "lrs_standard", [1e-5, 3e-5]),
+    # GPT-2-small: the legacy list started at 3e-4 and topped out at 1e-2, which under
+    # match_rms_adamw (5.5x on the 768x768 matrices, 11.1x on the 3072x768 ones) is a
+    # grid that cannot hold Muon's optimum. It gets the nanoGPT list.
+    ("exp_gpt2_small_comparison", "lrs_standard", [1e-5, 3e-5]),
     # Sven at k=B with the smallest rtol on polynomial
     ("polynomial_scan", "rtol", [1e-5]),
     # Sven at the smallest lr on CIFAR-CE
@@ -551,8 +562,11 @@ def test_muon_lr_grids_reach_below_the_legacy_optimum():
         # two half-decade points below `optimum` ~ a factor 10
         assert min(lrs) <= optimum / 10 * (1 + 1e-9), (
             f"{scan}: lrs_standard bottoms out at {min(lrs)}, needs <= {optimum / 10}")
-    # CIFAR: Muon has never run there at all, so the requirement is the grid edge
-    for scan in ("cifar10_resnet_scan_labelRegression", "cifar10_resnet_ce_scan"):
+    # CIFAR and GPT-2-small: Muon has never run there at all (the GPT-2 scan was
+    # cancelled in flight on 2026-09-18 and has no records), so the requirement is the
+    # grid edge rather than a measured optimum.
+    for scan in ("cifar10_resnet_scan_labelRegression", "cifar10_resnet_ce_scan",
+                 "exp_gpt2_small_comparison"):
         lrs = [float(v) for v in grid.listify(load_rcfg(scan)["lrs_standard"])]
         assert min(lrs) <= 1e-5 * (1 + 1e-9), sorted(lrs)
 
@@ -675,8 +689,56 @@ def test_overparam_mnist_header_documents_the_50000_cap():
         "n_data=20000", "n_data=40000", "n_data=50000"]
 
 
+def test_gpt2_small_is_a_single_epoch_scan_with_step_based_evaluation():
+    """C-E4 is what makes this scan readable at all: its token budget is ONE pass over
+    train.bin, so the epoch-end curves have two points (untrained + final) and every
+    "loss vs steps" figure would come from `val_step` / `test_step`.
+
+    Also pins the three facts a reader of the yaml cannot check locally: the budget
+    really is 13,125 optimizer steps (210,000 blocks / B=16), one evaluation is a few
+    dozen forward batches rather than a second pass over the corpus, and the dataset
+    carries the v2 val AND test splits (F4: the v1 bins had val as a prefix of train).
+    """
+    rcfg = load_rcfg("exp_gpt2_small_comparison")
+    st = grid.resolve_scan_settings(rcfg)
+    assert rcfg["num_epochs"] == 1 and rcfg["batch_size"] == 16
+    steps = rcfg["dataset"]["n_train_blocks"] // rcfg["batch_size"]
+    assert steps == 13_125, steps
+    # ~26 mid-epoch points: enough to draw a curve, few enough to stay a rounding error
+    assert st["eval_every_steps"] == 500
+    assert 20 <= steps // st["eval_every_steps"] <= 40
+
+    # an evaluation is val + test + train_eval; all three must be small, because a
+    # step-based schedule pays for them 26 times per run (_record_evals has no
+    # per-split schedule)
+    ebs = st["eval_batch_size"]
+    blocks = (rcfg["dataset"]["val_blocks"], rcfg["dataset"]["test_blocks"],
+              st["train_eval_size"])
+    assert all(b > 0 for b in blocks), blocks
+    assert sum(-(-b // ebs) for b in blocks) <= 64, blocks      # forward batches
+    # the eval batch may not exceed the training batch's token count: B x 1024 x 50304
+    # logits is 206 MB per block and the Sven state already holds ~33 GB
+    assert ebs <= rcfg["batch_size"], ebs
+
+    # the v2 token directory, with a test split (tools/check_token_split.py passes on it)
+    assert rcfg["dataset"]["ROOT"].endswith("fineweb_edu_gpt2_v2")
+    assert rcfg["dataset"]["block_size"] == rcfg["model"]["block_size"] == 1024
+
+    # the Sven set point is the legacy one (k = B, full Gram rank, soft-cut by rtol)
+    assert grid.listify(rcfg["k_fractions"]) == [1.0]
+    assert [float(v) for v in grid.listify(rcfg["lrs"])] == [0.1, 0.5, 1.0]
+    assert rcfg["gram_capture"] == "hooks"          # untied + dropout 0
+    assert not rcfg["model"]["tie_weights"]
+    # one seed, and no SGD -> the C-B2 SGDm requirement does not apply
+    assert grid.listify(rcfg["model_seeds"]) == [6000]
+    assert "SGD" not in standard_optimizers("exp_gpt2_small_comparison")
+    counts = Counter(s.family for s in specs_for("exp_gpt2_small_comparison"))
+    assert counts == {"svd": 3, "standard": 24}, counts
+
+
 def test_cut_scans_are_untouched_and_stale_ones_stay_out():
-    """The scope update cuts eight configs; they keep their pre-campaign grids so that
+    """The scope update cuts seven configs (eight until GPT-2-small was re-admitted on
+    2026-09-19); they keep their pre-campaign grids so that
     reviving one is a config decision, not an archaeology exercise. `mnist_scan_brier`
     in particular is a second full MNIST headline grid."""
     for scan in CUT | STALE:
