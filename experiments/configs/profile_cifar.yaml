@@ -13,7 +13,9 @@ profile:
   max_seconds: 120       # ... but stop early once this much measured time has elapsed
   max_warmup_seconds: 120
   staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
-  output_dir: profile_results_v2
+  # v2 (2026-09-17) is frozen as the before-table of the `empty_cache` fix; this run
+  # writes v3. $SV3_PROFILE_ROOT overrides this (optimizer_profile.output_root).
+  output_dir: profile_results_v3
 base: {batch_size: 128, k_fraction: 1.0, lr: 0.1, rtol: 1e-3}   # k = number of rows; lr/rtol do not affect cost
 # ResNet18 with batch-statistics BatchNorm (gram_freeze_norm_stats: false, inherited): hooks
 # capture is impossible here, so Sven is profiled as gram_full / gram_chunked / classic.

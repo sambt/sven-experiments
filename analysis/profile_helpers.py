@@ -1,9 +1,18 @@
 """Loading + plotting for the optimizer memory / step-time profile.
 
 Input: the per-configuration JSON files written by ``experiments/optimizer_profile.py``
-under ``profile_results_v2/<config>/``.  :func:`load_profiles` flattens them into ONE tidy
+under ``<results root>/<config>/``.  :func:`load_profiles` flattens them into ONE tidy
 DataFrame (a row per configuration); every plot function here takes that frame, so the
 notebooks are thin drivers.
+
+Which results root (:func:`results_root`)
+    ``$SV3_PROFILE_ROOT``, else :data:`ROOT_V3` once it has results, else :data:`ROOT_V2`.
+    v2 (2026-09-17) was measured with Sven's per-step ``torch.cuda.empty_cache()``, which
+    made full-capture Sven up to 4.5x slower on CIFAR (841 vs 187 ms/step), without
+    ``expandable_segments``, and with the Gram wrapper freezing the BatchNorm statistics
+    that the CIFAR scans keep updating.  v3 re-measures all three correctly; v2 stays as
+    the before-table and is never written to.  :func:`compare_profiles` joins the two on
+    ``run_id`` so the change is reported rather than quietly applied.
 
 Conventions
     step_ms      AMORTISED mean step time: the plain mean over the last 80% of the measured
@@ -25,6 +34,7 @@ Conventions
 from __future__ import annotations
 
 import json
+import os
 import pickle
 from pathlib import Path
 
@@ -34,7 +44,13 @@ import pandas as pd
 
 from style import METHOD_COLORS, method_color
 
-RESULTS_ROOT = '../profile_results_v2'
+#: repo root, so a root resolves the same from a notebook (cwd = analysis/) and a test
+_REPO = Path(__file__).resolve().parent.parent
+#: 2026-09-17, measured with the per-step `empty_cache()`: FROZEN as the before-table.
+ROOT_V2 = _REPO / 'profile_results_v2'
+#: the re-measurement (ANALYSIS_PLAN.md section 7.4): `empty_cache` off,
+#: expandable_segments on, the scans' own `bn_mode`.
+ROOT_V3 = _REPO / 'profile_results_v3'
 MB = 1e6
 
 SVEN = ['gram_hooks', 'gram_full', 'gram_chunked', 'classic']
@@ -153,9 +169,37 @@ def _row(r: dict) -> dict:
 _CACHE_VERSION = 2
 
 
-def load_profiles(root=RESULTS_ROOT, configs=None, use_cache=True) -> pd.DataFrame:
-    """Every profile JSON under ``root`` as one tidy frame (cached on the file listing)."""
+def has_profiles(root) -> bool:
+    """Whether ``root`` holds at least one profile JSON (an empty or absent root is not
+    a results root -- the v3 directory exists as soon as a job starts writing)."""
     root = Path(root)
+    return root.is_dir() and any(root.glob('*/*.json'))
+
+
+def results_root(prefer=None, verbose=True):
+    """The profile results root to read: ``$SV3_PROFILE_ROOT`` > ``prefer`` > v3 > v2.
+
+    v3 wins over v2 the moment it has results, so the notebooks switch over on their own
+    once the re-profile job has written something -- and keep working before that. Pass
+    ``prefer=ph.ROOT_V2`` in a cell that must stay on the old numbers.
+    """
+    env = os.environ.get('SV3_PROFILE_ROOT')
+    for cand, why in ((env, '$SV3_PROFILE_ROOT'), (prefer, 'requested'),
+                      (ROOT_V3, 'v3'), (ROOT_V2, 'v2')):
+        if cand and has_profiles(cand):
+            if verbose:
+                print(f'profile results: {Path(cand)}  ({why})')
+            return Path(cand)
+    # nothing has results yet: name v3 anyway, so the error says what is missing
+    return Path(env or prefer or ROOT_V3)
+
+
+def load_profiles(root=None, configs=None, use_cache=True) -> pd.DataFrame:
+    """Every profile JSON under ``root`` as one tidy frame (cached on the file listing).
+
+    ``root=None`` asks :func:`results_root`.
+    """
+    root = results_root() if root is None else Path(root)
     files = sorted(f for f in root.glob('*/*.json') if configs is None or f.parent.name in configs)
     sig = (_CACHE_VERSION, len(files), max((f.stat().st_mtime_ns for f in files), default=0),
            tuple(configs or ()))
@@ -173,9 +217,64 @@ def load_profiles(root=RESULTS_ROOT, configs=None, use_cache=True) -> pd.DataFra
         rows.append(_row(r))
     df = add_relative(pd.DataFrame(rows)) if rows else pd.DataFrame()
     if use_cache and rows:
-        cache.write_bytes(pickle.dumps({'sig': sig, 'df': df}))
+        try:
+            cache.write_bytes(pickle.dumps({'sig': sig, 'df': df}))
+        except OSError as exc:      # a frozen / read-only root is fine: reparse next time
+            print(f'({cache} not written: {exc})')
     print(f'{len(df)} configurations from {root}/ ({df["status"].value_counts().to_dict() if len(df) else {}})')
     return df
+
+
+#: Columns :func:`compare_profiles` reports side by side, with the suffix each root gets.
+COMPARE_VALUES = ('step_ms', 'capture_ms', 'solve_ms', 'peak_mb', 'rel_time')
+
+
+def compare_profiles(old=ROOT_V2, new=None, values=COMPARE_VALUES, use_cache=True):
+    """v2-vs-v3: one row per configuration present in EITHER root, joined on ``run_id``.
+
+    Why this is a report and not a silent swap: v2 measured Sven with the per-step
+    ``empty_cache()`` (up to 4.5x slower for full capture on CIFAR), without
+    ``expandable_segments``, and with frozen BatchNorm statistics where the scans use batch
+    statistics. Every number that moves is therefore expected to move DOWN for the Sven
+    variants and to stay put for the baselines -- and a baseline that moved by more than
+    the noise is a sign that the two passes ran on different hardware or a busy node, which
+    is what ``gpu_old`` / ``gpu_new`` and the ``[calib]`` lines in the job logs are for.
+
+    Returns an empty frame (no exception) while ``new`` has no results yet, so a notebook
+    cell written today runs today and reports as soon as the re-profile lands.
+    ``<value>_ratio`` is new / old.
+    """
+    new = ROOT_V3 if new is None else new
+    if not has_profiles(old) or not has_profiles(new):
+        print(f'v2-vs-v3 comparison: nothing to compare yet '
+              f'(old={"ok" if has_profiles(old) else "missing"} {Path(old).name}, '
+              f'new={"ok" if has_profiles(new) else "missing"} {Path(new).name})')
+        return pd.DataFrame()
+    keys = ['arch', 'config_name', 'study', 'method', 'run_id']
+    cols = keys + [v for v in values] + ['status', 'gpu', 'n_steps']
+    a = load_profiles(old, use_cache=use_cache)[cols]
+    b = load_profiles(new, use_cache=use_cache)[cols]
+    out = a.merge(b, on=keys, how='outer', suffixes=('_old', '_new'))
+    for v in values:
+        out[f'{v}_ratio'] = out[f'{v}_new'] / out[f'{v}_old']
+    return out.sort_values(keys).reset_index(drop=True)
+
+
+def compare_table(cmp: pd.DataFrame, study='methods', value='step_ms', n=None):
+    """The readable form of :func:`compare_profiles`: old, new and the ratio of one value,
+    biggest change first, for one study (default the per-architecture set points)."""
+    if cmp.empty:
+        return cmp
+    d = cmp[cmp.study == study].copy() if study else cmp.copy()
+    d['Method'] = d.method.map(label)
+    out = pd.DataFrame({
+        'arch': d.arch, 'Method': d.Method,
+        f'{value} v2': d[f'{value}_old'].round(3), f'{value} v3': d[f'{value}_new'].round(3),
+        'v3/v2': d[f'{value}_ratio'].round(3),
+        'status v2': d.status_old, 'status v3': d.status_new,
+    })
+    out = out.reindex(out['v3/v2'].sub(1).abs().sort_values(ascending=False).index)
+    return (out if n is None else out.head(n)).reset_index(drop=True)
 
 
 def add_relative(df: pd.DataFrame) -> pd.DataFrame:

@@ -37,8 +37,34 @@ Out-of-memory is a RESULT (``status: "oom"``), not a crash; methods whose Jacobi
 possibly fit (HIG on conv-nets / language models) are recorded as ``"infeasible"`` with
 the analytic size instead of being attempted, and a method that left the parameters
 non-finite as ``"nonfinite"`` (its timings are still recorded).  One JSON per configuration under
-``{output_dir}/{config_name}/{run_id}.json``; existing files are skipped (resumable).
+``{output_root}/{config_name}/{run_id}.json``; existing files are skipped (resumable).
 Run on an exclusively reserved node: co-tenant jobs skew launch-bound timings by up to 2x.
+
+Where the results go
+    ``$SV3_PROFILE_ROOT``, else ``profile.output_dir`` from the config, else
+    :data:`DEFAULT_OUTPUT_ROOT` (see :func:`output_root`); the resolved absolute path is
+    printed and stored in every record.  The environment variable wins so that a job
+    running from a deploy snapshot (cwd = the snapshot) can send its results to an
+    absolute root outside it without touching the configs.
+
+What the numbers are measured WITH (the 2026-09-17 profile got both of these wrong, which
+is why ``profile_results_v3`` exists next to ``v2``):
+    * ``empty_cache`` is :data:`EMPTY_CACHE` = False for every Sven variant, the optimizer's
+      own default and the campaign's setting.  The per-step ``torch.cuda.empty_cache()``
+      made full-capture Sven up to 4.5x slower on CIFAR (841 -> 187 ms/step) and was the
+      sole source of its step-time variance.  ``empty_cache()`` is called only BETWEEN
+      configurations (``profile_one``'s set-up and teardown), never inside a measured step.
+    * ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True``, as every campaign job had
+      (``tools/worker_pool.sh``).  The allocator setting in force is recorded per result.
+    * ``bn_mode`` is resolved exactly as ``experiments/experiment_code/grid.py`` resolves
+      it for the scans, so the Gram variants freeze the norm statistics iff the scan they
+      inherit from does.  CIFAR (``bn_mode: batch``, C-E2) therefore profiles with batch
+      statistics, like the runs whose step time these tables are compared against.
+
+Every record carries ``provenance`` (both repos' git SHAs via
+``experiments/experiment_code/provenance.py``, host, SLURM job id, torch/CUDA) and ``env``
+(GPU name and size, allocator setting, ``sven_empty_cache``), so a table can always say
+which code and which allocator produced it.
 """
 from __future__ import annotations
 
@@ -58,17 +84,34 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
+from experiments.experiment_code import provenance
 from experiments.experiment_code.experiment_utils import (
     build_standard_optimizer, set_seed, _is_closure_optimizer,
 )
 from experiments.experiment_code.generic_scan import (
     SVD_LOSS_FNS, STANDARD_LOSS_FNS, SVD_RESIDUAL_FNS, _JD_AGGREGATORS, _HAS_TORCHJD,
 )
+from experiments.experiment_code.grid import default_bn_mode, resolve_bn_mode
 from experiments.optimizers.hig import HIGWrapper, HIGOptimizer
 from sven.nn import SvenWrapper, GramSvenWrapper
 from sven.opt import Sven, SvenGram
 
 SVEN_VARIANTS = ("gram_hooks", "gram_full", "gram_chunked", "classic")
+
+#: Where results go when neither ``$SV3_PROFILE_ROOT`` nor ``profile.output_dir`` says.
+#: v2 (2026-09-17) is FROZEN as the before-table of the ``empty_cache`` fix: never write
+#: into it, so the v2-vs-v3 comparison in the profile notebooks keeps a fixed reference.
+DEFAULT_OUTPUT_ROOT = "profile_results_v3"
+
+#: Sven's ``empty_cache`` for every profiled variant: the optimizer's own default and the
+#: campaign's setting (see the module docstring). Passed EXPLICITLY, so a future change of
+#: the default cannot silently re-introduce the 4.5x penalty, and recorded per result.
+EMPTY_CACHE = False
+
+#: This repo and the nested `sven` checkout, from this file -- correct both in the live
+#: tree and inside a deploy snapshot (where `provenance` falls back to DEPLOY_INFO.json).
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SVEN_ROOT = os.path.join(REPO_ROOT, "sven")
 
 # One fixed, non-diverging setting per baseline: cost does not depend on the learning rate.
 BASELINE_SPECS: dict[str, dict[str, Any]] = {
@@ -139,6 +182,46 @@ def summarize(values: list[float]) -> dict[str, float]:
         "p10": float(np.percentile(a, 10)), "p90": float(np.percentile(a, 90)),
         "min": float(a.min()), "max": float(a.max()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Resolution of the two settings that made v2 wrong
+# ---------------------------------------------------------------------------
+def output_root(prof: dict, base=None, env=None) -> str:
+    """Absolute directory the per-configuration JSONs go under.
+
+    ``$SV3_PROFILE_ROOT`` > ``profile.output_dir`` > :data:`DEFAULT_OUTPUT_ROOT`. The
+    environment wins because a job launched from a deploy snapshot runs with cwd = the
+    snapshot: a relative root would write results INTO the frozen export, and the sbatch
+    must be able to redirect them (a smoke run to a temp root) without editing seven
+    configs. The resolved path is printed and stored, so which of the three spoke is never
+    a guess.
+
+    A relative root is resolved against ``base`` -- the caller passes hydra's ORIGINAL cwd,
+    so the results land where the operator ran the command even if ``hydra.job.chdir``
+    moves the process into the run directory.
+    """
+    env = os.environ if env is None else env
+    root = env.get("SV3_PROFILE_ROOT") or prof.get("output_dir") or DEFAULT_OUTPUT_ROOT
+    root = os.path.expanduser(str(root))
+    if not os.path.isabs(root):
+        root = os.path.join(base or os.getcwd(), root)
+    return os.path.abspath(root)
+
+
+def bn_mode_of(rcfg: dict) -> str:
+    """The scan's norm-statistics policy, by ``grid.py``'s rule (C-E2).
+
+    ``bn_mode``, else the deprecated ``gram_freeze_norm_stats`` alias, else the per-family
+    default -- here always the Gram family's, because this is the Sven branch.
+    """
+    return resolve_bn_mode(rcfg) or default_bn_mode("svd", bool(rcfg.get("use_gram", True)))
+
+
+def alloc_conf(env=None) -> str | None:
+    """The CUDA caching-allocator configuration in force (both spellings)."""
+    env = os.environ if env is None else env
+    return env.get("PYTORCH_CUDA_ALLOC_CONF") or env.get("PYTORCH_ALLOC_CONF")
 
 
 # ---------------------------------------------------------------------------
@@ -226,20 +309,27 @@ def build_method(job, model, loss_key, device, rcfg, n_params, sample_batch):
             w = SvenWrapper(model, loss_fn, device, microbatch_size=mb, param_fraction=pf,
                             mask_mode=mask_mode, residual_fn=residual_fn)
             svd_mode = rcfg.get("classic_svd_mode", "randomized_v2")
-            opt = Sven(w, lr=p["lr"], k=k, rtol=p["rtol"], svd_mode=svd_mode)
-            meta.update(backend="classic", svd_mode=svd_mode)
+            opt = Sven(w, lr=p["lr"], k=k, rtol=p["rtol"], svd_mode=svd_mode,
+                       empty_cache=EMPTY_CACHE)
+            meta.update(backend="classic", svd_mode=svd_mode, empty_cache=EMPTY_CACHE)
         else:
             capture = {"gram_hooks": "hooks", "gram_full": "full", "gram_chunked": "chunked"}[method]
             kw: dict[str, Any] = {}
             if method == "gram_chunked":
                 kw["chunk_numel"] = max(1, int(p["chunk_fraction"] * n_params))
                 meta["chunk_numel"] = kw["chunk_numel"]
-            freeze = True if capture == "hooks" else bool(rcfg.get("gram_freeze_norm_stats", True))
+            # C-E2: the norm policy is the SCAN's, resolved by grid.py's own two functions,
+            # so a profile inherits `bn_mode: batch` (CIFAR) instead of silently freezing
+            # the running statistics that the runs being costed keep updating. `hooks`
+            # capture requires frozen statistics and is not offered where that clashes.
+            bn_mode = bn_mode_of(rcfg)
+            freeze = True if capture == "hooks" else (bn_mode == "frozen")
             w = GramSvenWrapper(model, loss_fn, device, microbatch_size=mb, param_fraction=pf,
                                 mask_mode=mask_mode, capture=capture, freeze_norm_stats=freeze,
                                 residual_fn=residual_fn, **kw)
-            opt = SvenGram(w, lr=p["lr"], k=k, rtol=p["rtol"])
-            meta.update(backend="gram", capture=capture, freeze_norm_stats=freeze)
+            opt = SvenGram(w, lr=p["lr"], k=k, rtol=p["rtol"], empty_cache=EMPTY_CACHE)
+            meta.update(backend="gram", capture=capture, freeze_norm_stats=freeze,
+                        bn_mode=bn_mode, empty_cache=EMPTY_CACHE)
             if capture != "hooks":
                 groups = w._param_groups()
                 meta["n_groups"] = len(groups)
@@ -461,8 +551,10 @@ def main(cfg: DictConfig) -> None:
     prof = {"warmup_steps": 10, "num_steps": 50, "min_steps": 10, "max_seconds": 120, **(rcfg.get("profile") or {})}
     rcfg["model_seed"] = (rcfg.get("model_seeds") or [0])[0]
     device = rcfg.get("device", "cuda")
-    out_dir = os.path.join(prof.get("output_dir", "profile_results_v2"), config_name)
+    root = output_root(prof, base=HydraConfig.get().runtime.cwd)
+    out_dir = os.path.join(root, config_name)
     os.makedirs(out_dir, exist_ok=True)
+    prof["output_root"] = root
 
     dataset = instantiate(cfg.dataset)
     if hasattr(dataset, "vocab_size"):
@@ -472,22 +564,33 @@ def main(cfg: DictConfig) -> None:
 
     props = torch.cuda.get_device_properties(torch.device(device))
     env = {"gpu": props.name, "gpu_total_bytes": int(props.total_memory), "torch": torch.__version__,
-           "cuda": torch.version.cuda, "host": socket.gethostname(), "slurm_job_id": os.environ.get("SLURM_JOB_ID")}
+           "cuda": torch.version.cuda, "host": socket.gethostname(), "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+           # the two settings v2 got wrong, recorded with every number they produced
+           "alloc_conf": alloc_conf(), "sven_empty_cache": EMPTY_CACHE,
+           "bn_mode": bn_mode_of(rcfg), "output_root": root}
+    # collected ONCE (the git calls fork): both repos' SHAs, host, SLURM id, torch/CUDA/GPU
+    prov = provenance.collect(REPO_ROOT, SVEN_ROOT)
     jobs = expand_jobs(rcfg)
     only = rcfg.get("only_studies")
     if only:
         jobs = [j for j in jobs if j["study"] in only]
     print(f"[profile] {config_name}: {len(jobs)} configurations on {env['gpu']} -> {out_dir}/")
+    print(f"[profile] sv3 {prov['git_sha']} (dirty={prov['git_dirty']}, {prov['git_source']})  "
+          f"sven {prov['sven_git_sha']} (dirty={prov['sven_git_dirty']}, {prov['sven_git_source']})")
+    print(f"[profile] alloc_conf={env['alloc_conf']!r}  sven_empty_cache={EMPTY_CACHE}  "
+          f"bn_mode={env['bn_mode']}", flush=True)
 
     for n, job in enumerate(jobs):
         rid = run_id_of(job)
         path = os.path.join(out_dir, rid + ".json")
         if os.path.exists(path):
             continue
+        started = provenance.start_stamp()
         res = profile_one(job, cfg, rcfg, dataset, device, prof)
         res.update(run_id=rid, study=job["study"], method=job["method"], params=job["params"],
                    arch=rcfg.get("arch", config_name), config_name=config_name, loss=rcfg["loss"],
-                   env=env, profile=prof)
+                   env=env, profile=prof, provenance=prov,
+                   **provenance.end_stamp(started))
         with open(path, "w") as f:
             json.dump(res, f)
         t = res.get("time", {}).get("step_ms", {})
