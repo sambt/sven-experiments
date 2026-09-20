@@ -335,6 +335,43 @@ work_lists:
            round. Enable the items, then launch this list."
     items: []
 
+  # The one extension round that was actually taken (ANALYSIS_PLAN.md section 7.5, user
+  # decision 2026-09-20). It is a SEPARATE LIST, not an edit of cifar10_resnet_ce_scan.yaml,
+  # on purpose: the config's own grid (and therefore `campaign/grid_counts.md`, every golden
+  # count and `tools/reconcile.py`'s expected grid) stays exactly as the campaign ran it,
+  # and this item adds 45 runs OFF that grid instead of moving it.
+  - name: p2_cifar_ce_rtol
+    phase: P2
+    lane: a100
+    n_jobs: 5
+    note: "CIFAR-CE Sven rtol extension, restricted version. The selected Sven config on this
+           scan sits on the rtol HIGH edge (1e-2) while MNIST-CE prefers 0.1-0.3, so rtol gets
+           three more half-decade points -- but only around the selected lr, not over the whole
+           grid: 1 k x 3 lr x 3 rtol x 5 seeds = 45 runs at ~0.45 h = ~20 GPU-h (the full
+           2 k x 5 lr x 3 rtol version would be 150 runs / ~70 GPU-h). NPROC 1 because CIFAR
+           Sven full capture is 23.3 GB and the probe measured T=0.98 at two co-tenants;
+           5 jobs x ~9 runs each is ~4-5 h of wall clock.
+           OFF-GRID BY DESIGN: `rtol` 0.03/0.1/0.3 are not in the config's `rtol` list, so
+           these 45 run_ids are outside `expand_grid(cifar10_resnet_ce_scan, mode=all)`.
+           tests/test_tools_launch.OFF_GRID_ITEMS carries the exemption (and asserts that the
+           item really is off-grid). Consequences, both deliberate:
+             * `tools/reconcile.py cifar10_resnet_ce_scan` counts these records as
+               `n_off_grid_records` and its best-config table ignores them;
+             * so does `tools/select_best.py` unless the extension is named as a second
+               expected grid -- the RE-SELECTION after this list finishes is
+                 tools/select_best.py cifar10_resnet_ce_scan --groups 'mode=all' \\
+                   --groups 'mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]'
+               (union of the two groups = the expected grid; see ANALYSIS_PLAN.md section 7.5)."
+    items:
+      - {config: cifar10_resnet_ce_scan, nproc: *np_cifar_sven,
+         overrides: "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]",
+         note: "k=128 and these three lrs bracket the selected config; rtol is a truncation
+                threshold relative to sigma_max (`keep = sigma > rtol * sigma_max`, sven.py
+                SvenGram.step), so even rtol=0.3 always keeps the leading singular value and
+                cannot raise on its own -- the `no singular value above rtol * sigma_max`
+                RuntimeError needs a zero/non-finite Gram, which is a divergence and is
+                recorded as one."}
+
   # ---------------- P3: ablations, fine-tune, diagnostics ----------------
   - name: p3_mlp_mig
     phase: P3

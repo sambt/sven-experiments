@@ -318,6 +318,31 @@ DELIBERATE_GAPS = {
     ("rebuttal_fig5_cifar_paramfrac_scan", "standard"),
 }
 
+#: Plan items that deliberately run OFF the grid their config describes: `{(scan,
+#: overrides): reason}`. An extension round that must NOT move the config's grid (and with
+#: it `campaign/grid_counts.md`, the golden counts and `tools/reconcile.py`'s expected grid)
+#: adds its points as a plan item instead, which is exactly a set of run_ids the config does
+#: not enumerate. `_plan_and_full_grids` therefore leaves these items out of the LAUNCHED
+#: side, so the two properties that side exists for -- "no in-scope run is left unlaunched"
+#: and "grid_counts.md is in sync" -- keep comparing the plan with the configs as written.
+#: `test_off_grid_items_are_really_off_grid` asserts every entry still IS off-grid, so an
+#: exemption cannot go stale into a licence for a typo'd override.
+OFF_GRID_ITEMS = {
+    ("cifar10_resnet_ce_scan",
+     "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"):
+        "p2_cifar_ce_rtol: the CIFAR-CE Sven rtol extension (ANALYSIS_PLAN.md section 7.5, "
+        "user 2026-09-20). 45 runs of three NEW rtol values around the selected lr; the "
+        "scan's own rtol grid stays [1e-4, 1e-3, 1e-2] so that nothing already measured is "
+        "re-hashed or re-run.",
+}
+
+#: How many runs each off-grid item must expand to -- the cost the user approved (~20 GPU-h
+#: at ~0.45 h a run), pinned so that a widened override cannot quietly triple the bill.
+OFF_GRID_RUN_COUNTS = {
+    ("cifar10_resnet_ce_scan",
+     "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"): 45,
+}
+
 
 def _plan_and_full_grids(plan):
     """`({scan: {(family, run_id)}} launched, {scan: {...}} described)`.
@@ -327,6 +352,10 @@ def _plan_and_full_grids(plan):
     described side is each config's OWN full grid: `mode=all`, no `optimizers_standard`
     override, summed over the `n_data` values the plan sweeps (n_data changes the dataset
     and is in the run_id, so it cannot be inferred from the config alone).
+
+    Items listed in :data:`OFF_GRID_ITEMS` are left out of the launched side: they are
+    deliberately outside their config's grid, so counting them would turn both properties
+    this helper serves into false alarms.
     """
     import re
     reconcile = _load("reconcile")
@@ -342,7 +371,8 @@ def _plan_and_full_grids(plan):
         seen = set()
         for wl in plan.work_lists:
             for it in wl.enabled_items():
-                if (it.scan, it.overrides) in seen:
+                if (it.scan, it.overrides) in seen \
+                        or (it.scan, it.overrides) in OFF_GRID_ITEMS:
                     continue
                 seen.add((it.scan, it.overrides))
                 rcfg = loader.compose(it.config, it.overrides)
@@ -411,6 +441,47 @@ def test_the_plan_covers_every_run_its_own_configs_describe():
     unused = {(s, f) for (s, f) in DELIBERATE_GAPS if s in described
               and not any(fam == f for fam, _ in described[s] - launched[s])}
     assert not unused, f"DELIBERATE_GAPS entries that no longer describe a gap: {unused}"
+
+
+def test_off_grid_items_are_really_off_grid():
+    """Every :data:`OFF_GRID_ITEMS` exemption is live, off-grid and the size it claims.
+
+    The exemption above removes an item from the coverage check, so it is the one place in
+    this file where a wrong override would go unnoticed. Three properties close that hole:
+    the item still exists in a plan (no stale entry), NONE of its run_ids is in its config's
+    own `mode=all` grid (so the exemption never covers an item that merely looks unusual --
+    an on-grid item excluded here would hide unlaunched work), and it expands to exactly the
+    number of runs the approved cost was computed from.
+    """
+    reconcile = _load("reconcile")
+    grid = reconcile.load_grid()
+    jd = reconcile.has_torchjd()
+    items = {}
+    for path in PLAN_FILES:
+        for wl in campaign_plan.load_plan(path).work_lists:
+            for it in wl.enabled_items():
+                items.setdefault((it.scan, it.overrides), (wl.name, it))
+    stale = set(OFF_GRID_ITEMS) - set(items)
+    assert not stale, f"OFF_GRID_ITEMS entries no plan launches any more: {stale}"
+
+    with reconcile.ConfigLoader(None) as loader:
+        for key, reason in OFF_GRID_ITEMS.items():
+            scan, overrides = key
+            wl_name, it = items[key]
+            assert reason, key
+            specs = grid.expand_grid(loader.compose(it.config, overrides),
+                                     verbose=False, has_torchjd=jd)
+            described = {(s.family, s.run_id) for s in grid.expand_grid(
+                loader.compose(scan, "mode=all"), verbose=False, has_torchjd=jd)}
+            on_grid = sorted({(s.family, s.run_id) for s in specs} & described)
+            assert not on_grid, (
+                f"{wl_name}/{scan} is exempted as off-grid but {len(on_grid)} of its runs "
+                f"ARE in the config's grid, e.g. {on_grid[:2]} -- excluding it hides real "
+                f"coverage; narrow the override or drop the exemption")
+            want = OFF_GRID_RUN_COUNTS.get(key)
+            assert want is not None, f"no approved run count for {key}"
+            assert len(specs) == want, (
+                f"{wl_name}/{scan} expands to {len(specs)} run(s), not the approved {want}")
 
 
 def test_grid_counts_md_is_in_sync_with_the_plan():
