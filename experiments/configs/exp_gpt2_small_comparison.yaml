@@ -42,7 +42,14 @@ eval_every_steps: 500
 # 27 runs of this scan are ~18 GB of ckpt/ and a `log` ladder is out of the question.
 
 k_fractions: [1.0]            # k = B (full Gram rank, soft-truncated by rtol)
-lrs: [0.1, 0.5, 1.0]
+# C-B3 "grids must contain their optimum". The legacy set point was [0.1, 0.5, 1.0], but
+# lr 1.0 is the FULL min-norm (Gauss-Newton) step and the 2026-09-20 smoke found lr 0.5
+# already unstable on this model: over 300 steps its val curve went 17.54 -> 8.72 ->
+# 16.11 against an untrained 11.01 (an H200 repeat did the same), while AdamW, Muon and
+# SOAP all fell monotonically to 6.2-6.7 over the same window. That left the grid's only
+# plausible survivor on its bottom edge, so it extends DOWN by two half-decades -- 0.05 is
+# also where exp_nanogpt_speedrun's Sven grid bottoms out. +2 runs = +18.4 GPU-h.
+lrs: [0.02, 0.05, 0.1, 0.5, 1.0]
 rtol: [1e-3]
 svd_mode: [torch]             # irrelevant under Gram
 

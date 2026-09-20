@@ -248,7 +248,11 @@ def test_the_gpt2_plan_gives_every_run_a_whole_a100():
     device (a Sven run holds ~33 GB and a baseline already carries 3.3 GB of logits, so
     the NPROC-per-GPU packing every other scan uses is wrong here); the MIG lane is not
     offered at all (19.6 GB per slice); and the Sven list has one job per Sven run, so no
-    job can start a ~9.3 h run it will be killed in the middle of.
+    job can start a 9.20 h run it will be killed in the middle of.
+
+    The memory figures are measured, not assumed: the 2026-09-20 smoke of this scan
+    recorded `max_memory_allocated` at 35.2 GiB for Sven and 24.1-26.7 GiB for the
+    baselines on an A100-SXM4-80GB.
     """
     plan = campaign_plan.load_plan(os.path.join(REPO, "campaign", "plan_gpt2.yaml"))
     assert set(plan.lanes) == {"a100"}
@@ -261,8 +265,9 @@ def test_the_gpt2_plan_gives_every_run_a_whole_a100():
         for item in wl.items:
             assert item.config == "exp_gpt2_small_comparison", item.config
             assert item.nproc == 1, (wl.name, item.nproc)
-    # one job per Sven run; the baselines are ~4 h each and pack ~5 to a 24 h job
-    assert by_list["p1_gpt2_sven"].n_jobs == 3
+    # one job per Sven run (5 runs at a measured 9.20 h); the baselines average 3.2 h and
+    # pack ~5 to a 24 h job, i.e. ~15 h of the wall
+    assert by_list["p1_gpt2_sven"].n_jobs == 5
     assert by_list["p1_gpt2_baselines"].n_jobs == 5
 
 

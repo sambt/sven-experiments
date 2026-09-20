@@ -45,7 +45,7 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 | `rebuttal_overparam_mnist_scan` | P1 | 360 | 2400 | 810 | 30 | - | - | **3600** | 20 |
 | `rebuttal_overparam_polynomial_scan` | P1 | 1800 | 1600 | 900 | 20 | - | - | **4320** | 0.9 |
 | `rebuttal_overparam_toy_1d_scan` | P1 | 720 | 1600 | 900 | 20 | - | - | **3240** | 0.5 |
-| `exp_gpt2_small_comparison` | P1 | 3 | 24 | - | - | - | - | **27** | 104 |
+| `exp_gpt2_small_comparison` | P1 | 5 | 24 | - | - | - | - | **29** | 122 |
 | `mnist_kappaScan_labelRegression` | P3 | 210 | - | - | - | - | - | **210** | 2.2 |
 | `mnist_microbatch_ce_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
 | `mnist_microbatch_labelreg_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
@@ -57,12 +57,12 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 | `toy_1d_paramfrac_scan` | P3 | 100 | - | - | - | - | - | **100** | 0.3 |
 | `exp_finetune_cifar_smallN` | P3-parked | 48 | 360 | - | - | - | - | **408** | 1.4 |
 
-* In the launch plan: **23242** runs across 22 scans, GPU-h floor ~341 (see the caveats
+* In the launch plan: **23244** runs across 22 scans, GPU-h floor ~359 (see the caveats
   below — the number to reserve against is 1,100–1,500). 23,215 of those runs and ~237
-  GPU-h are `plan_campaign.yaml`; the other 27 runs and ~104 GPU-h are the GPT-2 scan in
+  GPU-h are `plan_campaign.yaml`; the other 29 runs and ~122 GPU-h are the GPT-2 scan in
   `plan_gpt2.yaml`, which is a third of the floor in 0.1% of the runs.
 * Parked (extension phase, `exp_finetune_cifar_smallN`): **408** runs, floor 1.4 GPU-h.
-* Described by the in-scope configs in total: **23650** runs across 23 scans.
+* Described by the in-scope configs in total: **23652** runs across 23 scans.
 
 Cell conventions:
 
@@ -138,7 +138,7 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
   optimizer at `dataset.n_train_blocks=4800`, NPROC 1 on an A100-SXM4-80GB, jobs 47324093
   and 47324095): Sven-hooks **2,523**, AdamW **776**, Muon **794**, SOAP **1,126**, all at
   T = 1.0. Per full 13,125-step run that is 9.20 h / 2.83 h / 2.90 h / 4.11 h, and MuonW
-  costs what Muon does — so 3 x 9.20 + 6 x (2.83 + 2.90 + 2.90 + 4.11) = **104 GPU-h**.
+  costs what Muon does — so 5 x 9.20 + 6 x (2.83 + 2.90 + 2.90 + 4.11) = **122 GPU-h**.
   The same four runs on an H200 were 2.6x faster (Sven 980 ms, AdamW 304), which is why
   the lane pins A100-80GB rather than taking whatever `gpu_requeue` offers.
 * the nine rows the C-B3 extension round moved were **re-derived, not re-measured**: the
@@ -152,7 +152,7 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
 It excludes evaluation (three loaders now: val, test and the fixed 10k `train_eval` subset),
 data loading, checkpoint I/O, process start-up, queue wait and every failed or requeued job.
 
-**Do not plan with 341 GPU-h** (237 for `plan_campaign.yaml` + 104 for the GPT-2 scan).
+**Do not plan with 359 GPU-h** (237 for `plan_campaign.yaml` + 122 for the GPT-2 scan).
 `campaign/scout/sharding.md` puts the honest figure at **1,100-1,500 GPU-h**, and that is
 still the number to reserve against. The two are not in conflict; the gap is mostly three
 things:
@@ -170,10 +170,10 @@ things:
 
 None of the three applies to `exp_gpt2_small_comparison`: it runs at NPROC 1 on a whole
 A100 (no co-tenant, no host-CPU contention), its `empty_cache` is already `false`, and its
-27 runs are 8 jobs with no wall-clock crowding. Its 104 GPU-h is therefore the one number
+29 runs are 10 jobs with no wall-clock crowding. Its 122 GPU-h is therefore the one number
 in this column that is meant to be planned with: `ms_per_step` is measured on the lane's
 own hardware, and the omitted terms are small and known — 26 evaluations of ~6.3 s
-(~0.05 h/run, 1.2 h over the scan) plus ~40 s of start-up and a 652 MB checkpoint write.
+(~0.05 h/run, 1.4 h over the scan) plus ~40 s of start-up and a 652 MB checkpoint write.
 Peak GPU memory is measured too: **35.2 GiB for Sven**, 24.1-26.7 GiB for the baselines
 (`max_memory_allocated`), which confirms both that a 19.6 GB MIG slice cannot hold this
 scan and that a whole 80 GB A100 per run has ample headroom.
@@ -349,7 +349,7 @@ ResNet scans keep `final`:
 | ... the two 200-epoch full-batch overparam scans | `log` | ~209 | ~563 KB | 7,560 | ~4.3 GB |
 | MNIST MLP (27,562 params) | `final` + `checkpoints_svd: log` | ~34 (svd only) | ~3.7 MB | 2,490 svd | ~9.2 GB |
 | nanoGPT (826,368 params) | `epochs` | 50 | ~165 MB | 140 | ~23 GB |
-| GPT-2 small (163.0M params) | `final` | 1 | ~652 MB | 27 | ~18 GB |
+| GPT-2 small (163.0M params) | `final` | 1 | ~652 MB | 29 | ~19 GB |
 | ResNet18 (11.18M params) | `final` | 1 | ~45 MB | 1,763 | ~79 GB |
 
 About **134 GB** for everything the configs describe, of which the parked fine-tune scan is

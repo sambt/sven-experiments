@@ -539,6 +539,15 @@ MUST_CONTAIN = [
     # match_rms_adamw (5.5x on the 768x768 matrices, 11.1x on the 3072x768 ones) is a
     # grid that cannot hold Muon's optimum. It gets the nanoGPT list.
     ("exp_gpt2_small_comparison", "lrs_standard", [1e-5, 3e-5]),
+    # ... and Sven's own lr grid extends DOWN from the legacy [0.1, 0.5, 1.0]. Measured in
+    # the 2026-09-20 GPU smoke of this scan (300 steps, A100, jobs 47324093 / 47324095):
+    # at lr 0.5 the val curve went 17.54 -> 8.72 -> 16.11 against an UNTRAINED 11.01, and
+    # an H200 repeat did the same (13.32 -> 26.49 -> 10.70), while AdamW / Muon / SOAP all
+    # fell monotonically to 6.2-6.7 over the identical window. lr 1.0 is the full min-norm
+    # (Gauss-Newton) step, so nothing above 1.0 is a finer search -- which left the whole
+    # grid's only plausible survivor on its bottom edge. 0.05 is where nanoGPT's Sven grid
+    # bottoms out; at 9.20 h a run the two points cost 18.4 GPU-h (user-approved).
+    ("exp_gpt2_small_comparison", "lrs", [0.02, 0.05]),
     # Sven at k=B with the smallest rtol on polynomial
     ("polynomial_scan", "rtol", [1e-5]),
     # Sven at the smallest lr on CIFAR-CE
@@ -817,16 +826,17 @@ def test_gpt2_small_is_a_single_epoch_scan_with_step_based_evaluation():
     assert rcfg["dataset"]["ROOT"].endswith("fineweb_edu_gpt2_v2")
     assert rcfg["dataset"]["block_size"] == rcfg["model"]["block_size"] == 1024
 
-    # the Sven set point is the legacy one (k = B, full Gram rank, soft-cut by rtol)
+    # the Sven set point: k = B (full Gram rank, soft-cut by rtol) and the legacy
+    # [0.1, 0.5, 1.0] extended DOWN by two half-decades -- see MUST_CONTAIN for why
     assert grid.listify(rcfg["k_fractions"]) == [1.0]
-    assert [float(v) for v in grid.listify(rcfg["lrs"])] == [0.1, 0.5, 1.0]
+    assert [float(v) for v in grid.listify(rcfg["lrs"])] == [0.02, 0.05, 0.1, 0.5, 1.0]
     assert rcfg["gram_capture"] == "hooks"          # untied + dropout 0
     assert not rcfg["model"]["tie_weights"]
     # one seed, and no SGD -> the C-B2 SGDm requirement does not apply
     assert grid.listify(rcfg["model_seeds"]) == [6000]
     assert "SGD" not in standard_optimizers("exp_gpt2_small_comparison")
     counts = Counter(s.family for s in specs_for("exp_gpt2_small_comparison"))
-    assert counts == {"svd": 3, "standard": 24}, counts
+    assert counts == {"svd": 5, "standard": 24}, counts
 
 
 def test_cut_scans_are_untouched_and_stale_ones_stay_out():

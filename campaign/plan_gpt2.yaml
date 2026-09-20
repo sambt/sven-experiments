@@ -13,13 +13,14 @@
 # is shared, so neither lane can retire the other's results to `_stale/`.
 #
 # WHAT IT COSTS. One run is ONE epoch = 210,000 blocks / B=16 = **13,125 optimizer steps**
-# over ~215M tokens: ~9.3 h for a Sven run and ~4 h for a first-order baseline (see
-# campaign/grid_counts.md "Cost"). That is ~125 GPU-h for 27 runs -- a third of the whole
-# campaign floor -- so `n_jobs` below is sized so that no job ever starts a run it cannot
-# finish before its wall clock, which is the only way to waste time here.
+# over ~215M tokens. Measured on the lane's own hardware (2026-09-20 smoke, A100-SXM4-80GB,
+# NPROC 1): Sven 9.20 h, AdamW 2.83 h, Muon/MuonW 2.90 h, SOAP 4.11 h, peak 35.2 GiB for
+# Sven and 24-27 GiB for the baselines. That is **122 GPU-h for 29 runs** -- a third of the
+# whole campaign floor -- so `n_jobs` below is sized so that no job ever starts a run it
+# cannot finish before its wall clock, which is the only way to waste time here.
 #
-# `campaign/grid_counts.md` is the ground truth for the run counts (svd 3 + standard 24 =
-# 27); `tests/test_tools_launch.py` asserts that this plan's enabled items cover exactly
+# `campaign/grid_counts.md` is the ground truth for the run counts (svd 5 + standard 24 =
+# 29); `tests/test_tools_launch.py` asserts that this plan's enabled items cover exactly
 # those numbers, family by family.
 version: 1
 plan: gpt2
@@ -41,17 +42,18 @@ lanes:
     mem: 64G
     time: "24:00:00"       # 3 days is the partition maximum if a Sven run needs more
     cpus_extra: 3          # cpus-per-task = 1 + 3; the token bins are memmapped
-    note: "one GPU per job, NPROC 1; 24 h holds two Sven runs or five baselines"
+    note: "one GPU per job, NPROC 1; 24 h holds two 9.2 h Sven runs or five ~3 h baselines"
 
 work_lists:
-  # 3 runs, 3 jobs: at ~9.3 h a run this is exactly one run per job, so no job reaches the
-  # point of claiming a second one and being killed at the wall with 9 h of work lost.
-  # (A killed run is retried, but three `error` attempts under one hash mark it `poisoned`.)
+  # 5 runs, 5 jobs: at a MEASURED 9.20 h a run (2,523 ms/step x 13,125) this is exactly one
+  # run per job, so no job reaches the point of claiming a second one and being killed at
+  # the wall with 9 h of work lost. (A killed run is retried, but three `error` attempts
+  # under one hash mark it `poisoned`.)
   - name: p1_gpt2_sven
     phase: P1
     lane: a100
-    n_jobs: 3
-    note: "Sven-Gram at k = B = 16, lr 0.1/0.5/1.0, rtol 1e-3; hooks capture (untied + dropout 0)"
+    n_jobs: 5
+    note: "Sven-Gram at k = B = 16, lr 0.02/0.05/0.1/0.5/1.0, rtol 1e-3; hooks capture (untied + dropout 0)"
     items:
       - {config: exp_gpt2_small_comparison, overrides: "mode=svd", nproc: 1}
 
