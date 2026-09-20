@@ -24,14 +24,24 @@ k_values: [1,2,4,8,16,32]
 lrs: [0.05, 0.1, 0.5, 1.0]
 # C-B3: the Sven optimum here is k=32 (=B, a method boundary, not a grid edge) at the
 # SMALLEST rtol -> extend the rtol grid down by one decade (1e-5).
-rtol: [1e-5, 1e-4, 1e-3, 1e-2]
+# C-B3 extension round (user-approved, 2026-09-19): the finished scan reverses that -- over
+# its 480 svd runs the optimum is rtol 1e-2, the TOP edge (0.1175 at k=32, lr 0.5;
+# `rtol:EDGE-HIGH`), and 1e-5 earns nothing. The added 1e-5 stays (it is on disk and it
+# brackets the optimum from below); the top edge gets its two half-decade points. lr (0.5)
+# is interior and k=B is a method boundary, so neither grows.
+rtol: [1e-5, 1e-4, 1e-3, 1e-2, 3e-2, 1e-1]
 svd_mode: [torch]
 variable_k: false
 
 # C-B3, one baked-in extension round; shared by every standard optimizer (see toy_1d_scan
 # for the full rationale). Here specifically: KFAC best = the old 1e-4 bottom edge,
 # SGD (0.1) and Shampoo (0.1) the old top edge, plus the match_rms_adamw Muon shift.
-lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
+# C-B3 extension round (user-approved, 2026-09-19): the extension above did not go far
+# enough for KFAC, which is still best on the NEW bottom edge -- seed-mean final val 0.1728
+# at 1e-5, 0.1872 at 3e-5, 0.3405 at 1e-4 (`lr:EDGE-LOW`), monotone all the way down, while
+# everything above 1e-4 diverges (2874 at 1e-3). Two more half-decade points. Every other
+# optimizer on this scan is interior, so the two points are bracketing, not searching.
+lrs_standard: [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 #optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
 # Consolidated: this scan now includes the full modern baseline suite (the extra
 # optimizers formerly in rebuttal_baselines_*). NOTE the results dir also holds the
@@ -40,7 +50,11 @@ lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 # SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list, so AdamW=0.01, MuonW=0.1,
 # Adam / Muon stay the wd=0 baselines (scope update).
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3 extension round: L-BFGS is best at lr 1.0, the top edge (0.2395, 3/5 seeds finite;
+# `lr:EDGE-HIGH`) -> two half-decade points. Unlike the two CIFAR scans, where a single
+# bracketing point was chosen because each L-BFGS run costs ~0.04 GPU-h, an MLP L-BFGS run
+# here is seconds, so the edge gets the full pair.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]

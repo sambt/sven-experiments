@@ -50,7 +50,11 @@ optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, LBFGS,
 # bracketing point, not two: the 0.5 -> 1.0 gain is 0.3%, i.e. a plateau, and lr > 1 with
 # strong_wolfe over-relaxes an already-accepted step. +45 runs (3 mi x 3 hs x 5 seeds)
 # ~ 1.7 GPU-h. (Sven's own `lrs` is a separate decision -- see the C-B3 OPEN note above.)
-lrs_lbfgs: [0.1, 0.5, 1.0, 2.0]
+# C-B3 extension round (user-approved, 2026-09-19): the added 2.0 IS the new optimum
+# (0.4380 seed-mean final val, 5/5 seeds, `lr:EDGE-HIGH` in the finished scan), so the edge
+# moved rather than closing. ONE more point again, not two: each CIFAR L-BFGS run is
+# ~0.04 GPU-h, so 4.0 costs +45 runs ~ 1.7 GPU-h and is the whole extension for this family.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]

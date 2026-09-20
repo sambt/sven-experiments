@@ -37,17 +37,32 @@ track_param_norm: true
 checkpoints: log
 
 k_fractions: [0.25, 0.5, 1.0]
-lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3 extension round (user-approved, 2026-09-19). Sven is the ONE family whose own axes
+# came back on an edge here (campaign/reconcile_2026-09-19.txt: `lr:EDGE-LOW rtol:EDGE-HIGH`,
+# best 0.2829 at k=B, lr 0.05, rtol 1e-2 over the scan's 720 finished svd runs), and the
+# trend along rtol is steep rather than a plateau -- at the best cell (n_data 1350, k=B)
+# the seed-means are 6.646 / 0.5989 / 0.2829 at rtol 1e-4 / 1e-3 / 1e-2, so the optimum is
+# plainly outside the grid. lr is the flatter of the two (0.2829 at 0.05 vs 0.2980 at 0.1)
+# but is still the edge, so both get their two half-decade points. `k` is NOT extended:
+# k = B is a method boundary, not a grid edge.
+lrs: [0.01, 0.02, 0.05, 0.1, 0.5, 1.0]
+rtol: [1e-4, 1e-3, 1e-2, 3e-2, 1e-1]
 svd_mode: [torch]
 use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
 variable_k: false
 
 # SGDm added (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW at its torch
 # default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines.
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+#
+# C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 800 finished
+# standard runs: it had kept the pre-extension 1e-4..1e-1 list (grid_counts.md "Open items"
+# 3) and MuonW, Muon, SGDm, SGD and Shampoo all came back best on the 1e-1 top edge. Same
+# list as the MLP headline scans, so the bottom reaches the match_rms_adamw Muon shift too.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3 extension round: L-BFGS is best at lr 1.0, the top edge (seed-mean final val 0.1244,
+# the best of any method here), so the edge gets its two half-decade points.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]

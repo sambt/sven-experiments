@@ -443,6 +443,64 @@ MUST_CONTAIN = [
     ("mnist_scan_ce", "tau_hig", [3e-2, 1e-1]),
     ("mnist_scan_labelRegression", "tau_hig", [3e-2, 1e-1]),
     ("polynomial_scan", "tau_hig", [3e-2, 1e-1]),
+
+    # --- the C-B3 EXTENSION ROUND (user-approved, 2026-09-19) -------------------
+    # One round, sized from the FINISHED campaign rather than from legacy records:
+    # every point below closes an edge that `tools/reconcile.py` flagged over the
+    # 15,735 runs in campaign/reconcile_2026-09-19.txt (the `edges` column of "best
+    # config per method"). Sven's `k` is deliberately not among them -- k = B is a
+    # method boundary, not a grid edge -- and CIFAR's Sven grids are left alone
+    # (each run is ~0.5 GPU-h; grid_counts.md "Open items" 1 states that edge).
+    #
+    # The three P1 scans that had kept the pre-extension 1e-4..1e-1 `lrs_standard`
+    # (grid_counts.md "Open items" 3) now use the headline list: eight of ten
+    # optimizers were best on its 1e-1 top edge on overparam-toy, five on
+    # overparam-polynomial, and KFAC sat on the 1e-4 BOTTOM edge on both
+    # overparam-MNIST and the batch-size scan.
+    ("rebuttal_overparam_toy_1d_scan", "lrs_standard", [1e-5, 3e-5, 3e-1, 1.0]),
+    ("rebuttal_overparam_polynomial_scan", "lrs_standard", [1e-5, 3e-5, 3e-1, 1.0]),
+    ("rebuttal_overparam_mnist_scan", "lrs_standard", [1e-5, 3e-5, 3e-1, 1.0]),
+    ("rebuttal_batchsize_polynomial_scan", "lrs_standard", [1e-5, 3e-5, 3e-1, 1.0]),
+    # L-BFGS best at its lr TOP edge (1.0) on four MLP scans -> two half-decades up.
+    # Its MNIST-label-regression and overparam-MNIST optima are lr 0.5, interior, so
+    # those two lists are deliberately NOT extended.
+    ("polynomial_scan", "lrs_lbfgs", [2.0, 4.0]),
+    ("mnist_scan_ce", "lrs_lbfgs", [2.0, 4.0]),
+    ("rebuttal_overparam_toy_1d_scan", "lrs_lbfgs", [2.0, 4.0]),
+    ("rebuttal_overparam_polynomial_scan", "lrs_lbfgs", [2.0, 4.0]),
+    ("rebuttal_batchsize_polynomial_scan", "lrs_lbfgs", [2.0, 4.0]),
+    # ... and at its BOTTOM edge (0.1) on toy_1d, the one scan where it goes the
+    # other way (0.0002459 at 0.1, 4/5 seeds finite).
+    ("toy_1d_scan", "lrs_lbfgs", [0.03, 0.01]),
+    # CIFAR L-BFGS: the 2.0 added in the first round IS the new optimum on both scans
+    # (0.4380 label-reg, 1.014 CE -- second only to MuonW there). ONE point again, at
+    # ~0.04 GPU-h per run.
+    ("cifar10_resnet_ce_scan", "lrs_lbfgs", [4.0]),
+    ("cifar10_resnet_scan_labelRegression", "lrs_lbfgs", [4.0]),
+    # CIFAR-CE: SGD's optimum is the 1.0 top point the first round added (1.338). One
+    # point: no other optimizer on that scan is above 3e-1.
+    ("cifar10_resnet_ce_scan", "lrs_standard", [3.0]),
+    # KFAC is STILL on the bottom edge of the extended polynomial list: seed-mean final
+    # val 0.1728 at 1e-5, 0.1872 at 3e-5, 0.3405 at 1e-4, monotone down.
+    ("polynomial_scan", "lrs_standard", [1e-6, 3e-6]),
+    # Sven's own non-k axes, where the reconcile flagged an edge. toy_1d is the
+    # headline Sven scan and was on BOTH its lr and its rtol bottom edge; polynomial
+    # and MNIST-CE are on the rtol TOP edge (0.1175 at 1e-2 / 0.1231 at 1e-1); the
+    # batch-size scan is on the rtol BOTTOM edge; overparam-polynomial is on both
+    # (at its best cell the rtol seed-means are 6.646 / 0.5989 / 0.2829 going up).
+    # MNIST-CE gets one point only: rtol is a relative singular-value cut, so the
+    # axis runs out at 1.0 (only the leading direction survives) and 3e-1 is the last
+    # informative point. The batch-size scan likewise stops one half-decade down.
+    ("toy_1d_scan", "lrs", [0.02, 0.01]),
+    ("toy_1d_scan", "rtol", [1e-5, 1e-6]),
+    ("polynomial_scan", "rtol", [3e-2, 1e-1]),
+    ("mnist_scan_ce", "rtol", [3e-1]),
+    ("rebuttal_batchsize_polynomial_scan", "rtol", [1e-5]),
+    ("rebuttal_overparam_polynomial_scan", "lrs", [0.02, 0.01]),
+    ("rebuttal_overparam_polynomial_scan", "rtol", [3e-2, 1e-1]),
+    # HIG's lr on toy_1d: the C-B3 shift landed its optimum (4.707e-09, the best
+    # number on any MLP scan) on the NEW bottom edge, 0.005.
+    ("toy_1d_scan", "lrs_hig", [1.5e-3, 5e-4]),
 ]
 
 
@@ -465,6 +523,11 @@ def test_hig_grid_is_shifted_down_not_grown(scan):
     40 of those runs completed but are dominated (seed-mean final val 0.1035 at lr 0.05 /
     tau 1e-2 against 0.1735 at lr 0.5 and 0.2023 at lr 1.0). "Always crashes" was the
     wrong reason for the right decision -- see _explain_mnist_scan_ce in tests/test_grid.py.
+
+    The shift held: on the finished campaign HIG's optimum is lr 0.05 on polynomial and
+    both MNIST scans, i.e. interior, and nothing wants lr >= 0.5 anywhere. Only toy_1d
+    moved, and downward again (0.005, the new bottom edge) -- see MUST_CONTAIN. So the
+    top-end bound below is the invariant, and the bottom is a floor, not a fixed point.
     """
     lrs = [float(v) for v in grid.listify(load_rcfg(scan)["lrs_hig"])]
     assert max(lrs) < 0.5, f"{scan} still runs HIG at lr >= 0.5: {sorted(lrs)}"
@@ -586,9 +649,11 @@ def test_batchsize_scan_pins_the_lbfgs_shape_and_sweeps_only_its_lr():
     rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan")
     assert grid.listify(rcfg["lbfgs_max_iter"]) == [3]
     assert grid.listify(rcfg["lbfgs_history_size"]) == [2]
-    assert len(grid.listify(rcfg["lrs_lbfgs"])) == 3
+    # 5 lrs since the C-B3 extension round put 2.0 / 4.0 above the 1.0 top edge the
+    # finished scan came back on -- the SHAPE stays pinned, which is what O5 is about.
+    assert len(grid.listify(rcfg["lrs_lbfgs"])) == 5
     counts = Counter(s.family for s in specs_for("rebuttal_batchsize_polynomial_scan"))
-    assert counts["lbfgs"] == 90, counts
+    assert counts["lbfgs"] == 150, counts
 
 
 def test_overparam_mnist_header_documents_the_50000_cap():

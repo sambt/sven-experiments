@@ -50,8 +50,14 @@ use_gram: true            # Gram-trick backend: exact same update, ~400x faster
 
 # SGDm added (C-B2). NO weight_decays list (scope update, C-B4 dropped): AdamW at its torch
 # default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines.
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+#
+# C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 1200 finished
+# standard runs: it had kept the pre-extension 1e-4..1e-1 list (grid_counts.md "Open items"
+# 3) and it is on BOTH edges at once -- KFAC best at 1e-4 (lr:EDGE-LOW) while SGD and
+# Shampoo are best at 1e-1 (lr:EDGE-HIGH). Same list as the MLP headline scans.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# NOT extended: L-BFGS's optimum here is lr 0.5, interior (4/5 seeds finite, 0.05359).
 lrs_lbfgs: [0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]

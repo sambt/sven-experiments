@@ -36,7 +36,12 @@ kappa: 2
 # because Muon/MuonW are NEW here and adjust_lr_fn=match_rms_adamw scales their effective
 # step by up to 13.6x on the layer4 kernels (optim.fix.md (c)), i.e. their optimum moves
 # DOWN. Each lr point is 8 standard optimizers x 5 seeds = 40 runs ~ 0.5 GPU-h.
-lrs_standard: [1e-5,3e-5,1e-4,1e-3,1e-2,1e-1,3e-1,1.0]
+# C-B3 extension round (user-approved, 2026-09-19): the added top end moved the edge rather
+# than closing it -- SGD's optimum over the finished scan is lr 1.0 (1.338, `lr:EDGE-HIGH`),
+# the new top point. ONE more point, not two: SGD is the only optimizer out there (SGDm
+# peaks at 3e-1, RMSprop at 1e-3, everything else at 1e-2 or below), and at 3.0 a plain-SGD
+# ResNet step is already at the edge of stability, so a second point would buy nothing.
+lrs_standard: [1e-5,3e-5,1e-4,1e-3,1e-2,1e-1,3e-1,1.0,3.0]
 # C-B1/C-B2/C-B5/O6: AdamW, SGDm, SOAP, Muon and MuonW join the CIFAR headline set. Muon
 # and MuonW are legitimate on a ResNet now that the conv kernels go through the vendored
 # MuonConv (flatten-to-2D, validated exact against stock Muon); the old "Muon" on ResNet18
@@ -49,7 +54,10 @@ optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, LBFGS,
 # because the mi3 arms blow up at 1.0. ONE bracketing point, not two: lr > 1 with
 # strong_wolfe over-relaxes an already-accepted step, and the mi3 blow-up says the far
 # side of the plateau is right there. +45 runs (3 mi x 3 hs x 5 seeds) ~ 1.7 GPU-h.
-lrs_lbfgs: [0.1, 0.5, 1.0, 2.0]
+# C-B3 extension round (user-approved, 2026-09-19): the added 2.0 IS the new optimum
+# (1.014 seed-mean final val, 5/5 seeds, second only to MuonW on this scan, and
+# `lr:EDGE-HIGH`), so the edge moved. ONE more point again, for the same cost reason.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]

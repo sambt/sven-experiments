@@ -20,8 +20,14 @@ use_gram: true
 checkpoints: log
 
 k_values: [1,2,4,8,16,32]
-lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 360 finished
+# svd runs (campaign/reconcile_2026-09-19.txt): the Sven optimum is k=32, lr 0.05, rtol 1e-4
+# -- `k:EDGE-HIGH lr:EDGE-LOW rtol:EDGE-LOW`. k=B is a method boundary, not a grid edge, so
+# only lr and rtol grow, each by two half-decade points DOWNWARD. This is the scan where
+# Sven's headline number comes from (4.799e-07, second only to HIG), so its two open edges
+# are the most consequential in the campaign.
+lrs: [0.01, 0.02, 0.05, 0.1, 0.5, 1.0]
+rtol: [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
 variable_k: false
 
@@ -41,7 +47,10 @@ lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 # SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list anywhere, so AdamW runs at
 # 0.01 and MuonW at 0.1 while Adam / Muon stay the wd=0 baselines (scope update).
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3 extension round: unlike every other scan, L-BFGS is best at the BOTTOM of its lr
+# grid here (0.0002459 at lr 0.1, 4/5 seeds finite; `lr:EDGE-LOW`), so this list grows
+# downward by two half-decade points. The top stays at 1.0: nothing on this scan wants it.
+lrs_lbfgs: [0.01, 0.03, 0.1, 0.5, 1.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]
@@ -60,7 +69,11 @@ lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]   # C-B3: JD best is the 1e-4 edge 
 # (0.05, the old bottom edge on both MNIST scans), and 0.25 stays so the toy/polynomial
 # optimum (0.1) is interior. tau: best is the 1e-2 top edge on 3 of the 4 MLP scans
 # (mnist_scan_ce, mnist_scan_labelRegression, polynomial) -> extend up two half-decades.
-lrs_hig: [0.005, 0.015, 0.05, 0.1, 0.25]
+# C-B3 extension round (user-approved, 2026-09-19): the shift landed HIG's optimum on the
+# new bottom edge here -- 4.707e-09 at lr 0.005 / tau 1e-6, the best number of any method on
+# any MLP scan and `lr:EDGE-LOW` -- so the bottom gets its two half-decade points. tau (1e-6)
+# is interior. The other three MLP scans keep the shifted list: their HIG optimum is 0.05.
+lrs_hig: [0.0005, 0.0015, 0.005, 0.015, 0.05, 0.1, 0.25]
 tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
 loader_seed: 1000

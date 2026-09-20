@@ -51,9 +51,19 @@ variable_k: false
 # torch default 0.01 and MuonW at 0.1, one setting each, while Adam and plain Muon are the
 # wd=0 baselines. The old `weight_decays: [0.0, 0.01]` both doubled three optimizers and
 # forced MuonW off its own default.
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+#
+# C-B3 extension round (user-approved, 2026-09-19), measured from THIS scan's 2080
+# finished runs (campaign/reconcile_2026-09-19.txt): this scan had deliberately kept the
+# pre-extension 1e-4..1e-1 list (grid_counts.md "Open items" 3), and EIGHT of its ten
+# standard optimizers -- Adam, AdamW, SOAP, SGDm, Muon, MuonW, Shampoo, SGD -- came back
+# best on the 1e-1 top edge. It now uses the same list as the MLP headline scans, which
+# also gives KFAC (best 1e-3 here, but the 1e-4 edge on the MNIST twin) its headroom below.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3 extension round: L-BFGS is best at lr 1.0, the top edge (seed-mean final val
+# 3.219e-06, the best of any method on this scan), so the edge gets its two half-decade
+# points. Full-batch 200-step runs on a 593-param MLP -- the cheapest family in the campaign.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2, 5, 10]

@@ -26,7 +26,12 @@ checkpoints: log
 
 k_fractions: [1.0]
 lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3 extension round (user-approved, 2026-09-19): Sven's optimum over this scan's 360
+# finished svd runs is rtol 1e-4, the BOTTOM edge (0.1040 at B=8, k=B, lr 0.5 --
+# `rtol:EDGE-LOW` in campaign/reconcile_2026-09-19.txt). One half-decade point, not two:
+# rtol is a relative singular-value cut, so below ~1e-5 it stops binding before the
+# noise floor of the Gram eigendecomposition does. lr (0.5) and k (= B) are interior.
+rtol: [1e-5, 1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
 use_gram: true  # exact Gram-trick backend (added rebuttal fresh re-run 2026-08-31)
 variable_k: false
@@ -35,12 +40,19 @@ variable_k: false
 # default 0.01, MuonW at 0.1, Adam and plain Muon as the wd=0 baselines. The old
 # `weight_decays: [0.0, 0.01]` here is what the MuonW backfill in
 # submit_reruns_2026-09-17_part2.sh had to patch around with `weight_decays=[0.1]`.
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+#
+# C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 1200 finished
+# standard runs: it had kept the pre-extension 1e-4..1e-1 list (grid_counts.md "Open items"
+# 3) and is on both edges -- KFAC best at 1e-4 (lr:EDGE-LOW), Shampoo at 1e-1
+# (lr:EDGE-HIGH). Same list as the MLP headline scans.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 # O5: this scan sweeps BATCH SIZE, not the L-BFGS shape. max_iter / history_size are pinned
 # at the legacy polynomial-headline best (bench/best_configs.json: lr 0.5, max_iter 3,
 # history_size 2) and only the lr is swept -- 810 LBFGS runs -> 90.
-lrs_lbfgs: [0.1, 0.5, 1.0]
+# C-B3 extension round: that swept lr is best at 1.0, the top edge (0.1303, 3/5 seeds
+# finite), so it gets its two half-decade points -- 30 runs at the pinned shape.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
 lbfgs_max_iter: [3]
 lbfgs_line_search_fn: [strong_wolfe]
 lbfgs_history_size: [2]

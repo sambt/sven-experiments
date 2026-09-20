@@ -146,3 +146,4 @@ CIFAR-CE SGD lr=1 high edge, KFAC low edges, overparam/batch-size baseline lr=0.
 1e-4..1e-1 grid - deliberate deviation in configs.impl.md; extension is cheap, <2 GPU-h).
 NEXT (needs the user): review tables; decide the extension round; then timing / diagnostics / confirmation passes and the
 schema-2 analysis notebooks.
+* 09-19 ~22:40 EDT — USER GO (standing, overnight): launch the grid-extension round, then the result-dependent passes (timing/diagnostics/confirmation), and GPT-2-small (after a one-run GPU smoke). Agents: ext-configs, phase5-tooling running; GPT-2 agent starts after ext-configs lands.

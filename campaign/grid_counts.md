@@ -1,4 +1,4 @@
-# Campaign grid counts (2026-09-18, Stage-1 configs)
+# Campaign grid counts (2026-09-19, Stage-1 configs + the C-B3 extension round)
 
 Run counts per in-scope scan, **generated from the configs** by `expand_grid`, not by hand.
 `tests/test_configs.py::test_grid_counts_md_matches_the_configs` parses the table below and
@@ -27,18 +27,18 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 
 | scan | pri | svd | standard | lbfgs | polyak | jd | hig | **total** | GPU-h floor |
 |---|---|---|---|---|---|---|---|---|---|
-| `cifar10_resnet_ce_scan` | P0 | 150 | 320 | 180 | 5 | (20) | (80) | **655** | 67 |
-| `cifar10_resnet_scan_labelRegression` | P0 | 90 | 280 | 180 | 5 | (20) | (80) | **555** | 45 |
+| `cifar10_resnet_ce_scan` | P0 | 150 | 360 | 225 | 5 | (20) | (80) | **740** | 69 |
+| `cifar10_resnet_scan_labelRegression` | P0 | 90 | 280 | 225 | 5 | (20) | (80) | **600** | 47 |
 | `exp_nanogpt_speedrun` | P0 | 20 | 120 | - | - | - | - | **140** | 3.7 |
-| `mnist_scan_ce` | P0 | 640 | 400 | 135 | 5 | 30 | 150 | **1360** | 22 |
+| `mnist_scan_ce` | P0 | 800 | 400 | 225 | 5 | 30 | 150 | **1610** | 27 |
 | `mnist_scan_labelRegression` | P0 | 640 | 400 | 135 | 5 | 30 | 150 | **1360** | 22 |
-| `polynomial_scan` | P0 | 480 | 400 | 135 | 5 | 30 | 150 | **1200** | 7.3 |
-| `toy_1d_scan` | P0 | 360 | 400 | 135 | 5 | 30 | 150 | **1080** | 7.0 |
-| `rebuttal_batchsize_polynomial_scan` | P1 | 360 | 1200 | 90 | 30 | - | - | **1680** | 4.8 |
+| `polynomial_scan` | P0 | 720 | 500 | 225 | 5 | 30 | 150 | **1630** | 10 |
+| `toy_1d_scan` | P0 | 900 | 400 | 225 | 5 | 30 | 210 | **1770** | 14 |
+| `rebuttal_batchsize_polynomial_scan` | P1 | 480 | 2400 | 150 | 30 | - | - | **3060** | 7.8 |
 | `rebuttal_fig5_cifar_paramfrac_scan` | P1 | 15 | - | - | - | - | - | **15** | 5.5 |
-| `rebuttal_overparam_mnist_scan` | P1 | 360 | 1200 | 810 | 30 | - | - | **2400** | 16 |
-| `rebuttal_overparam_polynomial_scan` | P1 | 720 | 800 | 540 | 20 | - | - | **2080** | 0.4 |
-| `rebuttal_overparam_toy_1d_scan` | P1 | 720 | 800 | 540 | 20 | - | - | **2080** | 0.4 |
+| `rebuttal_overparam_mnist_scan` | P1 | 360 | 2400 | 810 | 30 | - | - | **3600** | 20 |
+| `rebuttal_overparam_polynomial_scan` | P1 | 1800 | 1600 | 900 | 20 | - | - | **4320** | 0.9 |
+| `rebuttal_overparam_toy_1d_scan` | P1 | 720 | 1600 | 900 | 20 | - | - | **3240** | 0.5 |
 | `mnist_kappaScan_labelRegression` | P3 | 210 | - | - | - | - | - | **210** | 2.2 |
 | `mnist_microbatch_ce_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
 | `mnist_microbatch_labelreg_scan` | P3 | 140 | - | - | - | - | - | **140** | 1.5 |
@@ -50,10 +50,10 @@ with their own grids, then `lbfgs`, `polyak`, `jd`, `hig`.
 | `toy_1d_paramfrac_scan` | P3 | 100 | - | - | - | - | - | **100** | 0.3 |
 | `exp_finetune_cifar_smallN` | P3-parked | 48 | 360 | - | - | - | - | **408** | 1.4 |
 
-* In the launch plan: **15735** runs across 21 scans, GPU-h floor ~210 (see the caveats
+* In the launch plan: **23215** runs across 21 scans, GPU-h floor ~237 (see the caveats
   below — the number to reserve against is 1,100–1,500).
 * Parked (extension phase, `exp_finetune_cifar_smallN`): **408** runs, floor 1.4 GPU-h.
-* Described by the in-scope configs in total: **16143** runs across 22 scans.
+* Described by the in-scope configs in total: **23623** runs across 22 scans.
 
 Cell conventions:
 
@@ -105,11 +105,18 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
   `polyak` 1.05.
 * `steps_per_run` uses the **post-C-E1** split sizes (`data.impl.md`): MNIST 782 steps/epoch
   at B=64, CIFAR 352 at B=128, shakespeare 108 at B=64.
+* the nine rows the C-B3 extension round moved were **re-derived, not re-measured**: the
+  per-run unit cost of a scan's first-order family is solved from its Stage-1 floor and
+  its Stage-1 counts (so the old number is reproduced exactly), Sven's unit is that times
+  `(ms_sven/T_sven)/(ms_fo/T_fo)` from the probe values above — 6.35x on MLP, 29.9x on
+  CIFAR — and the new counts are put through the same sum. The round adds **~27 GPU-h**
+  of floor, of which ~8 are the three P1 `lrs_standard` lists and ~7 are `toy_1d_scan`'s
+  Sven grid (360 -> 900 runs).
 
 It excludes evaluation (three loaders now: val, test and the fixed 10k `train_eval` subset),
 data loading, checkpoint I/O, process start-up, queue wait and every failed or requeued job.
 
-**Do not plan with 210 GPU-h.** `campaign/scout/sharding.md` puts the honest figure at
+**Do not plan with 237 GPU-h.** `campaign/scout/sharding.md` puts the honest figure at
 **1,100-1,500 GPU-h**, and that is still the number to reserve against. The two are not in
 conflict; the gap is mostly three things:
 
@@ -131,7 +138,71 @@ noise by comparison — which is why the C-B3 extension round was made generous 
 scans and is sized point-by-point on CIFAR, each addition justified from **that scan's own
 legacy records** rather than from the MLP evidence (see below).
 
-## What changed in this round
+## What changed in the C-B3 extension round (2026-09-19)
+
+The Stage-1 round below baked in one *predicted* extension, from legacy records. This
+round is the *measured* one the user approved after the campaign finished: every added
+point closes an edge that `tools/reconcile.py` flagged over the 15,735 completed runs
+(`campaign/reconcile_2026-09-19.txt`, the `edges` column of "best config per method"),
+and nothing is added anywhere the optimum came back interior.
+
+Three rules decided what did **not** grow. Sven's `k` is never extended — `k = B` is a
+method boundary, not a grid edge, and it is the reported optimum on six scans. CIFAR's
+Sven grids are left alone at ~0.5 GPU-h per run (the knowingly accepted edge of "Open
+items" 1 below). And an axis stops early where the next point is meaningless rather than
+merely expensive: `rtol` is a *relative* singular-value cut, so at 1.0 only the leading
+direction survives — which is why MNIST-CE gets 3e-1 and no more, and the batch-size
+scan gets one point below its bottom edge rather than two.
+
+| scan | family | axis | added | edge it closes (seed-mean final val) | new runs |
+|---|---|---|---|---|---|
+| `toy_1d_scan` | svd | `lrs` | 0.02, 0.01 | Sven `lr:EDGE-LOW` at 0.05 (4.799e-07) | +540 |
+| | svd | `rtol` | 1e-5, 1e-6 | Sven `rtol:EDGE-LOW` at 1e-4 (same point) | (with the above) |
+| | hig | `lrs_hig` | 0.0015, 0.0005 | HIG `lr:EDGE-LOW` at 0.005 (4.707e-09) | +60 |
+| | lbfgs | `lrs_lbfgs` | 0.03, 0.01 | L-BFGS `lr:EDGE-LOW` at 0.1 (2.459e-04) | +90 |
+| `polynomial_scan` | svd | `rtol` | 3e-2, 1e-1 | Sven `rtol:EDGE-HIGH` at 1e-2 (0.1175) | +240 |
+| | standard | `lrs_standard` | 3e-6, 1e-6 | KFAC `lr:EDGE-LOW` at 1e-5 (0.1728) | +100 |
+| | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (0.2395) | +90 |
+| `mnist_scan_ce` | svd | `rtol` | 3e-1 | Sven `rtol:EDGE-HIGH` at 1e-1 (0.1231) | +160 |
+| | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (0.1277) | +90 |
+| `cifar10_resnet_scan_labelRegression` | lbfgs | `lrs_lbfgs` | 4.0 | L-BFGS `lr:EDGE-HIGH` at 2.0 (0.4380) | +45 |
+| `cifar10_resnet_ce_scan` | lbfgs | `lrs_lbfgs` | 4.0 | L-BFGS `lr:EDGE-HIGH` at 2.0 (1.014) | +45 |
+| | standard | `lrs_standard` | 3.0 | SGD `lr:EDGE-HIGH` at 1.0 (1.338) | +40 |
+| `rebuttal_overparam_toy_1d_scan` | standard | `lrs_standard` | the headline list | 8 of 10 optimizers on the 1e-1 top edge | +800 |
+| | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (3.219e-06) | +360 |
+| `rebuttal_overparam_polynomial_scan` | standard | `lrs_standard` | the headline list | MuonW/Muon/SGDm/SGD/Shampoo on the top edge | +800 |
+| | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (0.1244) | +360 |
+| | svd | `lrs`, `rtol` | 0.01/0.02, 3e-2/1e-1 | Sven `lr:EDGE-LOW` + `rtol:EDGE-HIGH` (0.2829) | +1080 |
+| `rebuttal_overparam_mnist_scan` | standard | `lrs_standard` | the headline list | KFAC on 1e-4, SGD/Shampoo on 1e-1 | +1200 |
+| `rebuttal_batchsize_polynomial_scan` | standard | `lrs_standard` | the headline list | KFAC on 1e-4, Shampoo on 1e-1 | +1200 |
+| | lbfgs | `lrs_lbfgs` | 2.0, 4.0 | L-BFGS `lr:EDGE-HIGH` at 1.0 (0.1303) | +60 |
+| | svd | `rtol` | 1e-5 | Sven `rtol:EDGE-LOW` at 1e-4 (0.1040) | +120 |
+| **in-plan total** | | | | | **15735 -> 23215 (+7480)** |
+
+Notes on the judgement calls:
+
+* **The three P1 scans and the batch-size scan get the headline `lrs_standard` list**
+  (`[1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]`). They had kept the pre-extension
+  1e-4..1e-1 grid as a deliberate deviation ("Open items" 3 below), and the finished runs
+  confirmed the prediction made there: they are on an edge, on both ends at once on the two
+  MNIST-and-polynomial ones. This is +4,000 of the +7,480 runs and about 8 of the 27 added
+  GPU-h, because the shared list multiplies by ten optimizers, five seeds and (for the
+  overparam scans) four `n_data` points at once.
+* **`rebuttal_overparam_polynomial_scan`'s Sven axes** are the one addition not named in
+  the approved list; it is the only scan besides the headline four where the reconcile
+  flagged a Sven `lr`/`rtol` edge, and the rtol trend is steep rather than flat (at the
+  best cell the seed-means are 6.646 / 0.5989 / 0.2829 going 1e-4 -> 1e-3 -> 1e-2). At
+  ~0.2 ms-scale full-batch steps on a 673-parameter MLP the 1,080 runs are ~0.5 GPU-h,
+  the cheapest scan in the campaign.
+* **`mnist_scan_labelRegression` is untouched.** Its only flag is Sven `k:EDGE-HIGH` at
+  k = B, and its L-BFGS and HIG optima are interior (0.5 and 0.05) — so the twin of the
+  most-extended MNIST scan gets nothing, which is the point of sizing per scan.
+
+Existing `run_id`s are unchanged everywhere: the round only appends to grid lists, so the
+finished 15,735 runs are skipped by the done-marker dedup (`run_hash` reads per-spec
+values, never the grid lists) and only the new points execute.
+
+## What changed in the Stage-1 round
 
 Net per scan, against `campaign/scout/grid_inventory.md` section 1 (the pre-campaign
 configs). Per-scan nets rather than per-change deltas, because the changes multiply: SGDm
@@ -223,14 +294,14 @@ ResNet scans keep `final`:
 
 | family | policy | states/run | bytes/run | runs | total |
 |---|---|---|---|---|---|
-| toy / polynomial MLP, 20 epochs (593-673 params) | `log` | ~35 | ~94 KB | 4,400 | ~0.4 GB |
-| ... the two 200-epoch full-batch overparam scans | `log` | ~209 | ~563 KB | 4,160 | ~2.3 GB |
-| MNIST MLP (27,562 params) | `final` + `checkpoints_svd: log` | ~34 (svd only) | ~3.7 MB | 2,330 svd | ~8.7 GB |
+| toy / polynomial MLP, 20 epochs (593-673 params) | `log` | ~35 | ~94 KB | 6,900 | ~0.6 GB |
+| ... the two 200-epoch full-batch overparam scans | `log` | ~209 | ~563 KB | 7,560 | ~4.3 GB |
+| MNIST MLP (27,562 params) | `final` + `checkpoints_svd: log` | ~34 (svd only) | ~3.7 MB | 2,490 svd | ~9.2 GB |
 | nanoGPT (826,368 params) | `epochs` | 50 | ~165 MB | 140 | ~23 GB |
-| ResNet18 (11.18M params) | `final` | 1 | ~45 MB | 1,633 | ~73 GB |
+| ResNet18 (11.18M params) | `final` | 1 | ~45 MB | 1,763 | ~79 GB |
 
-About **107 GB** for everything the configs describe, of which the parked fine-tune scan is
-408 ResNet states ~18 GB — so **~89 GB in the launch plan** — plus one
+About **116 GB** for everything the configs describe, of which the parked fine-tune scan is
+408 ResNet states ~18 GB — so **~98 GB in the launch plan** — plus one
 `ckpt/init_mseed{seed}.pt` per model seed under `final`. The nanoGPT and ResNet rows are the
 ones to check against the quota before launch; the MNIST baselines and both CIFAR scans
 deliberately keep `final` because `log` holds every state in RAM until flush
@@ -247,6 +318,12 @@ deliberately keep `final` because `log` holds every state in RAM until flush
    in the paper. (The *baseline* edges on the same two scans — RMSprop's lr on CE and L-BFGS's
    lr on both — were measured from the legacy records and are extended; see above. Sven is the
    only family on these two scans where an edge is knowingly accepted.)
+   **Still open after the extension round (2026-09-19), and now with real evidence:** the
+   finished scans report Sven on `k:EDGE-HIGH` (= B, a method boundary) on both, plus
+   `rtol:EDGE-HIGH` at 1e-2 on CIFAR-CE, while `lr` came back interior — 0.5 on label-reg,
+   0.1 on CE — so the *lr* edge this item was written about has closed on its own. What is
+   left is CIFAR-CE's rtol top edge, deliberately not extended at 2 k x 5 lr x 5 seeds =
+   **50 runs ~ 25 GPU-h**. Same decision as before: extend, or accept and say so in the paper.
 2. **`rebuttal_fig5_cifar_paramfrac_scan` set point is still tentative.** k=64, lr=1.0,
    rtol=1e-3 are the pre-Gram classic best; `EXPERIMENTS.md` documents k=128, lr=0.1, rtol=1e-4
    for the same figure (`grid_inventory.md` 5.5). It must be re-pointed at the BN-fixed
@@ -257,10 +334,13 @@ deliberately keep `final` because `log` holds every state in RAM until flush
    `plan_campaign.yaml` is enabled by omission, so a P1 launch today would spend ~5.5 GPU-h on
    the tentative values and produce a wrong headline figure. The launcher track should set
    `enabled: false` on that item until the set point is re-derived.
-3. **Extensions were applied to headline scans only.** `rebuttal_overparam_*` and
-   `rebuttal_batchsize_polynomial_scan` keep `lrs_standard: [1e-4 .. 1e-1]`, so SGD, Shampoo and
-   the new match_rms_adamw Muon may well sit on an edge there too. Extending them costs ~+1,900
-   runs but under 2 GPU-h (they are 200-step full-batch or tiny-MLP runs). Cheap to say yes to.
+3. ~~**Extensions were applied to headline scans only.**~~ **CLOSED** by the extension round
+   (user-approved, 2026-09-19). The prediction held: on all four of those scans the shared
+   `lrs_standard` optimum was an edge — the 1e-1 top one for eight of ten optimizers on
+   overparam-toy, the 1e-4 bottom one for KFAC on overparam-MNIST and the batch-size scan —
+   and they now carry the headline list. The cost estimate did not hold: it is +4,000 runs,
+   not +1,900 (the list multiplies by ten optimizers x five seeds x four `n_data` points),
+   and ~8 GPU-h rather than "under 2". See "What changed in the C-B3 extension round".
 4. **The two CIFAR jd/hig grids (200 runs) are kept but unbudgeted**, and `mode=all` on either
    config would claim them. See the `(N)` note under the table. Either enable
    `p3_cifar_jd_hig` and budget ~100 GPU-h, or decide the JD/HIG comparison stays on the four

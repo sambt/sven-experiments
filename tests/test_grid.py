@@ -46,6 +46,11 @@ kappa scan (15 -> 210 runs). Every id that a config no longer describes is
 explained in :data:`EXPLAINED` by the change that dropped it, and comes back under
 an explicit override.
 
+The C-B3 extension round (user-approved, 2026-09-19) did 1, 2 and 3 again, and not
+4: it only ADDS values to grid lists, so no run_id it used to describe went away
+and :data:`EXPLAINED` is unchanged -- which is the property
+``test_svd_record_and_run_id_details`` asserts for the first toy_1d point.
+
 Do NOT loosen an assertion instead; the point of these oracles is that a config
 edit is visible.
 """
@@ -160,15 +165,22 @@ SCANS = sorted(MODE)
 # 2.0 -- the numbers are in campaign/grid_counts.md); `jd`/`hig` grew or shifted with
 # C-B3 on the MLP scans and are untouched on CIFAR (never launched there); `svd` grew
 # with the polynomial rtol point, the CIFAR-CE lrs and the C-X1 kappa grid.
+# The C-B3 EXTENSION ROUND (user-approved, 2026-09-19, sized from the finished campaign's
+# edge flags in campaign/reconcile_2026-09-19.txt) moved four of these rows again: toy_1d
+# `svd` 360 -> 900 (lr and rtol both on their bottom edge) and `hig` 150 -> 210 (HIG's lr
+# on the new bottom edge); mnist_scan_ce `svd` 640 -> 800 (rtol on the top edge); `lbfgs`
+# 135 -> 225 / 180 -> 225 wherever L-BFGS's optimum was its lr edge; and the batch-size
+# scan's `standard` 1200 -> 2400, which is the pre-extension 1e-4..1e-1 list finally
+# catching up with the headline scans. Per-scan reasons are in campaign/grid_counts.md.
 INVENTORY = {
-    "toy_1d_scan": {"svd": 360, "standard": 400, "lbfgs": 135, "polyak": 5,
-                    "jd": 30, "hig": 150},
-    "mnist_scan_ce": {"svd": 640, "standard": 400, "lbfgs": 135, "polyak": 5,
+    "toy_1d_scan": {"svd": 900, "standard": 400, "lbfgs": 225, "polyak": 5,
+                    "jd": 30, "hig": 210},
+    "mnist_scan_ce": {"svd": 800, "standard": 400, "lbfgs": 225, "polyak": 5,
                       "jd": 30, "hig": 150},
-    "cifar10_resnet_scan_labelRegression": {"svd": 90, "standard": 280, "lbfgs": 180,
+    "cifar10_resnet_scan_labelRegression": {"svd": 90, "standard": 280, "lbfgs": 225,
                                             "polyak": 5, "jd": 20, "hig": 80},
-    "rebuttal_batchsize_polynomial_scan": {"svd": 360, "standard": 1200,
-                                           "lbfgs": 90, "polyak": 30},
+    "rebuttal_batchsize_polynomial_scan": {"svd": 480, "standard": 2400,
+                                           "lbfgs": 150, "polyak": 30},
     "exp_critbatch_nanogpt": {"svd": 120, "standard": 90},
     "mnist_paramfrac_labelreg_scan": {"svd": 100},
     "mnist_kappaScan_labelRegression": {"svd": 210},
@@ -593,10 +605,16 @@ def test_svd_record_and_run_id_details():
     k_fractions, the use_gram svd_mode collapse and the optional suffixes."""
     # k_values are used verbatim; k_fractions are multiplied by the batch size.
     rcfg = load_rcfg("toy_1d_scan")
-    s = grid.expand_grid(rcfg, mode="svd", verbose=False)[0]
+    specs_svd = grid.expand_grid(rcfg, mode="svd", verbose=False)
+    s = specs_svd[0]
     assert s.hparams["k"] == 1 and s.record_extra["k_fraction"] == 1 / 32
-    assert s.run_id == ("svd_bs32_mlp_width16_k1_lr0.05_rtol0.0001_svdtorch"
+    assert s.run_id == ("svd_bs32_mlp_width16_k1_lr0.01_rtol1e-06_svdtorch"
                         "_mseed1000_lseed1000_gram")
+    # ... and the pre-extension first point is still produced under its old name: the
+    # C-B3 extension round may only ADD grid values, because a run_id that moves is a
+    # finished run re-executed under a new name (dedup is run_id + run_hash).
+    assert ("svd_bs32_mlp_width16_k1_lr0.05_rtol0.0001_svdtorch"
+            "_mseed1000_lseed1000_gram") in {x.run_id for x in specs_svd}
     rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan")
     ks = {(s.batch_size, s.hparams["k"])
           for s in grid.expand_grid(rcfg, mode="svd", verbose=False)}
@@ -648,8 +666,10 @@ def test_weight_decay_grid_filter():
     rcfg = load_rcfg("rebuttal_batchsize_polynomial_scan", "weight_decays=[0.0,0.01]")
     specs = grid.expand_grid(rcfg, mode="standard", verbose=False)
     per_optim = Counter(s.hparams["optim_name"] for s in specs if s.family == "standard")
-    assert per_optim["Adam"] == 120 and per_optim["AdamW"] == 240
-    assert per_optim["Muon"] == 240 and per_optim["MuonW"] == 240
+    # 6 batch sizes x 8 lrs x 5 seeds = 240 per optimizer since the C-B3 extension round
+    # gave this scan the headline `lrs_standard` list; the wd-swept three are doubled.
+    assert per_optim["Adam"] == 240 and per_optim["AdamW"] == 480
+    assert per_optim["Muon"] == 480 and per_optim["MuonW"] == 480
     assert {s.hparams["weight_decay"] for s in specs
             if s.hparams.get("optim_name") == "SGD"} == {0.0}
     # weight_decays: [None] -> each optimizer's own default, in the run_id for the
