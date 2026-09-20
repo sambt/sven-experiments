@@ -1,0 +1,2090 @@
+# Phase 5: the three result-dependent passes, GENERATED -- do not hand-edit.
+#
+#   tools/select_best.py                       # re-derive bench/best_configs.json
+#   tools/gen_phase5_plan.py                   # regenerate THIS file
+#   tools/launch_campaign.py campaign/plan_phase5.yaml --phase P5              # dry run
+#   tools/launch_campaign.py campaign/plan_phase5.yaml --list p5_diag_mlp_mig --submit
+#   tools/reconcile.py --all campaign/plan_phase5.yaml --phase P5
+#
+# Every item's overrides are `bench/best_configs.json`'s `overrides` field verbatim, and
+# `tools/select_best.py` has already PROVEN each of them expands to exactly the five seed
+# run_ids (and run hashes) of the configuration it names. After a grid extension: re-run
+# the two tools above, in that order, and relaunch.
+#
+# Generated 2026-09-19T23:46:17-0400
+# from      /n/home11/sambt/iaifi/sv3/bench/best_configs.json
+#   selection rule: full
+#   results root:   /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
+#   configs:        /n/home11/sambt/iaifi/sv3/experiments/configs
+#   selection made: 2026-09-19T23:42:21-0400
+# GENERATED FROM AN INCOMPLETE SELECTION (--allow-incomplete):
+#   cifar10_resnet_ce_scan: 165 run(s) of the grid unfinished
+#   cifar10_resnet_ce_scan: selected on fewer than all seeds: SGD (4/5)
+#   cifar10_resnet_scan_labelRegression: 145 run(s) of the grid unfinished
+#   mnist_scan_ce: 250 run(s) of the grid unfinished
+#   polynomial_scan: 430 run(s) of the grid unfinished
+#   polynomial_scan: selected on fewer than all seeds: LBFGS (3/5)
+#   toy_1d_scan: 234 run(s) of the grid unfinished
+#   toy_1d_scan: selected on fewer than all seeds: SVD (3/5)
+# Re-run tools/select_best.py and this script once `tools/reconcile.py --all campaign/plan_campaign.yaml` is clean.
+#
+# THE TIMING LIST IS NOT SUBMITTED BY THE LAUNCHER. It is here so `reconcile --all` covers
+# the pass and so the launcher can dry-run its run counts. Submit it with
+# `bench/submit_timing_phase5.sh` (dry run by default): the GPU probe measured an MLP step
+# time to be set by HOST CPU load -- 1.13 ms on a quiet node against 4.58 ms on a node at
+# 4/4 GPUs, the same config -- so a worker pool on the other GPUs of the same node
+# corrupts the numbers even though it never touches this GPU. One job per scan, all of the
+# scan's methods back to back, with an Adam-MLP calibration microbenchmark at the start and
+# the end of the job so contamination is detectable after the fact.
+version: 1
+plan: phase5
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
+
+lanes:
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    mem: 64G
+    time: "24:00:00"
+    cpus_extra: 2
+    note: "diag / confirm for CIFAR + nanoGPT, and the A100 overflow of the MLP lists"
+  mig:
+    partition: gpu_test
+    gres: "gpu:4"
+    cpus: 32
+    mem: 128G
+    time: "12:00:00"
+    max_jobs: 2
+    note: "MLP diag/confirm only: 19.6 GB a slice fits toy/poly/MNIST, not CIFAR full capture"
+  timing:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    cpus: 16
+    mem: 64G
+    time: "36:00:00"
+    note: "reference shape only -- bench/submit_timing_phase5.sh submits this pass serially,
+           optionally with --exclusive (an exclusive job holds a whole node slot of its QOS
+           and cannot start while a co-tenant holds a GPU on it: the 2026-09-17 timing job
+           sat in QOSMaxNodePerUserLimit for 13 h)"
+
+work_lists:
+  - name: p5_timing
+    phase: P5
+    lane: timing
+    n_jobs: 1
+    note: "C-T1/C-T3: one selected configuration at a time, NPROC 1, svd_info none, checkpoints none. SUBMIT WITH bench/submit_timing_phase5.sh, not the launcher."
+    # 85 item(s), 425 run(s); ~43.2 process-h at the scans' own (sharded) step times
+    items:
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: 1
+        note: "Adam: seed-mean val 1.69789e-05, ~0.5 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: 1
+        note: "AdamW: seed-mean val 1.94804e-05, ~0.5 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=hig lrs_hig=[0.005] tau_hig=[1e-06]"
+        nproc: 1
+        note: "HIG: seed-mean val 4.70687e-09, ~2.7 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: 1
+        note: "JD_UPGrad: seed-mean val 9.33468e-05, ~0.9 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001]"
+        nproc: 1
+        note: "KFAC: seed-mean val 2.55157e-05, ~2.8 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 0.00132149, ~2.7 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: 1
+        note: "Muon: seed-mean val 3.0787e-05, ~0.6 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: 1
+        note: "MuonW: seed-mean val 5.29405e-05, ~0.6 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 9.20425e-05, ~0.6 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 0.000160708, ~0.5 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[0.3]"
+        nproc: 1
+        note: "SGD: seed-mean val 4.45797e-05, ~0.5 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1]"
+        nproc: 1
+        note: "SGDm: seed-mean val 4.96434e-05, ~0.5 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001]"
+        nproc: 1
+        note: "SOAP: seed-mean val 4.3253e-06, ~0.7 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        nproc: 1
+        note: "Sven: seed-mean val 2.15035e-07, ~1.6 min/run sharded"
+      - config: toy_1d_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: 1
+        note: "Shampoo: seed-mean val 0.000206793, ~2.6 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: 1
+        note: "Adam: seed-mean val 0.185243, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "AdamW: seed-mean val 0.20542, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=hig lrs_hig=[0.1] tau_hig=[1e-08]"
+        nproc: 1
+        note: "HIG: seed-mean val 0.0714909, ~2.0 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: 1
+        note: "JD_UPGrad: seed-mean val 0.14377, ~0.9 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05]"
+        nproc: 1
+        note: "KFAC: seed-mean val 0.172782, ~3.0 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 0.239496, ~1.9 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: 1
+        note: "Muon: seed-mean val 0.165093, ~0.6 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "MuonW: seed-mean val 0.206112, ~0.6 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 0.136243, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 0.183912, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: 1
+        note: "SGD: seed-mean val 0.22631, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SGDm: seed-mean val 0.214096, ~0.5 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SOAP: seed-mean val 0.149594, ~0.7 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        nproc: 1
+        note: "Sven: seed-mean val 0.117521, ~1.2 min/run sharded"
+      - config: polynomial_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: 1
+        note: "Shampoo: seed-mean val 0.522094, ~2.7 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: 1
+        note: "Adam: seed-mean val 0.0568329, ~1.3 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: 1
+        note: "AdamW: seed-mean val 0.0568641, ~1.3 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: 1
+        note: "HIG: seed-mean val 0.0507585, ~105.8 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: 1
+        note: "JD_UPGrad: seed-mean val 0.0575582, ~11.5 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 0.0580331, ~6.2 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: 1
+        note: "Muon: seed-mean val 0.0557996, ~1.6 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: 1
+        note: "MuonW: seed-mean val 0.0499932, ~1.6 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 0.0567768, ~1.5 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 0.0605357, ~1.4 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: 1
+        note: "SGD: seed-mean val 0.0533795, ~1.3 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SGDm: seed-mean val 0.0555426, ~1.3 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SOAP: seed-mean val 0.570774, ~1.9 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[64] lrs=[0.5] rtol=[0.001]"
+        nproc: 1
+        note: "Sven: seed-mean val 0.0521502, ~3.9 min/run sharded"
+      - config: mnist_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: 1
+        note: "Shampoo: seed-mean val 0.0826836, ~38.4 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "Adam: seed-mean val 0.143639, ~1.3 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: 1
+        note: "AdamW: seed-mean val 0.141736, ~1.3 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: 1
+        note: "HIG: seed-mean val 0.114273, ~87.3 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=jd lrs_jd=[0.0001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: 1
+        note: "JD_UPGrad: seed-mean val 0.155591, ~10.0 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.5] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 0.143108, ~4.8 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "Muon: seed-mean val 0.106133, ~1.6 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "MuonW: seed-mean val 0.104092, ~1.6 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 0.140786, ~1.5 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 0.140097, ~1.3 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SGD: seed-mean val 0.122182, ~1.3 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: 1
+        note: "SGDm: seed-mean val 0.123667, ~1.2 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "SOAP: seed-mean val 0.968058, ~2.2 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        nproc: 1
+        note: "Sven: seed-mean val 0.123058, ~3.9 min/run sharded"
+      - config: mnist_scan_ce_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: 1
+        note: "Shampoo: seed-mean val 0.133909, ~37.4 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: 1
+        note: "Adam: seed-mean val 0.398464, ~2.9 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "AdamW: seed-mean val 0.395228, ~3.5 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 0.43796, ~9.0 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: 1
+        note: "Muon: seed-mean val 0.364884, ~4.1 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "MuonW: seed-mean val 0.34564, ~4.1 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 0.454063, ~3.1 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 0.40881, ~2.8 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[0.001]"
+        nproc: 1
+        note: "SGD: seed-mean val 0.739038, ~2.8 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: 1
+        note: "SGDm: seed-mean val 0.692212, ~2.8 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SOAP: seed-mean val 0.35236, ~8.0 min/run sharded"
+      - config: cifar10_resnet_scan_labelRegression_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]"
+        nproc: 1
+        note: "Sven: seed-mean val 0.480345, ~22.3 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: 1
+        note: "Adam: seed-mean val 1.21389, ~2.8 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "AdamW: seed-mean val 1.09327, ~3.5 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[2] lbfgs_history_size=[5]"
+        nproc: 1
+        note: "LBFGS: seed-mean val 1.01357, ~6.3 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: 1
+        note: "Muon: seed-mean val 1.12233, ~4.0 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: 1
+        note: "MuonW: seed-mean val 0.688802, ~4.1 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: 1
+        note: "PolyakSGD: seed-mean val 1.78242, ~3.0 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: 1
+        note: "RMSprop: seed-mean val 1.33404, ~2.8 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[3.0]"
+        nproc: 1
+        note: "SGD: seed-mean val 1.10133, ~2.7 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.3]"
+        nproc: 1
+        note: "SGDm: seed-mean val 1.18725, ~2.8 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: 1
+        note: "SOAP: seed-mean val 1.14813, ~8.1 min/run sharded"
+      - config: cifar10_resnet_ce_scan_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        nproc: 1
+        note: "Sven: seed-mean val 1.40281, ~22.0 min/run sharded"
+      - config: exp_nanogpt_speedrun_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.0003]"
+        nproc: 1
+        note: "AdamW: seed-mean val 1.71443, ~2.8 min/run sharded"
+      - config: exp_nanogpt_speedrun_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "Muon: seed-mean val 1.81915, ~3.7 min/run sharded"
+      - config: exp_nanogpt_speedrun_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "MuonW: seed-mean val 1.81769, ~3.8 min/run sharded"
+      - config: exp_nanogpt_speedrun_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: 1
+        note: "SOAP: seed-mean val 1.82168, ~5.1 min/run sharded"
+      - config: exp_nanogpt_speedrun_timing
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[64] lrs=[0.1] rtol=[0.001]"
+        nproc: 1
+        note: "Sven: seed-mean val 1.72363, ~5.8 min/run sharded"
+
+  - name: p5_diag_mlp_mig
+    phase: P5
+    lane: mig
+    n_jobs: 2
+    note: "toy / polynomial / MNIST diagnostics on the 8 MIG slices"
+    # 58 item(s), 290 run(s); ~30.9 process-h at the scans' own (sharded) step times
+    items:
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05]"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=svd k_values=[64] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=jd lrs_jd=[0.0001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.5] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+
+  - name: p5_diag_mlp_a100
+    phase: P5
+    lane: a100
+    n_jobs: 2
+    note: "the SAME items at A100 NPROC; absorbs whatever the MIG slices have not finished (the claim queue makes that free of duplicated work)"
+    # 58 item(s), 290 run(s); ~30.9 process-h at the scans' own (sharded) step times
+    items:
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: toy_1d_scan_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05]"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: polynomial_scan_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=svd k_values=[64] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: mnist_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=jd lrs_jd=[0.0001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.5] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: mnist_scan_ce_diag
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); checkpoints + dense spectra"
+
+  - name: p5_diag_heavy_a100
+    phase: P5
+    lane: a100
+    n_jobs: 2
+    note: "CIFAR + nanoGPT diagnostics; CIFAR writes ~0.95 GB of checkpoints a run"
+    # 27 item(s), 135 run(s); ~12.4 process-h at the scans' own (sharded) step times
+    items:
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 2, mig: 1}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 4, mig: 1}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 2, mig: 1}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: cifar10_resnet_scan_labelRegression_diag
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 1, mig: 1}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "Adam (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[2] lbfgs_history_size=[5]"
+        nproc: {a100: 2, mig: 1}
+        note: "LBFGS (heavy); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 4, mig: 1}
+        note: "PolyakSGD (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "RMSprop (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[3.0]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGD (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.3]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGDm (first); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 2, mig: 1}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        nproc: {a100: 1, mig: 1}
+        note: "Sven (sven); checkpoints + dense spectra"
+      - config: exp_nanogpt_speedrun_diag
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.0003]"
+        nproc: {a100: 3, mig: 1}
+        note: "AdamW (first); checkpoints + dense spectra"
+      - config: exp_nanogpt_speedrun_diag
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "Muon (first); checkpoints + dense spectra"
+      - config: exp_nanogpt_speedrun_diag
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "MuonW (first); checkpoints + dense spectra"
+      - config: exp_nanogpt_speedrun_diag
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "SOAP (heavy); checkpoints + dense spectra"
+      - config: exp_nanogpt_speedrun_diag
+        overrides: "mode=svd k_values=[64] lrs=[0.1] rtol=[0.001]"
+        nproc: {a100: 3, mig: 1}
+        note: "Sven (sven); checkpoints + dense spectra"
+
+  - name: p5_confirm_mlp_mig
+    phase: P5
+    lane: mig
+    n_jobs: 2
+    note: "toy / polynomial / MNIST confirmation seeds; toy and polynomial also on 3 data seeds"
+    # 118 item(s), 590 run(s); ~36.7 process-h at the scans' own (sharded) step times
+    items:
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2002"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=svd k_values=[64] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=jd lrs_jd=[0.0001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.5] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds"
+
+  - name: p5_confirm_mlp_a100
+    phase: P5
+    lane: a100
+    n_jobs: 2
+    note: "the SAME items at A100 NPROC"
+    # 118 item(s), 590 run(s); ~36.7 process-h at the scans' own (sharded) step times
+    items:
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.005] tau_hig=[1e-06] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.01] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.3] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.1] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.001] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1000"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1001"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1002"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 1002"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1000"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1000"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1001"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1001"
+      - config: toy_1d_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=1002"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 1002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=hig lrs_hig=[0.1] tau_hig=[1e-08] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[KFAC] lrs_standard=[1e-05] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "KFAC (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[1.0] lbfgs_max_iter=[1] lbfgs_history_size=[2] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2000"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2001"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2002"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds, data seed 2002"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2000"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2000"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2001"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2001"
+      - config: polynomial_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1] data_seed=2002"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds, data seed 2002"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=jd lrs_jd=[0.001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=svd k_values=[64] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: mnist_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=hig lrs_hig=[0.05] tau_hig=[0.03]"
+        nproc: {a100: 4, mig: 6}
+        note: "HIG (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=jd lrs_jd=[0.0001] aggregators_jd=[UPGrad] inner_optimizers_jd=[Adam]"
+        nproc: {a100: 4, mig: 6}
+        note: "JD_UPGrad (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.5] lbfgs_max_iter=[1] lbfgs_history_size=[2]"
+        nproc: {a100: 4, mig: 6}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 12, mig: 6}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.0001]"
+        nproc: {a100: 12, mig: 6}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.01]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 12, mig: 6}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 4, mig: 6}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        nproc: {a100: 12, mig: 6}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: mnist_scan_ce_confirm
+        overrides: "mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
+        nproc: {a100: 4, mig: 6}
+        note: "Shampoo (heavy); 5 fresh model seeds"
+
+  - name: p5_confirm_heavy_a100
+    phase: P5
+    lane: a100
+    n_jobs: 2
+    note: "CIFAR + nanoGPT confirmation seeds"
+    # 27 item(s), 135 run(s); ~12.4 process-h at the scans' own (sharded) step times
+    items:
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        nproc: {a100: 2, mig: 1}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 4, mig: 1}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 2, mig: 1}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: cifar10_resnet_scan_labelRegression_confirm
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]"
+        nproc: {a100: 1, mig: 1}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "Adam (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[2.0] lbfgs_max_iter=[2] lbfgs_history_size=[5]"
+        nproc: {a100: 2, mig: 1}
+        note: "LBFGS (heavy); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.01]"
+        nproc: {a100: 4, mig: 1}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[PolyakSGD]"
+        nproc: {a100: 4, mig: 1}
+        note: "PolyakSGD (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[RMSprop] lrs_standard=[0.001]"
+        nproc: {a100: 4, mig: 1}
+        note: "RMSprop (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGD] lrs_standard=[3.0]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGD (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SGDm] lrs_standard=[0.3]"
+        nproc: {a100: 4, mig: 1}
+        note: "SGDm (first); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.01]"
+        nproc: {a100: 2, mig: 1}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        nproc: {a100: 1, mig: 1}
+        note: "Sven (sven); 5 fresh model seeds"
+      - config: exp_nanogpt_speedrun_confirm
+        overrides: "mode=standard optimizers_standard=[AdamW] lrs_standard=[0.0003]"
+        nproc: {a100: 3, mig: 1}
+        note: "AdamW (first); 5 fresh model seeds"
+      - config: exp_nanogpt_speedrun_confirm
+        overrides: "mode=standard optimizers_standard=[Muon] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "Muon (first); 5 fresh model seeds"
+      - config: exp_nanogpt_speedrun_confirm
+        overrides: "mode=standard optimizers_standard=[MuonW] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "MuonW (first); 5 fresh model seeds"
+      - config: exp_nanogpt_speedrun_confirm
+        overrides: "mode=standard optimizers_standard=[SOAP] lrs_standard=[0.0001]"
+        nproc: {a100: 3, mig: 1}
+        note: "SOAP (heavy); 5 fresh model seeds"
+      - config: exp_nanogpt_speedrun_confirm
+        overrides: "mode=svd k_values=[64] lrs=[0.1] rtol=[0.001]"
+        nproc: {a100: 3, mig: 1}
+        note: "Sven (sven); 5 fresh model seeds"
+
