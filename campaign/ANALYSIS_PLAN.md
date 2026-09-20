@@ -129,10 +129,38 @@ Acceptance: figures regenerate from `make_plots.sh`; tool has tests; nothing rea
   login node. Results roots are read-only for analysis; caches go to `experiment_results/_cache/` (guarded).
 * Final gate: `./make_plots.sh` clean, `tests/` green, a reviewer agent spot-checks 10 table numbers against raw records.
 
-## 7. Open decisions for the user
-1. Report tuning-seed or confirmation-seed numbers as the headline (plan assumes confirmation, tuning beside it).
-2. GPT-2: keep as a reported negative data point, or spend ~60-100 GPU-h on a k / batch-size exploration first.
-3. CIFAR: Sven's poor ranking under corrected evaluation — report as is, or investigate (e.g. lr/rtol edge on CE, BN
-   interaction) before writing.
-4. Re-profile (section 5.3) yes/no.
-5. Extend CIFAR-CE Sven rtol (~25 GPU-h) yes/no.
+## 7. Decisions (user, 2026-09-20) — all settled, nothing launched yet
+1. **Headline = confirmation seeds**, with the tuning-seed numbers shown beside them (selection optimism visible).
+2. **GPT-2: report as is** (one seed, one epoch, k = B = 16; Sven 5.20 vs Muon 3.77 / AdamW 3.93 at ~3x the time per
+   run). k / batch-size exploration is deferred.
+3. **CIFAR: report as is, no further investigation now.** Confirmation-seed facts to state: label-regression — Sven
+   test acc 69.4% vs Adam 73.4 / MuonW 76.3 / SOAP 77.9, Sven fits the train subset well (train_eval 0.067) but
+   generalises worse; cross-entropy — Sven 53.0% vs 73-78%, an optimisation failure (train_eval 0.82); 62 s/epoch vs
+   5-18 s. BatchNorm was ON (`bn_mode: batch`: batch statistics in training, one running-stat update per step, eval
+   with running stats) for every optimizer. The legacy "Sven ~ Adam on CIFAR" came from evaluating Sven with
+   validation-batch statistics.
+4. **Re-profile: YES.** Re-run the optimizer step-time / memory profile (`bench/profile_serial.sbatch`, all
+   `experiments/configs/profile_*.yaml`, ~2 h on one exclusive A100-80GB node) on the campaign code, because the
+   09-17 profile was measured with the per-step `torch.cuda.empty_cache()` that made full-capture Sven up to 4.5x
+   slower. Before launching: make sure `experiments/optimizer_profile.py` builds Sven with `empty_cache=False` (now the
+   optimizer default - verify the profiler does not override it) and exports
+   `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`; write to a NEW root `profile_results_v3/` (keep v2 for the
+   before/after table); run from a deploy snapshot; then point `analysis/profile_helpers.RESULTS_ROOT` / the four
+   profile notebooks at v3 and add a v2-vs-v3 comparison cell. Exclusive nodes do not start under contention: submit
+   and let it wait, or fall back to a non-exclusive GPU with the calibration microbenchmark
+   (`bench/calibrate_step.py`) recorded at start and end.
+5. **CIFAR-CE Sven rtol extension: YES.** `cifar10_resnet_ce_scan.yaml`: add `rtol` 0.03, 0.1, 0.3 (the optimum sits on
+   the 1e-2 high edge; MNIST-CE prefers 0.1-0.3). Additive only: 2 k x 5 lr x 3 rtol x 5 seeds = +150 runs at ~0.45 h =
+   ~70 GPU-h if the full lr grid is kept; to stay near the ~25 GPU-h quoted, restrict the new rtol values to the
+   lrs around the optimum via a separate override item (`lrs=[0.05,0.1,0.5] k_values=[128]` -> 45 runs, ~20 GPU-h) —
+   DEFAULT: the restricted 45-run version as an extra plan item, not a config-grid change, so counts/goldens do not
+   move. Afterwards: `tools/select_best.py`, regenerate `campaign/plan_phase5.yaml`, and re-run timing / diag /
+   confirm for CIFAR-CE Sven only if the selected config changed.
+
+### Launch checklist for 4 and 5 (when the user says go)
+* Both need GPUs but are independent of the analysis work packages (WP1-WP5 can start in parallel; WP2/WP4b
+  re-read CIFAR-CE numbers at the end, and WP5's profile tables wait for v3).
+* Item 5: add the plan item (or config values), tests green, commit, `tools/deploy_snapshot.sh`, launch with
+  `tools/launch_campaign.py ... --snapshot <new> --list <list> --submit`; the queue must be empty of jobs from other
+  snapshots for the same list (launcher guard).
+* Item 4: one sbatch; results in `profile_results_v3/`.
