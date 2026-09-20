@@ -6,13 +6,26 @@ DataFrame (a row per configuration); every plot function here takes that frame, 
 notebooks are thin drivers.
 
 Which results root (:func:`results_root`)
-    ``$SV3_PROFILE_ROOT``, else :data:`ROOT_V3` once it has results, else :data:`ROOT_V2`.
-    v2 (2026-09-17) was measured with Sven's per-step ``torch.cuda.empty_cache()``, which
-    made full-capture Sven up to 4.5x slower on CIFAR (841 vs 187 ms/step), without
-    ``expandable_segments``, and with the Gram wrapper freezing the BatchNorm statistics
-    that the CIFAR scans keep updating.  v3 re-measures all three correctly; v2 stays as
-    the before-table and is never written to.  :func:`compare_profiles` joins the two on
-    ``run_id`` so the change is reported rather than quietly applied.
+    ``$SV3_PROFILE_ROOT``, else :data:`ROOT_V3` once it is COMPLETE (:func:`profile_status`),
+    else :data:`ROOT_V2`.  The completeness gate matters because the re-profile job writes
+    :data:`N_CONFIGS` files over up to 6 h: on a half-written root :func:`add_relative`
+    would normalise against an Adam / SGD reference that has not landed yet and report
+    wrong or NaN ``rel_time`` / ``rel_mem`` instead of failing.  A partial v3 is always
+    PRINTED -- never silently used, never silently ignored.
+
+    What v2 (2026-09-17) got wrong, and v3 does not, is TWO settings: Sven's per-step
+    ``torch.cuda.empty_cache()`` (full-capture Sven up to 4.5x slower on CIFAR, 841 vs
+    187 ms/step, and the sole source of its step-time variance) and the missing
+    ``expandable_segments`` allocator.  The BatchNorm policy is NOT one of the differences:
+    all 33 v2 CIFAR Gram records carry ``meta.freeze_norm_stats: False``, so v2 already
+    profiled CIFAR with the batch statistics its scans use (the pre-C-E2 config still set
+    ``gram_freeze_norm_stats: false``).  What v3's ``bn_mode`` work prevents is a FUTURE
+    regression: C-E2 removed that key from the configs, after which the profiler's own
+    default would have started freezing CIFAR's statistics.
+    :func:`compare_profiles` joins the two roots on ``run_id`` so the change is reported
+    rather than quietly applied.  Both measurement roots are READ-ONLY
+    (ANALYSIS_CONTRACTS.md), so the derived-frame cache lives OUTSIDE them
+    (:func:`_cache_path`).
 
 Conventions
     step_ms      AMORTISED mean step time: the plain mean over the last 80% of the measured
@@ -46,12 +59,27 @@ from style import METHOD_COLORS, method_color
 
 #: repo root, so a root resolves the same from a notebook (cwd = analysis/) and a test
 _REPO = Path(__file__).resolve().parent.parent
-#: 2026-09-17, measured with the per-step `empty_cache()`: FROZEN as the before-table.
+#: 2026-09-17, measured with the per-step `empty_cache()` and without
+#: `expandable_segments`: FROZEN as the before-table (read-only, cache kept outside it).
 ROOT_V2 = _REPO / 'profile_results_v2'
 #: the re-measurement (ANALYSIS_PLAN.md section 7.4): `empty_cache` off,
 #: expandable_segments on, the scans' own `bn_mode`.
 ROOT_V3 = _REPO / 'profile_results_v3'
 MB = 1e6
+
+#: Configurations per profile config in a FULL pass: exactly what `profile_results_v2`
+#: holds and what `bench/profile_serial.sbatch`'s default `PROFILE_CONFIGS` writes.  This
+#: is the completeness yardstick (:func:`profile_status`) -- not a grid definition.
+N_EXPECTED = {
+    'profile_toy_1d': 129, 'profile_polynomial': 129, 'profile_mnist': 143,
+    'profile_mnist_width': 91, 'profile_nanogpt': 92, 'profile_nanogpt_width': 55,
+    'profile_cifar': 81,
+}
+#: 720: the size of one full pass.
+N_CONFIGS = sum(N_EXPECTED.values())
+#: File `bench/profile_serial.sbatch` writes at the end of a clean full pass.  The count
+#: rule below is the fallback for a pass whose deploy snapshot predates the sentinel.
+COMPLETE_SENTINEL = '_profile_complete'
 
 SVEN = ['gram_hooks', 'gram_full', 'gram_chunked', 'classic']
 LABELS = {
@@ -176,34 +204,96 @@ def has_profiles(root) -> bool:
     return root.is_dir() and any(root.glob('*/*.json'))
 
 
-def results_root(prefer=None, verbose=True):
-    """The profile results root to read: ``$SV3_PROFILE_ROOT`` > ``prefer`` > v3 > v2.
+def profile_count(root) -> int:
+    """Profile JSONs under ``root`` (0 for an absent root)."""
+    root = Path(root)
+    return sum(1 for _ in root.glob('*/*.json')) if root.is_dir() else 0
 
-    v3 wins over v2 the moment it has results, so the notebooks switch over on their own
-    once the re-profile job has written something -- and keep working before that. Pass
-    ``prefer=ph.ROOT_V2`` in a cell that must stay on the old numbers.
+
+def profile_status(root):
+    """``(complete, n_found, n_expected)`` -- is ``root`` a FINISHED pass?
+
+    Complete iff :data:`COMPLETE_SENTINEL` is there (written by
+    ``bench/profile_serial.sbatch`` after a clean full pass) **or** every directory of
+    :data:`N_EXPECTED` holds at least its full count.  The count rule is what covers a
+    pass whose deploy snapshot predates the sentinel, e.g. the 2026-09-20 job 47396284.
+
+    The profiler writes a record for a failed configuration too (``oom`` / ``error`` are
+    720 of 720 in v2), so a short count means the pass is unfinished -- resubmit
+    ``profile_serial.sbatch`` (it skips what exists) or, to read it anyway, pass the root
+    explicitly / set ``$SV3_PROFILE_ROOT``.
+    """
+    root = Path(root)
+    n = profile_count(root)
+    if (root / COMPLETE_SENTINEL).exists():
+        return True, n, N_CONFIGS
+    done = all(sum(1 for _ in (root / c).glob('*.json')) >= k for c, k in N_EXPECTED.items())
+    return done, n, N_CONFIGS
+
+
+def is_complete(root) -> bool:
+    """:func:`profile_status`'s first element."""
+    return profile_status(root)[0]
+
+
+def results_root(prefer=None, verbose=True):
+    """The profile results root to read: ``$SV3_PROFILE_ROOT`` > ``prefer`` > v3 (only
+    once COMPLETE) > v2.
+
+    v3 takes over from v2 on its own, but only when the whole pass has landed: a root the
+    re-profile job is still filling is announced as PARTIAL and skipped, because
+    :func:`add_relative` would otherwise divide by an Adam / SGD reference that is not
+    there yet and report wrong or NaN relative columns rather than an error.
+    ``$SV3_PROFILE_ROOT`` and ``prefer`` are explicit requests, so they win even when
+    partial -- with the count printed.  Pass ``prefer=ph.ROOT_V2`` in a cell that must
+    stay on the old numbers.
     """
     env = os.environ.get('SV3_PROFILE_ROOT')
-    for cand, why in ((env, '$SV3_PROFILE_ROOT'), (prefer, 'requested'),
-                      (ROOT_V3, 'v3'), (ROOT_V2, 'v2')):
-        if cand and has_profiles(cand):
+    for cand, why, gated in ((env, '$SV3_PROFILE_ROOT', False), (prefer, 'requested', False),
+                             (ROOT_V3, 'v3', True), (ROOT_V2, 'v2', False)):
+        if not cand or not has_profiles(cand):
+            continue
+        cand = Path(cand)
+        done, n, exp = profile_status(cand)
+        if gated and not done:
             if verbose:
-                print(f'profile results: {Path(cand)}  ({why})')
-            return Path(cand)
+                print(f'profile results: {cand} is PARTIAL ({n}/{exp} configurations) -- '
+                      f'staying on {ROOT_V2.name}. Pass prefer=ph.ROOT_V3 or set '
+                      f'$SV3_PROFILE_ROOT to read it anyway.')
+            continue
+        if verbose:
+            print(f'profile results: {cand}  ({why}'
+                  + ('' if done else f'; PARTIAL {n}/{exp}') + ')')
+        return cand
     # nothing has results yet: name v3 anyway, so the error says what is missing
     return Path(env or prefer or ROOT_V3)
+
+
+def _cache_path(root) -> Path:
+    """Where :func:`load_profiles` caches the derived frame -- NOT inside the results root.
+
+    The measurement roots are read-only (ANALYSIS_CONTRACTS.md: "the loader cache under
+    ``experiment_results/_cache/`` is the one allowed write"), and a cache inside them
+    meant every ``compare_profiles`` call rewrote ``profile_results_v2/``.
+    ``$SV3_PROFILE_CACHE_DIR`` overrides the directory (the tests point it at a tmp dir).
+    """
+    d = Path(os.environ.get('SV3_PROFILE_CACHE_DIR')
+             or (_REPO / 'experiment_results' / '_cache'))
+    return d / f'profile_{Path(root).name}.pkl'
 
 
 def load_profiles(root=None, configs=None, use_cache=True) -> pd.DataFrame:
     """Every profile JSON under ``root`` as one tidy frame (cached on the file listing).
 
-    ``root=None`` asks :func:`results_root`.
+    ``root=None`` asks :func:`results_root`.  The printed line carries
+    ``<n>/<N_CONFIGS>`` so a partial root can never be read as a finished one.
     """
     root = results_root() if root is None else Path(root)
     files = sorted(f for f in root.glob('*/*.json') if configs is None or f.parent.name in configs)
-    sig = (_CACHE_VERSION, len(files), max((f.stat().st_mtime_ns for f in files), default=0),
+    sig = (_CACHE_VERSION, str(root.resolve()) if root.exists() else str(root),
+           len(files), max((f.stat().st_mtime_ns for f in files), default=0),
            tuple(configs or ()))
-    cache = root / '_profile_cache.pkl'
+    cache = _cache_path(root)
     if use_cache and cache.is_file():
         try:
             blob = pickle.loads(cache.read_bytes())
@@ -218,10 +308,14 @@ def load_profiles(root=None, configs=None, use_cache=True) -> pd.DataFrame:
     df = add_relative(pd.DataFrame(rows)) if rows else pd.DataFrame()
     if use_cache and rows:
         try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_bytes(pickle.dumps({'sig': sig, 'df': df}))
-        except OSError as exc:      # a frozen / read-only root is fine: reparse next time
-            print(f'({cache} not written: {exc})')
-    print(f'{len(df)} configurations from {root}/ ({df["status"].value_counts().to_dict() if len(df) else {}})')
+        except Exception as exc:    # an unwritable cache dir is fine: reparse next time
+            print(f'({cache} not written: {type(exc).__name__}: {exc})')
+    done, n, exp = profile_status(root)
+    short = '' if (configs or done) else f'  -- PARTIAL, {n}/{exp} configurations written'
+    print(f'{len(df)} configurations from {root}/ '
+          f'({df["status"].value_counts().to_dict() if len(df) else {}}){short}')
     return df
 
 
@@ -229,27 +323,41 @@ def load_profiles(root=None, configs=None, use_cache=True) -> pd.DataFrame:
 COMPARE_VALUES = ('step_ms', 'capture_ms', 'solve_ms', 'peak_mb', 'rel_time')
 
 
-def compare_profiles(old=ROOT_V2, new=None, values=COMPARE_VALUES, use_cache=True):
+def compare_profiles(old=None, new=None, values=COMPARE_VALUES, use_cache=True):
     """v2-vs-v3: one row per configuration present in EITHER root, joined on ``run_id``.
 
+    ``old`` / ``new`` default to :data:`ROOT_V2` / :data:`ROOT_V3` AT CALL TIME (a default
+    argument would have frozen them at import, so a test or a notebook that redirects the
+    roots would have been ignored).
+
     Why this is a report and not a silent swap: v2 measured Sven with the per-step
-    ``empty_cache()`` (up to 4.5x slower for full capture on CIFAR), without
-    ``expandable_segments``, and with frozen BatchNorm statistics where the scans use batch
-    statistics. Every number that moves is therefore expected to move DOWN for the Sven
-    variants and to stay put for the baselines -- and a baseline that moved by more than
-    the noise is a sign that the two passes ran on different hardware or a busy node, which
-    is what ``gpu_old`` / ``gpu_new`` and the ``[calib]`` lines in the job logs are for.
+    ``empty_cache()`` (up to 4.5x slower for full capture on CIFAR) and without
+    ``expandable_segments``.  Those TWO settings are the whole difference -- the BatchNorm
+    policy is not: v2's CIFAR Gram records all carry ``meta.freeze_norm_stats: False``, the
+    same batch statistics v3 uses (v3's ``bn_mode`` plumbing keeps it that way now that
+    C-E2 has removed the config key; see the module docstring).  Every number that moves is
+    therefore expected to move DOWN for the Sven variants and to stay put for the baselines
+    -- and a baseline that moved by more than the noise is a sign that the two passes ran
+    on different hardware or a busy node, which is what ``gpu_old`` / ``gpu_new`` and the
+    ``[calib]`` lines in the job logs are for.
 
     Returns an empty frame (no exception) while ``new`` has no results yet, so a notebook
     cell written today runs today and reports as soon as the re-profile lands.
     ``<value>_ratio`` is new / old.
     """
+    old = ROOT_V2 if old is None else old
     new = ROOT_V3 if new is None else new
     if not has_profiles(old) or not has_profiles(new):
         print(f'v2-vs-v3 comparison: nothing to compare yet '
               f'(old={"ok" if has_profiles(old) else "missing"} {Path(old).name}, '
               f'new={"ok" if has_profiles(new) else "missing"} {Path(new).name})')
         return pd.DataFrame()
+    for label, root in (('old', old), ('new', new)):
+        done, n, exp = profile_status(root)
+        if not done:
+            print(f'v2-vs-v3 comparison: WARNING -- the {label} root {Path(root).name} is '
+                  f'PARTIAL ({n}/{exp}); missing configurations show as NaN and its '
+                  f'`rel_time` is normalised against whatever reference has landed.')
     keys = ['arch', 'config_name', 'study', 'method', 'run_id']
     cols = keys + [v for v in values] + ['status', 'gpu', 'n_steps']
     a = load_profiles(old, use_cache=use_cache)[cols]

@@ -155,6 +155,10 @@ def test_row_prefers_a_stored_cycle_mean_and_falls_back_to_the_raw_list():
 def test_profile_cache_key_carries_a_version(tmp_path, monkeypatch):
     """Without a version in the key, every cached frame would keep serving the
     pre-C-T2 ``step_ms``: the files did not change, only what is derived from them."""
+    # the cache no longer lives inside the results root (profile_helpers._cache_path), so
+    # without this the tmp roots of this test would drop pickles in the SHARED
+    # experiment_results/_cache/.  Same redirect as tests/test_profile_helpers.py.
+    monkeypatch.setenv('SV3_PROFILE_CACHE_DIR', str(tmp_path / '_cache'))
     d = tmp_path / 'cfg'
     d.mkdir()
     (d / 'r.json').write_text(json.dumps(_profile_record('r', [1.0] * 50)))

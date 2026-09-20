@@ -35,12 +35,20 @@
 #   PROFILE_ARGS       extra hydra overrides, appended after the smoke preset
 #   CALIB_STEPS        bench/calibrate_step.py steps at start and end (0 = skip)
 #
-# WHY v3 EXISTS. The 2026-09-17 profile (profile_results_v2) was measured with Sven's
+# WHY v3 EXISTS. The 2026-09-17 profile (profile_results_v2) got TWO settings wrong: Sven's
 # per-step torch.cuda.empty_cache(), which made full-capture Sven up to 4.5x slower on
-# CIFAR (841 -> 187 ms/step) and was the sole source of its step-time variance, and without
-# expandable_segments. Both are now as the campaign ran them: `empty_cache` is passed
-# explicitly False (experiments.optimizer_profile.EMPTY_CACHE) and the allocator setting
-# below matches tools/worker_pool.sh. v2 is FROZEN as the before-table -- never write there.
+# CIFAR (841 -> 187 ms/step) and was the sole source of its step-time variance, and the
+# missing expandable_segments allocator. Both are now as the campaign ran them:
+# `empty_cache` is passed explicitly False (experiments.optimizer_profile.EMPTY_CACHE) and
+# the allocator setting below matches tools/worker_pool.sh. The BatchNorm policy is NOT a
+# difference -- every v2 CIFAR Gram record has meta.freeze_norm_stats false, i.e. batch
+# statistics, like the scans; `bn_mode_of` only stops the post-C-E2 profiler default from
+# freezing them. v2 is FROZEN as the before-table -- never write there.
+#
+# COMPLETENESS. After a clean full pass this script writes `_profile_complete` into the
+# results root; analysis/profile_helpers.profile_status also accepts a full per-config
+# count, which is what certifies the 2026-09-20 pass (job 47396284 runs from deploy
+# snapshot 118156ae, which predates the sentinel).
 #
 # IF THIS JOB WILL NOT START (`QOSMaxNodePerUserLimit`, `Resources`): --exclusive holds a
 # whole node slot of the QOS and cannot start while anyone holds a GPU on the node (the
@@ -148,7 +156,19 @@ if [ "$CALIB_STEPS" != 0 ] && [ -f "$CODE/bench/calibrate_step.py" ]; then
     || echo "[calib] FAILED at end"
 fi
 echo "loadavg   $(cat /proc/loadavg)"
+
+# The completeness signal analysis/profile_helpers.profile_status looks for: only after a
+# clean pass over the FULL config set, and never for a smoke (whose root is a temp one).
+DEFAULT_CONFIGS="profile_toy_1d profile_polynomial profile_mnist profile_mnist_width profile_nanogpt profile_nanogpt_width profile_cifar"
+if [ "$rc_all" -eq 0 ] && [ "${PROFILE_SMOKE:-0}" != 1 ] && [ "$CONFIGS" = "$DEFAULT_CONFIGS" ]; then
+  n=$(set +f; ls -1 "$SV3_PROFILE_ROOT"/*/*.json 2>/dev/null | wc -l)
+  printf '%s\njob %s\nconfigs %s\nn_json %s\n' "$(date -Is)" "${SLURM_JOB_ID:-none}" \
+      "$CONFIGS" "$n" > "$SV3_PROFILE_ROOT/_profile_complete"
+  echo "wrote     $SV3_PROFILE_ROOT/_profile_complete ($n json)"
+fi
+
 echo "################ all done $(date -Is)  rc=$rc_all ################"
-echo "Next: point analysis/profile_helpers.results_root() at the new root (it prefers v3"
-echo "      once it exists) and run the four analysis/profile_*.ipynb notebooks."
+echo "Next: the four analysis/profile_*.ipynb notebooks. profile_helpers.results_root()"
+echo "      switches to v3 by itself once the pass is COMPLETE (720 of 720, or the"
+echo "      _profile_complete file above); a partial root is announced and skipped."
 exit $rc_all

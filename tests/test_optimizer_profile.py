@@ -1,12 +1,19 @@
 """`experiments/optimizer_profile.py`: the settings v2 got wrong, pinned.
 
-`profile_results_v2` (2026-09-17) was measured with Sven's per-step
+`profile_results_v2` (2026-09-17) got TWO settings wrong: Sven's per-step
 `torch.cuda.empty_cache()` -- up to 4.5x slower for full-capture Sven on CIFAR, 841 vs
-187 ms/step -- without `expandable_segments`, and with the Gram wrapper freezing the
-BatchNorm running statistics that the CIFAR scans (`bn_mode: batch`, C-E2) keep updating.
-These tests are what stop `profile_results_v3` from repeating any of the three, plus the
-plumbing that decides WHERE a run writes, which matters because the real job runs from a
-deploy snapshot (cwd = the frozen export).
+187 ms/step -- and the missing `expandable_segments` allocator.  These tests are what stop
+`profile_results_v3` from repeating either.
+
+The third test group, `bn_mode`, guards a DIFFERENT thing: it is not a v2 defect (all 33
+v2 CIFAR Gram records carry `meta.freeze_norm_stats: False`, i.e. v2 already used the
+batch statistics the CIFAR scans use, because the pre-C-E2 config still set
+`gram_freeze_norm_stats: false`).  C-E2 removed that key, after which the profiler's own
+default would have started freezing CIFAR's statistics -- a regression v3 would have
+shipped had `bn_mode_of` not been added.
+
+Last comes the plumbing that decides WHERE a run writes, which matters because the real
+job runs from a deploy snapshot (cwd = the frozen export).
 
 No GPU: every function under test is pure. The module imports torch but touches
 `torch.cuda` only inside the profiling functions, so importing it on a CPU node is fine

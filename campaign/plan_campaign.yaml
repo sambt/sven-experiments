@@ -358,10 +358,24 @@ work_lists:
              * `tools/reconcile.py cifar10_resnet_ce_scan` counts these records as
                `n_off_grid_records` and its best-config table ignores them;
              * so does `tools/select_best.py` unless the extension is named as a second
-               expected grid -- the RE-SELECTION after this list finishes is
-                 tools/select_best.py cifar10_resnet_ce_scan --groups 'mode=all' \\
-                   --groups 'mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]'
-               (union of the two groups = the expected grid; see ANALYSIS_PLAN.md section 7.5)."
+               expected grid (union of the two groups = the expected grid).
+           RE-SELECTION after this list finishes. THE OBVIOUS COMMAND IS DESTRUCTIVE: read
+           this first. The selection command is
+             `tools/select_best.py cifar10_resnet_ce_scan --groups 'mode=all' --groups
+             'mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]'`
+           and it MUST carry either `--print` (step 1: look, writes nothing) or
+           `--out /tmp/ce_rtol.json` (step 2: record to a SIDE file, then splice that file's
+           `scans.cifar10_resnet_ce_scan` -- and only that one key -- into
+           bench/best_configs.json). With NEITHER flag it overwrites the selection of record:
+           `--out` defaults to bench/best_configs.json and select_best writes
+           `to_json(reports)` for the REQUESTED scans only, with no merge
+           (tools/select_best.py:742-746), so naming one scan deletes the other six scans'
+           selections -- the ones tools/gen_phase5_plan.py (DEFAULT_IN) and the headline
+           analysis read. The file is git-tracked, so `git checkout -- bench/best_configs.json`
+           undoes a clobber. Re-running all seven scans is not a fix either: `--groups` is
+           GLOBAL (one tuple passed to every scan, tools/select_best.py:716), so this CIFAR
+           group would add ~135 phantom expected run_ids to each of the other six, inflating
+           `n_missing` and breaking `--require-complete`. See ANALYSIS_PLAN.md section 7.5."
     items:
       - {config: cifar10_resnet_ce_scan, nproc: *np_cifar_sven,
          overrides: "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]",
