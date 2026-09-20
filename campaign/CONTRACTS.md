@@ -169,3 +169,6 @@ gpu_test allows 2 jobs and 8 slices per user: a MIG job takes `--gres=gpu:4`, 12
   to retry). Any model with norm running stats REQUIRES an explicit `bn_mode`; HIG refuses `bn_mode=batch` on such
   models until `HIGWrapper` gets the norm policy (HIG is MLP-only in the campaign). Shared init checkpoint is
   `ckpt/init_mseed{seed}.{model_generation}.pt`.
+* (user, 2026-09-19 ~22:40 EDT) `exp_gpt2_small_comparison` is BACK IN the campaign (P1, one seed, v2 disjoint token
+  files, step-based evaluation); the grid-extension round and the result-dependent passes (timing / diagnostics /
+  confirmation) are approved as well.
