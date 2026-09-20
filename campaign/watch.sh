@@ -7,7 +7,7 @@ HEARTBEAT=${1:-7200}; t0=$(date +%s); base_err=${2:-0}
 while true; do
   sleep 300
   mig=$(squeue -u $USER -h -p gpu_test -o %i | wc -l)
-  [ "$mig" -lt 2 ] && { echo "REASON: only $mig gpu_test job(s) alive"; break; }
+  [ "$(squeue -u $USER -h -o %i | wc -l)" -eq 0 ] && { echo "REASON: queue empty"; break; }
   err=$(ls $R/*/done 2>/dev/null | grep -c -E "\.(oom|error)$"); att=$(ls $R/*/attempts 2>/dev/null | grep -c .)
   [ $((err+att)) -gt "$base_err" ] && { echo "REASON: oom/error markers=$err attempts=$att (baseline $base_err)"; break; }
   al=$(grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]" $S/*$(basename $(cat /n/home11/sambt/iaifi/sv3/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | wc -l)
