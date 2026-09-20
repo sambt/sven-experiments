@@ -22,11 +22,24 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(REPO, "tools")
 PLAN_FILE = os.path.join(REPO, "campaign", "plan_campaign.yaml")
-#: Every plan file that launches campaign work. `plan_gpt2.yaml` is separate on purpose
+#: Every FULL-GRID plan file, i.e. every plan that launches all of the runs its configs
+#: describe. `plan_gpt2.yaml` is separate from `plan_campaign.yaml` on purpose
 #: (grid_counts.md "Scope"): GPT-2-small was re-admitted on 2026-09-19 while the
 #: extension round was live from another snapshot, and its runs are ~4-9 h each, so it
 #: gets its own lists and its own `n_jobs`. The coverage and grid_counts tests below
 #: must see the UNION, or a scan launched by the second plan would look unlaunched.
+#:
+#: A **SELECTION** plan does not belong here and `campaign/plan_phase5.yaml` is the
+#: example: a timing / diagnostics / confirmation pass launches the ONE selected
+#: configuration per (scan, method), while the companion config it runs under inherits
+#: its parent and still *describes* the parent's whole grid. Measured 2026-09-20 by the
+#: phase-5 track: adding it here reports 1,575 launched against 24,150 described, so
+#: `test_the_plan_covers_every_run_its_own_configs_describe` would demand 22,575 runs
+#: nobody wants and `test_grid_counts_md_is_in_sync_with_the_plan` a grid_counts row for
+#: all 21 companion scans. That is the same reason `plan_campaign.yaml` keeps the seven
+#: `_timing` companions out of its work lists (see its `timing:` stub). Selection plans
+#: are covered by `tests/test_phase5_plan.py` instead; putting one here needs a
+#: per-plan opt-out, not an entry in this tuple.
 PLAN_FILES = (PLAN_FILE, os.path.join(REPO, "campaign", "plan_gpt2.yaml"))
 
 

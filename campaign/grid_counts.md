@@ -149,9 +149,10 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
 It excludes evaluation (three loaders now: val, test and the fixed 10k `train_eval` subset),
 data loading, checkpoint I/O, process start-up, queue wait and every failed or requeued job.
 
-**Do not plan with 237 GPU-h.** `campaign/scout/sharding.md` puts the honest figure at
-**1,100-1,500 GPU-h**, and that is still the number to reserve against. The two are not in
-conflict; the gap is mostly three things:
+**Do not plan with 362 GPU-h** (237 for `plan_campaign.yaml` + 125 for the GPT-2 scan).
+`campaign/scout/sharding.md` puts the honest figure at **1,100-1,500 GPU-h**, and that is
+still the number to reserve against. The two are not in conflict; the gap is mostly three
+things:
 
 1. the scout deflated *historical* process-hours, which were measured with
    `torch.cuda.empty_cache()` on every Sven step — 841 ms/step on CIFAR instead of 186.7.
@@ -163,6 +164,12 @@ conflict; the gap is mostly three things:
    MLP rows can be off by 2-4x either way;
 3. the floor assumes every process gets the probe's NPROC and none of the 12-hour-wall
    timeouts that killed 34 jobs in the last round.
+
+None of the three applies to `exp_gpt2_small_comparison`: it runs at NPROC 1 on a whole
+A100 (no co-tenant, no host-CPU contention), its `empty_cache` is already `false`, and its
+27 runs are 8 jobs with no wall-clock crowding. Its floor is therefore close to its true
+cost once `ms_per_step` is measured rather than estimated — the one row of this table where
+the floor is meant to be planned with.
 
 Two rows deserve attention regardless of the model: **CIFAR-CE at 67 GPU-h and CIFAR-label-reg
 at 45** are between them more than half of the floor and roughly a quarter of the honest
