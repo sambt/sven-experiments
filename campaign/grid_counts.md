@@ -84,16 +84,35 @@ submit them — `grid_inventory.md` 5.1: the old `submit_fresh_suite.sh` emitted
 `mode=svd` and `mode=standard`, silently dropping 400 JD/HIG runs that
 `best_configs.json` nonetheless reports best configs for.
 
-### P2 timing companions (not in the total)
+### Phase-5 companions (not in the total)
 
-Seven `*_timing.yaml` configs (`toy_1d_scan`, `polynomial_scan`, `mnist_scan_ce`,
-`mnist_scan_labelRegression`, `exp_nanogpt_speedrun`, and the two new
-`cifar10_resnet_ce_scan_timing` / `cifar10_resnet_scan_labelRegression_timing`) inherit their
-parent and override nothing, so each describes the parent's full grid with the parent's
-run_ids in its own results directory. A timing pass runs **only the per-method best configs**
-(~13 methods x 5 seeds per scan, i.e. of order 500 runs over the seven scans), which is a
-launcher selection, not a config one — hence they are excluded from the total above rather
-than counted at their nominal grid size.
+Seven scans — `toy_1d_scan`, `polynomial_scan`, `mnist_scan_ce`,
+`mnist_scan_labelRegression`, `exp_nanogpt_speedrun` and the two `cifar10_resnet_*`
+headline scans — each carry **three** companion configs, 21 in all:
+
+* `*_timing.yaml` (pass B) inherits the parent and overrides nothing, so it describes the
+  parent's full grid with the parent's run_ids in its own results directory;
+* `*_diag.yaml` (pass C) turns on `svd_info: full`, the checkpoint ladder for *every*
+  family and a dense spectra head. Grid-identical to the parent — same run_ids **and**
+  same run hashes, because none of what it changes is hashed (`run_hash` ignores what is
+  logged or scheduled), so a diagnostics run is bit-for-bit the scan's run with more of it
+  recorded;
+* `*_confirm.yaml` (pass D) moves to fresh model seeds (base + 100..104) for the numbers
+  the paper reports. *Not* grid-identical: different seeds, and toy/polynomial also put
+  `data_seed` in `result_id_fields` so the three data-seed replicates get distinct
+  run_ids.
+
+All 21 are excluded from the table above, because every pass runs **only the per-method
+selected configs** (~13 methods x 5 seeds per scan) — a launcher selection, not a config
+one. Counting them at their nominal grid size would roughly treble the campaign total for
+work that is about 1,600 runs. Phase-5 counts live in `campaign/plan_phase5.yaml`'s
+generated header instead: **425 timing + 425 diag + 725 confirm**.
+
+`tests/test_configs.py` still holds them to every other rule (they are in `IN_SCOPE`):
+`COMPANION_PARENT` names all 21 explicitly rather than matching a suffix, so a companion
+cannot leave this cost table by being named a certain way, and `EXPECTED_CHECKPOINTS`
+pins each pass's own checkpoint policy — `log`/`epochs` with `checkpoints_svd` cleared for
+diag, `final` for confirm — since that is precisely what passes C and D exist to change.
 
 ## Cost: the "GPU-h floor" column
 

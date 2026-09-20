@@ -130,6 +130,29 @@ IN_SCOPE = {
     "exp_nanogpt_speedrun_timing": ("both", [()]),
     "cifar10_resnet_ce_scan_timing": ("both", [()]),
     "cifar10_resnet_scan_labelRegression_timing": ("both", [()]),
+    # P5 pass C: diagnostics companions (full svd_info + the ladder for every family,
+    # dense spectra head). Grid-identical to the parent -- same run_ids AND same run
+    # hashes, since none of what they change is hashed -- so a diag run is the scan's
+    # run with more of it recorded. Launched as a per-method SELECTION, never as a grid.
+    "toy_1d_scan_diag": ("all", [()]),
+    "polynomial_scan_diag": ("all", [()]),
+    "mnist_scan_labelRegression_diag": ("all", [()]),
+    "mnist_scan_ce_diag": ("all", [()]),
+    "exp_nanogpt_speedrun_diag": ("both", [()]),
+    "cifar10_resnet_ce_scan_diag": ("both", [()]),
+    "cifar10_resnet_scan_labelRegression_diag": ("both", [()]),
+    # P5 pass D: confirmation companions -- the selected configuration of every method on
+    # FRESH model seeds (base + 100..104), which is what the paper reports. NOT
+    # grid-identical to the parent: different seeds, and toy/polynomial additionally put
+    # `data_seed` in `result_id_fields` so the three data-seed replicates get distinct
+    # run_ids (C-R3 would otherwise have them retire each other to `_stale/` for ever).
+    "toy_1d_scan_confirm": ("all", [()]),
+    "polynomial_scan_confirm": ("all", [()]),
+    "mnist_scan_labelRegression_confirm": ("all", [()]),
+    "mnist_scan_ce_confirm": ("all", [()]),
+    "exp_nanogpt_speedrun_confirm": ("both", [()]),
+    "cifar10_resnet_ce_scan_confirm": ("both", [()]),
+    "cifar10_resnet_scan_labelRegression_confirm": ("both", [()]),
     # P3: ablations, kappa retune, fine-tune
     "mnist_kappaScan_labelRegression": ("svd", [()]),
     "toy_1d_microbatch_scan": ("svd", [()]),
@@ -160,8 +183,30 @@ PARKED_MODES = {
 }
 
 SCANS = sorted(IN_SCOPE)
-#: the five scans that inherit another config and override nothing
-TIMING_ALIASES = {n: n[: -len("_timing")] for n in SCANS if n.endswith("_timing")}
+
+#: The seven scans that have `_timing` / `_diag` / `_confirm` companions, and the three
+#: suffixes. Written out rather than derived from a name pattern: a companion is exempt
+#: from the run-count table below, and a scan that fell into that exemption because of how
+#: it happens to be *named* would silently leave the launcher's cost plan. Adding a
+#: companion is therefore two lines here, and `test_every_companion_is_a_known_suffix_of_a
+#: _real_parent` checks the product against what is actually on disk and in IN_SCOPE.
+COMPANION_PARENTS = ("toy_1d_scan", "polynomial_scan", "mnist_scan_labelRegression",
+                     "mnist_scan_ce", "cifar10_resnet_scan_labelRegression",
+                     "cifar10_resnet_ce_scan", "exp_nanogpt_speedrun")
+COMPANION_SUFFIXES = ("_timing", "_diag", "_confirm")
+#: {companion: parent} for all 21. What every companion shares is that it INHERITS the
+#: parent's grid keys through `defaults: [<parent>, _self_]`, which is what the rules
+#: keyed on this mapping care about (`bn_mode` comes from the parent; the run counts are
+#: the parent's and are not counted twice). What they do NOT share is the checkpoint /
+#: logging policy -- that is the point of passes C and D -- so EXPECTED_CHECKPOINTS below
+#: gives each companion its own entry rather than deferring to the parent.
+COMPANION_PARENT = {f"{p}{suf}": p for p in COMPANION_PARENTS
+                    for suf in COMPANION_SUFFIXES}
+#: the seven scans that inherit another config and override NOTHING (pass B, timing).
+#: Only these are grid-identical to their parent; `_diag` is too but is checked in
+#: tests/test_phase5_configs.py (the phase-5 track owns it), and `_confirm` is
+#: deliberately not.
+TIMING_ALIASES = {n: p for n, p in COMPANION_PARENT.items() if n.endswith("_timing")}
 
 
 def specs_for(scan):
@@ -191,6 +236,31 @@ def test_every_repo_config_is_classified():
     classified = set(IN_SCOPE) | CUT | STALE
     assert on_disk - classified == set(), f"unclassified: {sorted(on_disk - classified)}"
     assert classified - on_disk == set(), f"classified but absent: {sorted(classified - on_disk)}"
+
+
+def test_every_companion_is_a_known_suffix_of_a_real_parent():
+    """:data:`COMPANION_PARENT` is written out by hand, so it has to be checked against
+    reality: every config on disk whose stem ends in one of the three companion suffixes
+    must be in the mapping, every entry must exist on disk and be IN_SCOPE, and its parent
+    must be a real in-scope scan that it actually inherits through `defaults`.
+
+    Without this, the hand-written mapping is the one place where a companion could go
+    missing and take its exemption from the run-count table with it -- which is the
+    failure the mapping exists to prevent in the first place.
+    """
+    on_disk = {p.stem for p in CONFIGS.glob("*.yaml")}
+    suffixed = {s for s in on_disk
+                if any(s.endswith(suf) for suf in COMPANION_SUFFIXES)}
+    assert suffixed == set(COMPANION_PARENT), (
+        f"on disk but unmapped: {sorted(suffixed - set(COMPANION_PARENT))}; "
+        f"mapped but absent: {sorted(set(COMPANION_PARENT) - suffixed)}")
+    for companion, parent in sorted(COMPANION_PARENT.items()):
+        assert companion in IN_SCOPE, companion
+        assert parent in IN_SCOPE and parent not in COMPANION_PARENT, parent
+        # ... and it really is a thin child of that parent, not a copy of it
+        defaults = OmegaConf.to_container(
+            OmegaConf.load(CONFIGS / f"{companion}.yaml")).get("defaults")
+        assert defaults == [parent, "_self_"], (companion, defaults)
 
 
 @pytest.mark.parametrize("scan", SCANS)
@@ -321,7 +391,18 @@ def test_stage1_keys_have_valid_values(scan):
     if rcfg.get("use_gram"):
         grid.resolve_svd_settings(rcfg)          # raises on hooks + bn_mode: batch
     # keys whose default is already right must NOT be restated (CONTRACTS.md), so a
-    # reader can tell a decision from an echo
+    # reader can tell a decision from an echo.
+    #
+    # A companion config is exempt, because for it the rule asks the wrong question: the
+    # file is a DIFF against its parent, not a standalone scan, so the baseline a key has
+    # to differ from is the parent's resolved value and not the code default. The seven
+    # `_confirm` configs say `checkpoints: final` beside `checkpoints_svd: null`, which is
+    # one decision ("no ladder for any family") and is a real override on four of the
+    # seven parents (`log`, `log`, `epochs`, and `log` via `checkpoints_svd`) -- splitting
+    # it up to satisfy a default-echo rule would make the pass harder to read, not easier.
+    # What the policy IS stays pinned, per companion, by EXPECTED_CHECKPOINTS above.
+    if scan in COMPANION_PARENT:
+        return
     raw = OmegaConf.to_container(OmegaConf.load(CONFIGS / f"{scan}.yaml"))
     for key, default in (("empty_cache", False), ("stop_on_nonfinite", True),
                          ("scheduler", "claims"), ("train_eval_size", 10_000),
@@ -355,12 +436,22 @@ EXPECTED_CHECKPOINTS = {
     "cifar10_resnet_ce_scan": ("final", None),
     "rebuttal_fig5_cifar_paramfrac_scan": ("final", None),
     "exp_finetune_cifar_smallN": ("final", None),
+    # P5 pass C (diagnostics): the ladder goes to EVERY family, not just svd, because a
+    # diag pass is ~13 configurations x 5 seeds instead of 1000+ runs -- which is why
+    # `checkpoints_svd` must be CLEARED and not left on the parent's `log`. The two
+    # ResNet scans use `epochs`, not `log`: 45 MB a state is ~0.95 GB a run on `log`.
+    **{f"{p}_diag": ("epochs" if p.startswith("cifar10_") else "log", None)
+       for p in COMPANION_PARENTS},
+    # P5 pass D (confirmation): final numbers, no trajectories, for every family.
+    **{f"{p}_confirm": ("final", None) for p in COMPANION_PARENTS},
 }
 
 
 @pytest.mark.parametrize("scan", SCANS)
 def test_checkpoint_policy_matches_the_scan_family(scan):
-    scan = TIMING_ALIASES.get(scan, scan)                    # aliases inherit
+    """`_timing` inherits its parent's policy; `_diag` / `_confirm` deliberately do not
+    (that IS pass C and pass D), so they carry their own entry above."""
+    scan = TIMING_ALIASES.get(scan, scan)                    # timing aliases inherit
     st = grid.resolve_scan_settings(load_rcfg(scan))
     assert (st["checkpoints"], st["checkpoints_svd"]) == EXPECTED_CHECKPOINTS[scan], scan
 
@@ -402,7 +493,9 @@ def test_bn_mode_policy_per_scan():
     assert all(("_bnfrozen" in s.run_id) == (s.family != "svd") for s in ft)
 
     for scan in SCANS:
-        if scan in CIFAR_SCANS or TIMING_ALIASES.get(scan) in CIFAR_SCANS:
+        # a companion inherits its parent's policy through `defaults`, so the CIFAR
+        # `_timing` / `_diag` / `_confirm` configs carry `bn_mode: batch` too
+        if scan in CIFAR_SCANS or COMPANION_PARENT.get(scan) in CIFAR_SCANS:
             continue
         assert grid.resolve_bn_mode(load_rcfg(scan)) is None, scan
 
@@ -800,8 +893,15 @@ def test_grid_counts_md_matches_the_configs():
     extension phase by the user) and their sum.
     """
     table = _parse_grid_counts()
+    # Companions are excluded, not missing: a `_timing` / `_diag` / `_confirm` config
+    # describes its parent's grid a second time (or, for `_confirm`, the same grid on
+    # fresh seeds) and is launched as a per-method SELECTION of ~13 configurations x 5
+    # seeds, never as a whole grid -- so counting it here would treble the campaign
+    # total. Phase-5 run counts live in campaign/plan_phase5.yaml's generated header
+    # (425 timing + 425 diag + 725 confirm); the P2 note under the table says the same
+    # for timing.
     expected = {s: Counter(x.family for x in specs_for(s)) for s in SCANS
-                if s not in TIMING_ALIASES}
+                if s not in COMPANION_PARENT}
     assert set(table) == set(expected), (
         f"only in md: {sorted(set(table) - set(expected))}; "
         f"only in configs: {sorted(set(expected) - set(table))}")
