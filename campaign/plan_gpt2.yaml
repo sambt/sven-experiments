@@ -34,8 +34,12 @@ lanes:
   a100:
     partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
     gres: "gpu:1"
-    mem: 96G
-    time: "24:00:00"
+    # 64G of HOST memory, as the legacy submit_gpt2.sh used: the model is on the GPU and
+    # the only large host allocations are the memmapped token bins (train.bin is 500 MB)
+    # and the fp32 CPU state_dict the `final` checkpoint writes (652 MB). Asking for more
+    # only makes the job harder to schedule.
+    mem: 64G
+    time: "24:00:00"       # 3 days is the partition maximum if a Sven run needs more
     cpus_extra: 3          # cpus-per-task = 1 + 3; the token bins are memmapped
     note: "one GPU per job, NPROC 1; 24 h holds two Sven runs or five baselines"
 
