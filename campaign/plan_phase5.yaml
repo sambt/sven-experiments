@@ -11,21 +11,16 @@
 # run_ids (and run hashes) of the configuration it names. After a grid extension: re-run
 # the two tools above, in that order, and relaunch.
 #
-# Generated 2026-09-19T23:46:17-0400
+# Generated 2026-09-20T03:58:29-0400
 # from      /n/home11/sambt/iaifi/sv3/bench/best_configs.json
 #   selection rule: full
 #   results root:   /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
 #   configs:        /n/home11/sambt/iaifi/sv3/experiments/configs
-#   selection made: 2026-09-19T23:42:21-0400
+#   selection made: 2026-09-20T03:58:14-0400
 # GENERATED FROM AN INCOMPLETE SELECTION (--allow-incomplete):
-#   cifar10_resnet_ce_scan: 165 run(s) of the grid unfinished
-#   cifar10_resnet_ce_scan: selected on fewer than all seeds: SGD (4/5)
-#   cifar10_resnet_scan_labelRegression: 145 run(s) of the grid unfinished
-#   mnist_scan_ce: 250 run(s) of the grid unfinished
-#   polynomial_scan: 430 run(s) of the grid unfinished
+#   cifar10_resnet_ce_scan: 100 run(s) of the grid unfinished
+#   cifar10_resnet_scan_labelRegression: 100 run(s) of the grid unfinished
 #   polynomial_scan: selected on fewer than all seeds: LBFGS (3/5)
-#   toy_1d_scan: 234 run(s) of the grid unfinished
-#   toy_1d_scan: selected on fewer than all seeds: SVD (3/5)
 # Re-run tools/select_best.py and this script once `tools/reconcile.py --all campaign/plan_campaign.yaml` is clean.
 #
 # THE TIMING LIST IS NOT SUBMITTED BY THE LAUNCHER. It is here so `reconcile --all` covers
@@ -73,7 +68,7 @@ work_lists:
     lane: timing
     n_jobs: 1
     note: "C-T1/C-T3: one selected configuration at a time, NPROC 1, svd_info none, checkpoints none. SUBMIT WITH bench/submit_timing_phase5.sh, not the launcher."
-    # 85 item(s), 425 run(s); ~43.2 process-h at the scans' own (sharded) step times
+    # 85 item(s), 425 run(s); ~43.4 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
@@ -96,9 +91,9 @@ work_lists:
         nproc: 1
         note: "KFAC: seed-mean val 2.55157e-05, ~2.8 min/run sharded"
       - config: toy_1d_scan_timing
-        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10]"
         nproc: 1
-        note: "LBFGS: seed-mean val 0.00132149, ~2.7 min/run sharded"
+        note: "LBFGS: seed-mean val 0.000506567, ~3.6 min/run sharded"
       - config: toy_1d_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Muon] lrs_standard=[0.001]"
         nproc: 1
@@ -128,9 +123,9 @@ work_lists:
         nproc: 1
         note: "SOAP: seed-mean val 4.3253e-06, ~0.7 min/run sharded"
       - config: toy_1d_scan_timing
-        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001]"
         nproc: 1
-        note: "Sven: seed-mean val 2.15035e-07, ~1.6 min/run sharded"
+        note: "Sven: seed-mean val 2.87293e-07, ~1.6 min/run sharded"
       - config: toy_1d_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
         nproc: 1
@@ -188,9 +183,9 @@ work_lists:
         nproc: 1
         note: "SOAP: seed-mean val 0.149594, ~0.7 min/run sharded"
       - config: polynomial_scan_timing
-        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[16] lrs=[0.5] rtol=[0.03]"
         nproc: 1
-        note: "Sven: seed-mean val 0.117521, ~1.2 min/run sharded"
+        note: "Sven: seed-mean val 0.109477, ~1.7 min/run sharded"
       - config: polynomial_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
         nproc: 1
@@ -300,9 +295,9 @@ work_lists:
         nproc: 1
         note: "SOAP: seed-mean val 0.968058, ~2.2 min/run sharded"
       - config: mnist_scan_ce_timing
-        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]"
         nproc: 1
-        note: "Sven: seed-mean val 0.123058, ~3.9 min/run sharded"
+        note: "Sven: seed-mean val 0.114936, ~4.7 min/run sharded"
       - config: mnist_scan_ce_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Shampoo] lrs_standard=[0.1]"
         nproc: 1
@@ -382,7 +377,7 @@ work_lists:
       - config: cifar10_resnet_ce_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGD] lrs_standard=[3.0]"
         nproc: 1
-        note: "SGD: seed-mean val 1.10133, ~2.7 min/run sharded"
+        note: "SGD: seed-mean val 1.11777, ~2.8 min/run sharded"
       - config: cifar10_resnet_ce_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[SGDm] lrs_standard=[0.3]"
         nproc: 1
@@ -421,7 +416,7 @@ work_lists:
     lane: mig
     n_jobs: 2
     note: "toy / polynomial / MNIST diagnostics on the 8 MIG slices"
-    # 58 item(s), 290 run(s); ~30.9 process-h at the scans' own (sharded) step times
+    # 58 item(s), 290 run(s); ~31.1 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_diag
         overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
@@ -444,7 +439,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "KFAC (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10]"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
@@ -476,7 +471,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
@@ -536,7 +531,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: polynomial_scan_diag
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: polynomial_scan_diag
@@ -648,7 +643,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: mnist_scan_ce_diag
-        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: mnist_scan_ce_diag
@@ -661,7 +656,7 @@ work_lists:
     lane: a100
     n_jobs: 2
     note: "the SAME items at A100 NPROC; absorbs whatever the MIG slices have not finished (the claim queue makes that free of duplicated work)"
-    # 58 item(s), 290 run(s); ~30.9 process-h at the scans' own (sharded) step times
+    # 58 item(s), 290 run(s); ~31.1 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_diag
         overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
@@ -684,7 +679,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "KFAC (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10]"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
@@ -716,7 +711,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: toy_1d_scan_diag
@@ -776,7 +771,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: polynomial_scan_diag
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: polynomial_scan_diag
@@ -888,7 +883,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: mnist_scan_ce_diag
-        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: mnist_scan_ce_diag
@@ -1017,7 +1012,7 @@ work_lists:
     lane: mig
     n_jobs: 2
     note: "toy / polynomial / MNIST confirmation seeds; toy and polynomial also on 3 data seeds"
-    # 118 item(s), 590 run(s); ~36.7 process-h at the scans' own (sharded) step times
+    # 118 item(s), 590 run(s); ~37.1 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_confirm
         overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1000"
@@ -1080,15 +1075,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "KFAC (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1000"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1000"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1000"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1001"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1001"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1001"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1002"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1002"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
@@ -1176,15 +1171,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1000"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1000"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1000"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1001"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1001"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1001"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1002"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1002"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
@@ -1356,15 +1351,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds, data seed 2002"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2000"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2000"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2000"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2001"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2001"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2001"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2002"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2002"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2002"
       - config: polynomial_scan_confirm
@@ -1484,7 +1479,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds"
       - config: mnist_scan_ce_confirm
-        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds"
       - config: mnist_scan_ce_confirm
@@ -1497,7 +1492,7 @@ work_lists:
     lane: a100
     n_jobs: 2
     note: "the SAME items at A100 NPROC"
-    # 118 item(s), 590 run(s); ~36.7 process-h at the scans' own (sharded) step times
+    # 118 item(s), 590 run(s); ~37.1 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_confirm
         overrides: "mode=standard optimizers_standard=[Adam] lrs_standard=[0.001] data_seed=1000"
@@ -1560,15 +1555,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "KFAC (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1000"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1000"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1000"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1001"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1001"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1001"
       - config: toy_1d_scan_confirm
-        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2] data_seed=1002"
+        overrides: "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10] data_seed=1002"
         nproc: {a100: 4, mig: 6}
         note: "LBFGS (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
@@ -1656,15 +1651,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1000"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1000"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1000"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1001"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1001"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1001"
       - config: toy_1d_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001] data_seed=1002"
+        overrides: "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001] data_seed=1002"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 1002"
       - config: toy_1d_scan_confirm
@@ -1836,15 +1831,15 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds, data seed 2002"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2000"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2000"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2000"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2001"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2001"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2001"
       - config: polynomial_scan_confirm
-        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01] data_seed=2002"
+        overrides: "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03] data_seed=2002"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds, data seed 2002"
       - config: polynomial_scan_confirm
@@ -1964,7 +1959,7 @@ work_lists:
         nproc: {a100: 4, mig: 6}
         note: "SOAP (heavy); 5 fresh model seeds"
       - config: mnist_scan_ce_confirm
-        overrides: "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]"
+        overrides: "mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 12, mig: 6}
         note: "Sven (sven); 5 fresh model seeds"
       - config: mnist_scan_ce_confirm

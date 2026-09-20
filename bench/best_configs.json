@@ -1,6 +1,6 @@
 {
  "schema": 2,
- "generated_at": "2026-09-19T23:42:21-0400",
+ "generated_at": "2026-09-20T03:58:14-0400",
  "generated_by": "tools/select_best.py",
  "results_root": "/n/home11/sambt/iaifi/sv3/experiment_results",
  "config_dir": "/n/home11/sambt/iaifi/sv3/experiments/configs",
@@ -16,12 +16,12 @@
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/toy_1d_scan",
    "n_expected": 1770,
-   "n_records": 1452,
-   "n_missing": 234,
+   "n_records": 1770,
+   "n_missing": 0,
    "warnings": [],
    "errors": [],
    "reconcile_disagreements": [
-    "LBFGS: reconcile picks std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs10_lsstrong_wolfe (mean 0.000245924, 1 diverged), this tool picks std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe (mean 0.00132149, 0 diverged)"
+    "LBFGS: reconcile picks std_bs32_mlp_width16_lr0.03_optimLBFGS_mi1_hs10_lsstrong_wolfe (mean 0.000209386, 1 diverged), this tool picks std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe (mean 0.000506567, 0 diverged)"
    ],
    "methods": {
     "Adam": {
@@ -192,7 +192,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 28,
+     "n_eligible_configs": 40,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -417,29 +417,29 @@
      "method": "LBFGS",
      "label": "LBFGS",
      "family": "lbfgs",
-     "config_key": "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe",
-     "overrides": "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.1] lbfgs_max_iter=[3] lbfgs_history_size=[2]",
+     "config_key": "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe",
+     "overrides": "mode=standard optimizers_standard=[LBFGS] lrs_lbfgs=[0.03] lbfgs_max_iter=[3] lbfgs_history_size=[10]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 0.0013214906658824102,
+     "seed_mean_final_val": 0.0005065668083433369,
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 17,
+     "n_eligible_configs": 35,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
      "hash8": {
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1000_lseed1000": "1eae4912",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1001_lseed1000": "5e7d192a",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1002_lseed1000": "4251bb18",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1003_lseed1000": "abb4169b",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1004_lseed1000": "7b5bde0b"
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1000_lseed1000": "8b1a77d0",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1001_lseed1000": "be2b29ab",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1002_lseed1000": "53d6e5fb",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1003_lseed1000": "13408e6f",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1004_lseed1000": "54501132"
      },
      "hparams": {
-      "lr": 0.1,
+      "lr": 0.03,
       "max_iter": 3,
-      "history_size": 2,
+      "history_size": 10,
       "line_search_fn": "strong_wolfe"
      },
      "model_seeds": [
@@ -451,45 +451,45 @@
      ],
      "loader_seed": 1000,
      "run_ids": [
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1000_lseed1000",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1001_lseed1000",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1002_lseed1000",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1003_lseed1000",
-      "std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs2_lsstrong_wolfe_mseed1004_lseed1000"
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1000_lseed1000",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1001_lseed1000",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1002_lseed1000",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1003_lseed1000",
+      "std_bs32_mlp_width16_lr0.03_optimLBFGS_mi3_hs10_lsstrong_wolfe_mseed1004_lseed1000"
      ],
      "seed_values": {
       "1000": {
-       "final_val": 0.0023738505606353947,
+       "final_val": 0.0004787336897512196,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 165.878
+       "wall_time_s": 316.217
       },
       "1001": {
-       "final_val": 0.00012961116058575448,
+       "final_val": 0.00017305733270254204,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 164.562
+       "wall_time_s": 249.428
       },
       "1002": {
-       "final_val": 0.000736461956732572,
+       "final_val": 0.00018285098817450587,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 162.019
+       "wall_time_s": 287.21
       },
       "1003": {
-       "final_val": 0.002938122940788061,
+       "final_val": 0.0014466402927422542,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 154.478
+       "wall_time_s": 112.826
       },
       "1004": {
-       "final_val": 0.00042940671067026923,
+       "final_val": 0.00025155173834616316,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 156.302
+       "wall_time_s": 127.077
       }
      },
-     "mean_wall_time_s": 160.64780000000002,
+     "mean_wall_time_s": 218.5516,
      "n_records": 5
     },
     "Muon": {
@@ -1042,30 +1042,31 @@
      "method": "SVD",
      "label": "Sven",
      "family": "svd",
-     "config_key": "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_gram",
-     "overrides": "mode=svd k_values=[32] lrs=[0.02] rtol=[0.0001]",
+     "config_key": "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_gram",
+     "overrides": "mode=svd k_values=[32] lrs=[0.01] rtol=[0.0001]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 2.150353197668953e-07,
-     "n_ok": 3,
+     "seed_mean_final_val": 2.8729305584661556e-07,
+     "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 134,
+     "n_eligible_configs": 138,
      "tied_with": [],
      "edges": {
+      "lr": "EDGE-LOW",
       "k": "EDGE-HIGH"
      },
      "batch_size": 32,
      "hash8": {
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1000_lseed1000_gram": "638af490",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1001_lseed1000_gram": "79265337",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1002_lseed1000_gram": "70364251",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1003_lseed1000_gram": "415817b9",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1004_lseed1000_gram": "4db0c755"
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1000_lseed1000_gram": "8a5a9bca",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1001_lseed1000_gram": "33c8de15",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1002_lseed1000_gram": "71db5fef",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1003_lseed1000_gram": "2bebeaf5",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1004_lseed1000_gram": "dd111195"
      },
      "hparams": {
       "k": 32,
-      "lr": 0.02,
+      "lr": 0.01,
       "rtol": 0.0001,
       "svd_mode": "torch",
       "microbatch_size": null,
@@ -1081,34 +1082,46 @@
      ],
      "loader_seed": 1000,
      "run_ids": [
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1000_lseed1000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1001_lseed1000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1002_lseed1000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1003_lseed1000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.02_rtol0.0001_svdtorch_mseed1004_lseed1000_gram"
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1000_lseed1000_gram",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1001_lseed1000_gram",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1002_lseed1000_gram",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1003_lseed1000_gram",
+      "svd_bs32_mlp_width16_k32_lr0.01_rtol0.0001_svdtorch_mseed1004_lseed1000_gram"
      ],
      "seed_values": {
       "1000": {
-       "final_val": 1.785493714760806e-07,
+       "final_val": 1.6429517656285642e-07,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 69.93
+       "wall_time_s": 70.951
       },
       "1001": {
-       "final_val": 3.92202712243576e-07,
+       "final_val": 4.031549843484362e-07,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 142.775
+       "wall_time_s": 144.128
       },
       "1002": {
-       "final_val": 7.43538755810293e-08,
+       "final_val": 3.21948403494564e-07,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 71.534
+       "wall_time_s": 71.622
+      },
+      "1003": {
+       "final_val": 1.6395704974862144e-07,
+       "status": "ok",
+       "diverged": false,
+       "wall_time_s": 138.035
+      },
+      "1004": {
+       "final_val": 3.831096650785999e-07,
+       "status": "ok",
+       "diverged": false,
+       "wall_time_s": 69.888
       }
      },
-     "mean_wall_time_s": 94.74633333333334,
-     "n_records": 3
+     "mean_wall_time_s": 98.92479999999999,
+     "n_records": 5
     },
     "Shampoo": {
      "method": "Shampoo",
@@ -1196,8 +1209,8 @@
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/polynomial_scan",
    "n_expected": 1630,
-   "n_records": 1200,
-   "n_missing": 430,
+   "n_records": 1630,
+   "n_missing": 0,
    "warnings": [],
    "errors": [],
    "reconcile_disagreements": [
@@ -1216,7 +1229,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -1294,7 +1307,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -1532,7 +1545,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 3,
+     "n_eligible_configs": 5,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -1691,7 +1704,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -1769,7 +1782,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -1925,7 +1938,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -2003,7 +2016,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 6,
+     "n_eligible_configs": 8,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -2081,7 +2094,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 5,
+     "n_eligible_configs": 7,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -2159,7 +2172,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 7,
+     "n_eligible_configs": 9,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -2229,31 +2242,29 @@
      "method": "SVD",
      "label": "Sven",
      "family": "svd",
-     "config_key": "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_gram",
-     "overrides": "mode=svd k_values=[32] lrs=[0.5] rtol=[0.01]",
+     "config_key": "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_gram",
+     "overrides": "mode=svd k_values=[16] lrs=[0.5] rtol=[0.03]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 0.117520640839156,
+     "seed_mean_final_val": 0.10947737176016044,
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 96,
+     "n_eligible_configs": 144,
      "tied_with": [],
-     "edges": {
-      "k": "EDGE-HIGH"
-     },
+     "edges": {},
      "batch_size": 32,
      "hash8": {
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2000_lseed2000_gram": "9e01668f",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2001_lseed2000_gram": "f74787dc",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2002_lseed2000_gram": "62a06fb0",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2003_lseed2000_gram": "cd08640b",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2004_lseed2000_gram": "f4964dd3"
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2000_lseed2000_gram": "6de7c74e",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2001_lseed2000_gram": "72ad57ed",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2002_lseed2000_gram": "0cab496c",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2003_lseed2000_gram": "a8eb36d5",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2004_lseed2000_gram": "9f7e0083"
      },
      "hparams": {
-      "k": 32,
+      "k": 16,
       "lr": 0.5,
-      "rtol": 0.01,
+      "rtol": 0.03,
       "svd_mode": "torch",
       "microbatch_size": null,
       "param_fraction": null,
@@ -2268,45 +2279,45 @@
      ],
      "loader_seed": 2000,
      "run_ids": [
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2000_lseed2000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2001_lseed2000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2002_lseed2000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2003_lseed2000_gram",
-      "svd_bs32_mlp_width16_k32_lr0.5_rtol0.01_svdtorch_mseed2004_lseed2000_gram"
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2000_lseed2000_gram",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2001_lseed2000_gram",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2002_lseed2000_gram",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2003_lseed2000_gram",
+      "svd_bs32_mlp_width16_k16_lr0.5_rtol0.03_svdtorch_mseed2004_lseed2000_gram"
      ],
      "seed_values": {
       "2000": {
-       "final_val": 0.1284905954931313,
+       "final_val": 0.11167575870472075,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 73.608
+       "wall_time_s": 71.457
       },
       "2001": {
-       "final_val": 0.13792528814492788,
+       "final_val": 0.11681620042883435,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 72.442
+       "wall_time_s": 149.745
       },
       "2002": {
-       "final_val": 0.10632985705909594,
+       "final_val": 0.10061916185999903,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 72.641
+       "wall_time_s": 71.302
       },
       "2003": {
-       "final_val": 0.11278433133742442,
+       "final_val": 0.11529446297567206,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 72.879
+       "wall_time_s": 138.951
       },
       "2004": {
-       "final_val": 0.1020731321612005,
+       "final_val": 0.102981274831576,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 71.589
+       "wall_time_s": 71.022
       }
      },
-     "mean_wall_time_s": 72.6318,
+     "mean_wall_time_s": 100.49539999999999,
      "n_records": 5
     },
     "Shampoo": {
@@ -2321,7 +2332,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 10,
      "tied_with": [],
      "edges": {},
      "batch_size": 32,
@@ -3512,8 +3523,8 @@
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/mnist_scan_ce",
    "n_expected": 1610,
-   "n_records": 1360,
-   "n_missing": 250,
+   "n_records": 1610,
+   "n_missing": 0,
    "warnings": [],
    "errors": [],
    "reconcile_disagreements": [
@@ -3844,7 +3855,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 21,
+     "n_eligible_configs": 34,
      "tied_with": [
       "std_bs64_mlp_width32_lr0.5_optimLBFGS_mi2_hs2_lsstrong_wolfe"
      ],
@@ -4463,29 +4474,34 @@
      "method": "SVD",
      "label": "Sven",
      "family": "svd",
-     "config_key": "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_gram",
-     "overrides": "mode=svd k_values=[8] lrs=[0.5] rtol=[0.1]",
+     "config_key": "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_gram",
+     "overrides": "mode=svd k_values=[32] lrs=[0.5] rtol=[0.3]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 0.12305808785367175,
+     "seed_mean_final_val": 0.11493559425553576,
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 128,
-     "tied_with": [],
-     "edges": {},
+     "n_eligible_configs": 160,
+     "tied_with": [
+      "svd_bs64_mlp_width32_k48_lr0.5_rtol0.3_svdtorch_gram",
+      "svd_bs64_mlp_width32_k64_lr0.5_rtol0.3_svdtorch_gram"
+     ],
+     "edges": {
+      "rtol": "EDGE-HIGH"
+     },
      "batch_size": 64,
      "hash8": {
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3000_lseed3000_gram": "7204846a",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3001_lseed3000_gram": "b7697bba",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3002_lseed3000_gram": "e4517f63",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3003_lseed3000_gram": "dbe0dff4",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3004_lseed3000_gram": "2821100c"
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3000_lseed3000_gram": "441fb37f",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3001_lseed3000_gram": "1691cfe2",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3002_lseed3000_gram": "2b19eb35",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3003_lseed3000_gram": "eadad5d8",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3004_lseed3000_gram": "8a593f2a"
      },
      "hparams": {
-      "k": 8,
+      "k": 32,
       "lr": 0.5,
-      "rtol": 0.1,
+      "rtol": 0.3,
       "svd_mode": "torch",
       "microbatch_size": null,
       "param_fraction": null,
@@ -4500,45 +4516,45 @@
      ],
      "loader_seed": 3000,
      "run_ids": [
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3000_lseed3000_gram",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3001_lseed3000_gram",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3002_lseed3000_gram",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3003_lseed3000_gram",
-      "svd_bs64_mlp_width32_k8_lr0.5_rtol0.1_svdtorch_mseed3004_lseed3000_gram"
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3000_lseed3000_gram",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3001_lseed3000_gram",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3002_lseed3000_gram",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3003_lseed3000_gram",
+      "svd_bs64_mlp_width32_k32_lr0.5_rtol0.3_svdtorch_mseed3004_lseed3000_gram"
      ],
      "seed_values": {
       "3000": {
-       "final_val": 0.126767515876838,
+       "final_val": 0.11094725226888866,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 233.829
+       "wall_time_s": 234.109
       },
       "3001": {
-       "final_val": 0.11609096927153736,
+       "final_val": 0.10642079015480345,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 232.556
+       "wall_time_s": 495.762
       },
       "3002": {
-       "final_val": 0.1308796185170588,
+       "final_val": 0.11655370415025283,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 232.771
+       "wall_time_s": 229.845
       },
       "3003": {
-       "final_val": 0.13194548823611707,
+       "final_val": 0.12150925543261705,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 233.029
+       "wall_time_s": 232.582
       },
       "3004": {
-       "final_val": 0.10960684736680755,
+       "final_val": 0.11924696927111689,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 230.821
+       "wall_time_s": 230.711
       }
      },
-     "mean_wall_time_s": 232.6012,
+     "mean_wall_time_s": 284.6018,
      "n_records": 5
     },
     "Shampoo": {
@@ -4627,8 +4643,8 @@
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/cifar10_resnet_scan_labelRegression",
    "n_expected": 700,
-   "n_records": 555,
-   "n_missing": 145,
+   "n_records": 600,
+   "n_missing": 100,
    "warnings": [],
    "errors": [],
    "reconcile_disagreements": [],
@@ -4801,7 +4817,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 36,
+     "n_eligible_configs": 45,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
@@ -5506,8 +5522,8 @@
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/cifar10_resnet_ce_scan",
    "n_expected": 840,
-   "n_records": 671,
-   "n_missing": 165,
+   "n_records": 740,
+   "n_missing": 100,
    "warnings": [],
    "errors": [],
    "reconcile_disagreements": [],
@@ -5602,7 +5618,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 9,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
@@ -5680,7 +5696,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 36,
+     "n_eligible_configs": 45,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
@@ -5759,7 +5775,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 9,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
@@ -5837,7 +5853,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 9,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
@@ -6067,8 +6083,8 @@
      "overrides": "mode=standard optimizers_standard=[SGD] lrs_standard=[3.0]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 1.101329934635332,
-     "n_ok": 4,
+     "seed_mean_final_val": 1.1177651615122541,
+     "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
      "n_eligible_configs": 9,
@@ -6128,10 +6144,16 @@
        "status": "ok",
        "diverged": false,
        "wall_time_s": 156.398
+      },
+      "4004": {
+       "final_val": 1.1835060690199437,
+       "status": "ok",
+       "diverged": false,
+       "wall_time_s": 180.479
       }
      },
-     "mean_wall_time_s": 161.54775,
-     "n_records": 4
+     "mean_wall_time_s": 165.334,
+     "n_records": 5
     },
     "SGDm": {
      "method": "SGDm",
@@ -6223,7 +6245,7 @@
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 8,
+     "n_eligible_configs": 9,
      "tied_with": [],
      "edges": {},
      "batch_size": 128,
