@@ -133,3 +133,16 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 * 09-19 16:00 EDT: MIG jobs hit the 12 h wall (TIMEOUT, expected); resubmitted all_mlp_mig_v2. mnist_scan_labelRegression COMPLETE (1360); open: MNIST-CE HIG 12/150, CIFAR label-reg 415/555, CE 437/655, Fig-5 8/15.
 * 09-19 18:00 EDT check-in: Fig-5 COMPLETE (15/15). Open: MNIST-CE HIG 68/150, CIFAR label-reg 447/555, CE 495/655 (LBFGS + late baseline items). 6 A100 + 2 MIG running, none pending; 0 oom/error.
 * 09-19 20:00 EDT check-in (24 h after launch): open = MNIST-CE HIG 126/150, CIFAR label-reg 532/555, CE 615/655. 4 A100 + 2 MIG running; 0 oom/error.
+
+## ALL QUEUED SCANS COMPLETE — Sat 2026-09-19 22:11 EDT (26 h after launch)
+`tools/reconcile.py --all` over 21 scans: **0 runs to do, 0 oom/error, 0 retries** (report: `campaign/reconcile_2026-09-19.txt`).
+Headline (seed-mean final VAL loss, best config per method): toy HIG 4.7e-9 < Sven 4.8e-7 < SOAP 4.3e-6 < Adam 1.7e-5;
+polynomial (new true degree-4 target) HIG 0.071 < Sven 0.118 < Polyak 0.136 < SOAP 0.150 < Adam 0.185; MNIST label-reg
+MuonW 0.0500, HIG 0.0508, Sven 0.0522, SGD 0.0534, Adam 0.0568; MNIST-CE MuonW 0.104, Muon 0.106, HIG 0.114, SGD 0.122,
+Sven 0.123, Adam 0.144; CIFAR label-reg MuonW 0.346, SOAP 0.352, Muon 0.365, AdamW 0.395, Adam 0.399, ..., Sven 0.480 (9th of 11);
+CIFAR-CE MuonW 0.689, LBFGS 1.01, AdamW 1.09, ..., Sven 1.40 (10th of 11); nanoGPT AdamW 1.714, Sven 1.724, Muon/MuonW/SOAP 1.82.
+Edge optima still open: toy Sven (lr 0.05 low edge, rtol 1e-4 low edge), toy HIG lr low edge, CIFAR LBFGS lr=2 high edge,
+CIFAR-CE SGD lr=1 high edge, KFAC low edges, overparam/batch-size baseline lr=0.1 high edges (those scans kept the old
+1e-4..1e-1 grid - deliberate deviation in configs.impl.md; extension is cheap, <2 GPU-h).
+NEXT (needs the user): review tables; decide the extension round; then timing / diagnostics / confirmation passes and the
+schema-2 analysis notebooks.
