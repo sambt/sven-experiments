@@ -10,5 +10,5 @@ for d in $R/*/; do n=$(basename $d); [ -d $d/done ] || continue
 done
 echo "--- jobs:"; squeue -u $USER -h -o "%T %P" | sort | uniq -c
 echo "--- alarms in pool logs (this snapshot):"
-grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]|Traceback" $S/campaign/*2c6faf59-*.out 2>/dev/null | head
-grep -h -E "^\[pool\].*(failed|crash)" $S/campaign/*2c6faf59-*.out 2>/dev/null | grep -v " 0 failed" | tail -5
+grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]|Traceback" $S/campaign/*$(basename $(cat /n/home11/sambt/iaifi/sv3/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | head
+grep -h -E "^\[pool\].*(failed|crash)" $S/campaign/*$(basename $(cat /n/home11/sambt/iaifi/sv3/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | grep -v " 0 failed" | tail -5

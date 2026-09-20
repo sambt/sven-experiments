@@ -10,7 +10,7 @@ while true; do
   [ "$mig" -lt 2 ] && { echo "REASON: only $mig gpu_test job(s) alive"; break; }
   err=$(ls $R/*/done 2>/dev/null | grep -c -E "\.(oom|error)$"); att=$(ls $R/*/attempts 2>/dev/null | grep -c .)
   [ $((err+att)) -gt "$base_err" ] && { echo "REASON: oom/error markers=$err attempts=$att (baseline $base_err)"; break; }
-  al=$(grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]" $S/*2c6faf59-*.out 2>/dev/null | wc -l)
+  al=$(grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]" $S/*$(basename $(cat /n/home11/sambt/iaifi/sv3/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | wc -l)
   [ "$al" -gt 0 ] && { echo "REASON: $al pool log(s) with alarms"; break; }
   [ $(( $(date +%s) - t0 )) -ge "$HEARTBEAT" ] && { echo "REASON: heartbeat"; break; }
 done

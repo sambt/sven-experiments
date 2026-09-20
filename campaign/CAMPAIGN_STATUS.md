@@ -147,3 +147,4 @@ CIFAR-CE SGD lr=1 high edge, KFAC low edges, overparam/batch-size baseline lr=0.
 NEXT (needs the user): review tables; decide the extension round; then timing / diagnostics / confirmation passes and the
 schema-2 analysis notebooks.
 * 09-19 ~22:40 EDT — USER GO (standing, overnight): launch the grid-extension round, then the result-dependent passes (timing/diagnostics/confirmation), and GPT-2-small (after a one-run GPU smoke). Agents: ext-configs, phase5-tooling running; GPT-2 agent starts after ext-configs lands.
+* 09-19 23:35 EDT: extension round launched from NEW snapshot /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/62e5105e_203a4e61 (sv3 62e5105e; +7,480 additive runs, finished runs dedup out, no _stale created): MIG all_mlp_mig 47322040/42, CIFAR baselines 47322047/52, MLP overflow P0 x3, P1 x3. gpt2-prep agent started.
