@@ -157,3 +157,13 @@ schema-2 analysis notebooks.
 * 09-20 16:10 EDT: GPT-2 24/29 done (all 5 Sven runs + 19 baselines; 5 baseline runs in flight). Sven val by lr: 0.02->6.32, 0.05->6.04, 0.1->5.20 (interior optimum, test 5.11), 0.5->7.90, 1.0->10.2; baselines so far: Muon 3.77, MuonW 3.85, AdamW 3.93, SOAP 3.96 (1 seed, 1 epoch, 9.3 h per Sven run vs ~3 h).
 * 09-20 ~16:40 EDT: analysis plan written: campaign/ANALYSIS_PLAN.md (5 work packages + orchestration + open decisions). User will resume on a compute node to orchestrate it. Verified beforehand: toy/cifar/overparam notebooks execute on the fresh results with 0 error cells.
 * 09-20 ~17:10 EDT: user decisions recorded in campaign/ANALYSIS_PLAN.md section 7 (confirmation seeds as headline; GPT-2 and CIFAR reported as is; re-profile YES -> profile_results_v3; CIFAR-CE Sven rtol extension YES, restricted 45-run version by default). NOTHING launched - waiting for the user's go from a compute node.
+
+## ANALYSIS PHASE — started Sun 2026-09-20 18:25 EDT (8-core compute node, user said execute campaign/ANALYSIS_PLAN.md)
+* Contracts + file ownership: `campaign/ANALYSIS_CONTRACTS.md`. GPT-2 reconciled complete (29/29; one job still winding down).
+* Phase A workflow `sven-analysis-phaseA` (wrmmewxm3), 5 tracks each implement -> adversarial review (numbers recomputed
+  from raw records) -> fix: WP1 housekeeping, WP2 headline library (`analysis/headline.py`, `headline_tables.ipynb`),
+  WP3 `analysis/ckpt_tools.py` + cached probe-set spectra, WP5 docs, GPU items (CIFAR-CE Sven rtol extension 45 runs +
+  re-profile into `profile_results_v3/`; this agent may commit its own files and submit exactly those jobs).
+* Phase B (after A, one owner per notebook set): WP2 headline notebooks, WP3 spectrum figures, WP4a reviewer MLP
+  notebooks, WP4b CIFAR/nanoGPT/new GPT-2 notebook, WP5 legacy-vs-fresh diff. Phase C: make_plots.sh clean, tests green,
+  10-number spot check; after the GPU items: re-select, phase-5 reruns for CIFAR-CE Sven if its pick changed, profile v3 notebooks.
