@@ -144,9 +144,11 @@ notebooks produce the tables and figures.
 **`profile_results_v2` is pessimistic for Sven and is kept only as the "before" table.** It
 was measured on 2026-09-17 with the per-step `torch.cuda.empty_cache()` that the campaign has
 since turned off — worth up to 4.5× on CIFAR full-capture Sven. The re-measurement at the
-campaign code writes `profile_results_v3/` (`campaign/ANALYSIS_PLAN.md` §7.4); until v3 has
-results, read the v2 Sven step times as upper bounds, and never mix the two roots in one
-table except as an explicit v2-vs-v3 comparison.
+campaign code writes `profile_results_v3/` (`campaign/ANALYSIS_PLAN.md` §7.4), and **it has
+landed: 720/720 configurations, 2026-09-21, job 47396284** — so v3 is the root of record, the
+notebooks read it, and the v2 Sven step times are upper bounds kept only for the before/after
+table in `EXPERIMENTS.md` §1.6. Never mix the two roots in one table except as that explicit
+v2-vs-v3 comparison.
 
 ## Analysis
 
