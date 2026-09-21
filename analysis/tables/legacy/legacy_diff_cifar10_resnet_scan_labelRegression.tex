@@ -1,0 +1,17 @@
+\begin{tabular}{llllllllllllllllll}
+\toprule
+method & legacy config & legacy val & legacy fin/att & legacy rank & fresh config & fresh val (tuning) & fresh rank (tuning) & fresh val (confirm) & fresh test & fresh test acc & fresh fin/att & fresh rank & rank change & fresh rank (all methods) & fresh rank basis & grid (leg->fresh) & causes \\
+\midrule
+Adam & lr=0.01 & 0.3989 ± 0.01224 & 5/5 & 1/6 & lr=0.01 & 0.3985 ± 0.01926 & 1/6 & 0.403 ± 0.01465 & 0.4005 & 0.734 & 5/5 & 1/6 & = & 5/11 & confirm & 4->7 & ew,droplast,split,bn,grid \\
+RMSprop & lr=0.01 & 0.4168 ± 0.01258 & 5/5 & 3/6 & lr=0.001 & 0.4088 ± 0.01738 & 2/6 & 0.4173 ± 0.01931 & 0.4165 & 0.742 & 5/5 & 2/6 & -1 & 6/11 & confirm & 4->7 & ew,droplast,split,bn,grid \\
+Stochastic L-BFGS & lr=1, lbfgs\_max\_iter=3, lbfgs\_history\_size=5 & 0.6988 ± 0.01299 & 5/5 & 5/6 & lr=2, max\_iter=3, history\_size=2 & 0.438 ± 0.02254 & 3/6 & 0.4499 ± 0.02574 & 0.4509 & 0.711 & 5/5 & 3/6 & -2 & 7/11 & confirm & 27->45 & ew,droplast,split,bn,grid,failures \\
+Polyak SGD & (no swept hyperparameter) & 0.446 ± 0.01108 & 5/5 & 4/6 & f\_star=0, max\_lr=1, eps=1e-08 & 0.4541 ± 0.009829 & 4/6 & 0.472 ± 0.0256 & 0.4687 & 0.696 & 5/5 & 4/6 & = & 8/11 & confirm & 1->1 & ew,droplast,split,bn \\
+Sven & k=64, lr=1, rtol=0.001 & 0.4107 ± 0.0165 & 5/5 & 2/6 & k=128, lr=0.5, rtol=0.001 & 0.4803 ± 0.01326 & 5/6 & 0.4838 ± 0.0105 & 0.4938 & 0.694 & 5/5 & 5/6 & +3 & 9/11 & confirm & 18->18 & ew,droplast,split,bn,failures \\
+SGD & lr=0.001 & 0.7238 ± 0.009163 & 5/5 & 6/6 & lr=0.001 & 0.739 ± 0.01138 & 6/6 & 0.7361 ± 0.009942 & 0.7336 & 0.456 & 5/5 & 6/6 & = & 11/11 & confirm & 4->7 & ew,droplast,split,bn,grid \\
+MuonW & -- & -- & -- & -- & lr=0.01, weight\_decay=0.1 & 0.3456 ± 0.01007 & -- & 0.3357 ± 0.005022 & 0.3437 & 0.763 & 5/5 & -- & -- & 1/11 & confirm & 0->7 & ew,droplast,split,bn,muon,newbase \\
+SOAP & -- & -- & -- & -- & lr=0.01 & 0.3524 ± 0.01079 & -- & 0.3542 ± 0.01722 & 0.3625 & 0.779 & 5/5 & -- & -- & 2/11 & confirm & 0->7 & ew,droplast,split,bn,newbase \\
+Muon & -- & -- & -- & -- & lr=0.01 & 0.3649 ± 0.006447 & -- & 0.367 ± 0.0134 & 0.3808 & 0.773 & 5/5 & -- & -- & 3/11 & confirm & 0->7 & ew,droplast,split,bn,muon,newbase \\
+AdamW & -- & -- & -- & -- & lr=0.01, weight\_decay=0.01 & 0.3952 ± 0.00817 & -- & 0.4027 ± 0.007483 & 0.4015 & 0.728 & 5/5 & -- & -- & 4/11 & confirm & 0->7 & ew,droplast,split,bn,adamw\_wd,newbase \\
+SGD + momentum & -- & -- & -- & -- & lr=0.001 & 0.6922 ± 0.02049 & -- & 0.6771 ± 0.01293 & 0.6814 & 0.545 & 5/5 & -- & -- & 10/11 & confirm & 0->7 & ew,droplast,split,bn,newbase \\
+\bottomrule
+\end{tabular}

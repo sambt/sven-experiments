@@ -38,10 +38,10 @@ PROFILES=(profile_overview profile_scaling profile_paramfrac_microbatch profile_
 # while the packages land one at a time; uncomment the entry in the same commit that
 # adds the notebook.  Keep the names sorted by package, no .ipynb suffix.
 NEW=(
-  # WP2 headline   : headline_tables
-  # WP3 spectra    : spectra_analysis
-  # WP4b large     : gpt2_analysis
-  # WP5 legacy diff: legacy_vs_fresh
+  headline_tables      # WP2: confirmation / tuning tables, paired differences, budget, time-to-target
+  spectra_analysis     # WP3: diag-run spectra, utr, probe-set spectra along trajectories
+  gpt2_analysis        # WP4b: GPT-2-small, one seed
+  legacy_vs_fresh      # WP5: what the robustness fixes changed
 )
 
 if [ $# -gt 0 ]; then NBS=("$@")

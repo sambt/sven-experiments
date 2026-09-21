@@ -1,7 +1,7 @@
 | label | n_runs | n_seeds | n_diverged | grid_points | grid_per_group | distinct_per_group | distinct | distinct_frac |
 |---|---|---|---|---|---|---|---|---|
 | Stochastic L-BFGS | 225 | 5 | 0 | 45 | 9 | 9 | 45 | 1 |
-| Sven | 159 | 5 | 0 | 39 | 6.36 | 6.36 | 31.8 | 0.8154 |
+| Sven | 188 | 5 | 0 | 39 | 7.52 | 7.52 | 37.6 | 0.9641 |
 | AdamW | 45 | 5 | 0 | 9 | 1 | 1 | 9 | 1 |
 | MuonW | 45 | 5 | 0 | 9 | 1 | 1 | 9 | 1 |
 | Adam | 45 | 5 | 0 | 9 | 1 | 1 | 9 | 1 |

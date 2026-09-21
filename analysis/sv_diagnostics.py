@@ -52,7 +52,8 @@ RESULTS_ROOT = style.RESULTS_ROOT
 
 __all__ = ['RESULTS_ROOT', 'sven_runs', 'select', 'n_epochs', 'n_steps',
            'rank_per_batch', 'rank_per_epoch', 'batch_curve', 'epoch_spectra',
-           'epoch_utr', 'seed_mean', 'smooth', 'sci', 'plot_rank_vs_batch',
+           'epoch_utr', 'noise_floor_rel', 'noise_floor', 'seed_mean', 'smooth',
+           'sci', 'spectrum_floor', 'plot_rank_vs_batch',
            'plot_used_vs_batch', 'plot_epoch_spectra', 'plot_epoch_utr',
            'epoch_colorbar']
 
@@ -134,6 +135,58 @@ def rank_per_epoch(row):
         return None
     curve = summary.get('num_nonzero_svs_epoch')
     return None if not curve else np.asarray(curve, dtype=float)
+
+
+def noise_floor_rel(diag, default=None):
+    """``sv_noise_floor / sigma_max`` per logged step, from a loaded diagnostics dict.
+
+    **This is not 1e-7.**  Sven takes sigma from a float64 ``eigh`` of ``J J^T``,
+    which squares the condition number: with float32 parameters the error on
+    ``sigma_i`` is ~``eps * sigma_max^2 / (2 sigma_i)``, so everything below
+    ``sqrt(eps) * sigma_max ~= 3.45e-4 * sigma_max`` is round-off, not structure
+    (``sven.opt.sven.SvenGram`` docstring, F19).  The optimizer records that number
+    per logged step (C-L1) precisely so analysis does not have to assume it, and
+    phase A measured the consequence: online and offline singular values agree to
+    ~5e-7 relative ABOVE ``1e-2 sigma_max`` and disagree by 1e-4..1e-3 below it.
+
+    :data:`style.FLOAT32_NOISE_FLOOR` (1e-7, the floor a direct ``svdvals(J)``
+    would give) is only the fallback for a legacy record that carries no
+    ``sv_noise_floor``; those spectra are truncated at rtol anyway, so nothing is
+    drawn near either floor.
+    """
+    floor, smax = diag.get('sv_noise_floor'), diag.get('sv_max')
+    if floor is None or smax is None:
+        step = diag.get('svs_step')
+        n = max(len(step) if step is not None else 0, 1)
+        return np.full(n, float(default if default is not None
+                                else FLOAT32_NOISE_FLOOR))
+    floor = np.asarray(floor, dtype=float)
+    smax = np.asarray(smax, dtype=float)
+    return np.where(smax > 0, floor / np.where(smax > 0, smax, np.nan), np.nan)
+
+
+def noise_floor(rows, results_root=None):
+    """The median RECORDED Gram noise floor (relative) over one or more runs, or None.
+
+    Takes a single row or a DataFrame of runs and returns the one number a spectrum
+    plot should draw its "below here is round-off" line at (see
+    :func:`noise_floor_rel` for why it is ~3.45e-4 and not 1e-7).  ``None`` means
+    no run recorded one -- a legacy record, whose spectrum is truncated at rtol and
+    never reaches any floor; the caller then keeps the old
+    :data:`style.FLOAT32_NOISE_FLOOR` line rather than inventing a number.
+    """
+    it = rows.iterrows() if hasattr(rows, 'iterrows') else [(0, rows)]
+    vals = []
+    for _, row in it:
+        diag = load_diagnostics(row, results_root=results_root)
+        if diag.get('sv_noise_floor') is None or diag.get('sv_max') is None:
+            continue
+        vals.append(np.atleast_1d(noise_floor_rel(diag)))
+    if not vals:
+        return None
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return float(np.nanmedian(np.concatenate(vals)))
 
 
 def batch_curve(row, which='train_batch', results_root=None):
@@ -389,9 +442,15 @@ def spectrum_floor(spectra, k, floor=None, legacy=1e-6):
     An explicit ``floor`` always wins.  Otherwise it follows the record generation,
     because one fixed number cannot serve both: a full-width spectrum (C-L1) falls
     all the way to round-off, and clipping it at the old 1e-4 / 1e-6 would hide the
-    tail and the float32 floor line -- the whole point of logging it (C-A3).  So a
-    full record gets a decade below its own smallest value, never above the float32
-    noise floor; a legacy record, truncated just above rtol, keeps ``legacy``.
+    tail and the noise-floor line -- the whole point of logging it (C-A3).  So a
+    full record gets a decade below its own smallest value; a legacy record,
+    truncated just above rtol, keeps ``legacy``.
+
+    Deliberately NOT the recorded Gram floor (:func:`noise_floor`, ~3.45e-4): the
+    tail below that floor is round-off, but it is *drawn*, with the floor marked,
+    so a reader sees where the measurement stops instead of finding the axis
+    silently cut there.  A caller that wants the tail clipped away passes ``floor``
+    explicitly -- ``comparisons.ipynb`` does.
     """
     if floor is not None:
         return floor
@@ -418,10 +477,11 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
     * **full spectrum** (width >= ``k``; C-L1 logs all ``B`` values before the
       ``k`` / rtol cut).  ``x_fraction`` normalises the rank axis by the SPECTRUM
       WIDTH, so the axis really runs 0..1; the ``k`` cut is drawn as a vertical
-      line (:func:`_k_cut`), ``rtol`` and the float32 noise floor
-      (:data:`style.FLOAT32_NOISE_FLOOR` x ``sigma_max``) as horizontals.  Both
-      matter: everything below rtol is discarded, and everything below the floor
-      is round-off rather than structure (F19).
+      line (:func:`_k_cut`), ``rtol`` and the run's OWN recorded Gram noise floor
+      (:func:`noise_floor`, ``sqrt(eps) sigma_max ~ 3.45e-4 sigma_max`` in float32
+      -- NOT 1e-7) as horizontals.  Both matter: everything below rtol is
+      discarded, and everything below the floor is round-off rather than
+      structure (F19).
     * **legacy, truncated at rtol** (width < ``k``): only the SVs the optimizer
       kept were recorded, so the width is the largest rtol-rank any saved step
       reached and the tail of every curve is a survivorship average pinned just
@@ -442,6 +502,7 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
         return None, None
     width = spectra.shape[1]
     full = width >= (k or 0)
+    nf = noise_floor(runs, results_root=results_root) if full else None
     if not full:
         # Runs made before the full-spectrum fix (sven/opt/sven.py, SvenGram.step)
         # recorded only the SVs above rtol.  See RERUNS_NEEDED.md.
@@ -457,8 +518,15 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
         ax.axhline(rtol, color='0.4', lw=1, ls=':', zorder=0,
                    label=r'rtol $\sigma_{\max}$')
     if full and show_noise_floor:
-        ax.axhline(FLOAT32_NOISE_FLOOR, color='0.4', lw=1, ls='--', zorder=0,
-                   label=r'float32 floor ($10^{-7}\sigma_{\max}$)')
+        # the recorded sqrt(eps) sigma_max where the record has one (schema 2), and
+        # the documented 1e-7 fallback where it does not -- never a made-up number
+        if nf is not None and np.isfinite(nf):
+            ax.axhline(nf, color='0.4', lw=1, ls='--', zorder=0,
+                       label=rf'Gram float32 floor ($\sqrt{{\epsilon}}\,\sigma_{{\max}}'
+                             rf' = {nf:.1e}\,\sigma_{{\max}}$)')
+        else:
+            ax.axhline(FLOAT32_NOISE_FLOOR, color='0.4', lw=1, ls='--', zorder=0,
+                       label=r'float32 floor ($10^{-7}\sigma_{\max}$)')
     if full and show_k:
         _k_cut(ax, k, width, x_fraction)
     ax.set_yscale('log')

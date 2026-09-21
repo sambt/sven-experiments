@@ -162,6 +162,15 @@ def best_of_n_curve(df, metric='final_val_loss', minimize=True, n_max=None, repl
     return out
 
 
+def _display(m):
+    """Reader-facing method name (style.method_label), imported lazily to avoid an import cycle."""
+    try:
+        from style import method_label
+    except Exception:                      # pragma: no cover - analysis/ not on sys.path
+        return m
+    return method_label(m)
+
+
 def plot_best_of_n(curves, ax, methods=None, logy=True, **plot_kw):
     """The :func:`best_of_n_curve` frame, one line per method (global method colours)."""
     methods = methods or list(dict.fromkeys(curves['method']))
@@ -170,7 +179,7 @@ def plot_best_of_n(curves, ax, methods=None, logy=True, **plot_kw):
         if d.empty:
             continue
         ax.plot(d['n'], d['expected_best'], '-', lw=2.2 if m == 'Sven' else 1.4,
-                color=method_color(m), label=f"{m} ({int(d.grid_points.iloc[0])} pts)", **plot_kw)
+                color=method_color(m), label=f"{_display(m)} ({int(d.grid_points.iloc[0])} pts)", **plot_kw)
     ax.set_xscale('log')
     if logy:
         ax.set_yscale('log')

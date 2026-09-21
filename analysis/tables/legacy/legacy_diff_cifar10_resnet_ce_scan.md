@@ -1,0 +1,13 @@
+| method | legacy config | legacy val | legacy fin/att | legacy rank | fresh config | fresh val (tuning) | fresh rank (tuning) | fresh val (confirm) | fresh test | fresh test acc | fresh fin/att | fresh rank | rank change | fresh rank (all methods) | fresh rank basis | grid (leg->fresh) | causes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Stochastic L-BFGS | lr=1, lbfgs_max_iter=2, lbfgs_history_size=5 | 1.323 ± 0.01835 | 5/5 | 3/6 | lr=2, max_iter=2, history_size=5 | 1.014 ± 0.06558 | 1/6 | 1.063 ± 0.1266 | 1.09 | 0.737 | 5/5 | 1/6 | -2 | 2/11 | confirm | 27->45 | ew,droplast,split,bn,grid,failures |
+| SGD | lr=0.001 | 1.342 ± 0.02067 | 5/5 | 4/6 | lr=3 | 1.118 ± 0.05159 | 2/6 | 1.085 ± 0.07979 | 1.107 | 0.686 | 5/5 | 2/6 | -2 | 3/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
+| Adam | lr=0.01 | 1.215 ± 0.02367 | 5/5 | 2/6 | lr=0.001 | 1.214 ± 0.0432 | 3/6 | 1.266 ± 0.05763 | 1.304 | 0.746 | 5/5 | 3/6 | +1 | 7/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
+| RMSprop | lr=0.1 | 1.204 ± 0.08262 | 5/5 | 1/6 | lr=0.001 | 1.334 ± 0.0587 | 4/6 | 1.318 ± 0.04899 | 1.366 | 0.742 | 5/5 | 4/6 | +3 | 8/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
+| Sven | k=128, lr=0.1, rtol=0.01 | 1.415 ± 0.0201 | 5/5 | 5/6 | k=128, lr=0.1, rtol=0.01 | 1.403 ± 0.0207 | 5/6 | 1.424 ± 0.0126 | 1.412 | 0.53 | 5/5 | 5/6 | = | 9/11 | confirm | 18->39 | ew,droplast,split,bn,grid,failures |
+| Polyak SGD | (no swept hyperparameter) | 1.73 ± 0.03078 | 5/5 | 6/6 | f_star=0, max_lr=1, eps=1e-08 | 1.782 ± 0.04273 | 6/6 | 1.766 ± 0.04122 | 1.779 | 0.632 | 5/5 | 6/6 | = | 11/11 | confirm | 1->1 | ew,droplast,split,bn |
+| MuonW | -- | -- | -- | -- | lr=0.01, weight_decay=0.1 | 0.6888 ± 0.02447 | -- | 0.7054 ± 0.02526 | 0.7073 | 0.768 | 5/5 | -- | -- | 1/11 | confirm | 0->9 | ew,droplast,split,bn,muon,newbase |
+| AdamW | -- | -- | -- | -- | lr=0.01, weight_decay=0.01 | 1.093 ± 0.06778 | -- | 1.101 ± 0.04974 | 1.108 | 0.735 | 5/5 | -- | -- | 4/11 | confirm | 0->9 | ew,droplast,split,bn,adamw_wd,newbase |
+| Muon | -- | -- | -- | -- | lr=0.01 | 1.122 ± 0.04079 | -- | 1.137 ± 0.02377 | 1.18 | 0.779 | 5/5 | -- | -- | 5/11 | confirm | 0->9 | ew,droplast,split,bn,muon,newbase |
+| SOAP | -- | -- | -- | -- | lr=0.01 | 1.148 ± 0.03616 | -- | 1.176 ± 0.06278 | 1.249 | 0.776 | 5/5 | -- | -- | 6/11 | confirm | 0->9 | ew,droplast,split,bn,newbase |
+| SGD + momentum | -- | -- | -- | -- | lr=0.3 | 1.187 ± 0.1298 | -- | 1.431 ± 0.4941 | 1.454 | 0.568 | 5/5 | -- | -- | 10/11 | confirm | 0->9 | ew,droplast,split,bn,newbase |

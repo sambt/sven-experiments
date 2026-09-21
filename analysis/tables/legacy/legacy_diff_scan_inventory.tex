@@ -1,0 +1,56 @@
+\begin{tabular}{lllrrll}
+\toprule
+scan & title & where & n\_records\_leg & n\_records\_fresh & compared as & disposition \\
+\midrule
+cifar10\_resnet\_ce\_kappaScan & cifar10\_resnet\_ce\_kappaScan & legacy only & 2 & 0 & -- & CUT: 1 seed at a tentative set point; replaced on MNIST only (mnist\_kappaScan\_labelRegression). NO fresh CIFAR kappa scan. \\
+cifar10\_resnet\_ce\_paramFrac\_scan & cifar10\_resnet\_ce\_paramFrac\_scan & legacy only & 6 & 0 & -- & CUT: superseded by rebuttal\_fig5\_cifar\_paramfrac\_scan (label regression only), so the cross-entropy parameter-fraction curve has NO fresh counterpart. \\
+cifar10\_resnet\_ce\_scan & CIFAR-10 (CE) & both & 290 & 775 & headline &  \\
+cifar10\_resnet\_ce\_scan\_confirm & cifar10\_resnet\_ce\_scan\_confirm & fresh only & 0 & 55 & -- & confirm pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_ce\_scan\_diag & cifar10\_resnet\_ce\_scan\_diag & fresh only & 0 & 55 & -- & diag pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_ce\_scan\_timing & cifar10\_resnet\_ce\_scan\_timing & fresh only & 0 & 55 & -- & timing pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_kappaScan\_labelReg & cifar10\_resnet\_kappaScan\_labelReg & legacy only & 5 & 0 & -- & CUT: 1 seed at a tentative set point. The kappa story now runs on MNIST at 5 seeds with a matched-effective-step grid (mnist\_kappaScan\_labelRegression); there is NO fresh CIFAR kappa scan. \\
+cifar10\_resnet\_paramFrac\_scan\_labelReg & cifar10\_resnet\_paramFrac\_scan\_labelReg & legacy only & 5 & 0 & -- & CUT: superseded by rebuttal\_fig5\_cifar\_paramfrac\_scan at 3 seeds, which exists in both roots and IS diffed here (the Sven-only table). The legacy Fig-5 numbers come from that 1-seed scan, not from this one. \\
+cifar10\_resnet\_scan\_labelRegression & CIFAR-10 (label reg.) & both & 290 & 600 & headline &  \\
+cifar10\_resnet\_scan\_labelRegression\_confirm & cifar10\_resnet\_scan\_labelRegression\_confirm & fresh only & 0 & 55 & -- & confirm pass of cifar10\_resnet\_scan\_labelRegression \\
+cifar10\_resnet\_scan\_labelRegression\_diag & cifar10\_resnet\_scan\_labelRegression\_diag & fresh only & 0 & 55 & -- & diag pass of cifar10\_resnet\_scan\_labelRegression \\
+cifar10\_resnet\_scan\_labelRegression\_timing & cifar10\_resnet\_scan\_labelRegression\_timing & fresh only & 0 & 55 & -- & timing pass of cifar10\_resnet\_scan\_labelRegression \\
+exp\_critbatch\_mnist & exp\_critbatch\_mnist & legacy only & 210 & 0 & -- & CUT by the user (09-18): the critical-batch study confounds retained rank with batch size (F23) and crossings were measured once per epoch. NO fresh data; the legacy critical-batch figure has no replacement and cannot be quoted. \\
+exp\_critbatch\_nanogpt & exp\_critbatch\_nanogpt & legacy only & 210 & 0 & -- & CUT by the user (09-18), same reason. NO fresh data; the legacy critical-batch figure has no replacement and cannot be quoted. \\
+exp\_finetune\_cifar\_smallN & exp\_finetune\_cifar\_smallN & legacy only & 240 & 0 & -- & PARKED to the extension phase (user, 09-18): its legacy runs trained BatchNorm on 250-2000 images, the defect C-E2 names. NO fresh data; the fine-tuning claim is unsupported until the parked 408 runs are launched. \\
+exp\_gpt2\_small\_comparison & GPT-2 small (FineWeb) & both & 6 & 29 & excluded &  \\
+exp\_nanogpt\_speedrun & nanoGPT (tiny-shakespeare) & both & 100 & 140 & headline &  \\
+exp\_nanogpt\_speedrun\_confirm & exp\_nanogpt\_speedrun\_confirm & fresh only & 0 & 25 & -- & confirm pass of exp\_nanogpt\_speedrun \\
+exp\_nanogpt\_speedrun\_diag & exp\_nanogpt\_speedrun\_diag & fresh only & 0 & 25 & -- & diag pass of exp\_nanogpt\_speedrun \\
+exp\_nanogpt\_speedrun\_timing & exp\_nanogpt\_speedrun\_timing & both & 12 & 25 & excluded &  \\
+mnist\_kappaScan\_labelRegression & MNIST (label reg.), kappa & both & 15 & 210 & sven\_only &  \\
+mnist\_microbatch\_ce\_scan & MNIST (CE), micro-batch & both & 140 & 140 & sven\_only &  \\
+mnist\_microbatch\_labelreg\_scan & MNIST (label reg.), micro-batch & both & 140 & 140 & sven\_only &  \\
+mnist\_paramfrac\_ce\_scan & MNIST (CE), param fraction & both & 92 & 100 & sven\_only &  \\
+mnist\_paramfrac\_labelreg\_scan & MNIST (label reg.), param fraction & both & 87 & 100 & sven\_only &  \\
+mnist\_scan\_ce & MNIST (CE) & both & 1040 & 1610 & headline &  \\
+mnist\_scan\_ce\_confirm & mnist\_scan\_ce\_confirm & fresh only & 0 & 70 & -- & confirm pass of mnist\_scan\_ce \\
+mnist\_scan\_ce\_diag & mnist\_scan\_ce\_diag & fresh only & 0 & 70 & -- & diag pass of mnist\_scan\_ce \\
+mnist\_scan\_ce\_timing & mnist\_scan\_ce\_timing & both & 60 & 70 & excluded &  \\
+mnist\_scan\_labelRegression & MNIST (label reg.) & both & 999 & 1360 & headline &  \\
+mnist\_scan\_labelRegression\_confirm & mnist\_scan\_labelRegression\_confirm & fresh only & 0 & 70 & -- & confirm pass of mnist\_scan\_labelRegression \\
+mnist\_scan\_labelRegression\_diag & mnist\_scan\_labelRegression\_diag & fresh only & 0 & 70 & -- & diag pass of mnist\_scan\_labelRegression \\
+mnist\_scan\_labelRegression\_timing & mnist\_scan\_labelRegression\_timing & both & 60 & 70 & excluded &  \\
+polynomial\_microbatch\_scan & Polynomial, micro-batch & both & 120 & 120 & sven\_only &  \\
+polynomial\_paramfrac\_scan & Polynomial, param fraction & both & 86 & 100 & sven\_only &  \\
+polynomial\_scan & Random Polynomial & both & 731 & 1630 & headline &  \\
+polynomial\_scan\_confirm & polynomial\_scan\_confirm & fresh only & 0 & 225 & -- & confirm pass of polynomial\_scan \\
+polynomial\_scan\_diag & polynomial\_scan\_diag & fresh only & 0 & 75 & -- & diag pass of polynomial\_scan \\
+polynomial\_scan\_timing & polynomial\_scan\_timing & both & 65 & 75 & excluded &  \\
+rebuttal\_batchsize\_polynomial\_scan & Polynomial, batch-size sweep & both & 2496 & 3060 & grouped &  \\
+rebuttal\_fig5\_cifar\_paramfrac\_scan & CIFAR-10 (label reg.), Fig-5 masks & both & 15 & 15 & sven\_only &  \\
+rebuttal\_overparam\_mnist\_scan & MNIST (label reg.), P/N sweep & both & 2477 & 3600 & grouped &  \\
+rebuttal\_overparam\_polynomial\_scan & Polynomial, P/N sweep & both & 2160 & 4320 & grouped &  \\
+rebuttal\_overparam\_toy\_1d\_scan & Toy 1D, P/N sweep & both & 2160 & 3240 & grouped &  \\
+toy\_1d\_microbatch\_scan & Toy 1D, micro-batch & both & 120 & 120 & sven\_only &  \\
+toy\_1d\_paramfrac\_scan & Toy 1D, param fraction & both & 97 & 100 & sven\_only &  \\
+toy\_1d\_scan & Toy 1D & both & 734 & 1770 & headline &  \\
+toy\_1d\_scan\_confirm & toy\_1d\_scan\_confirm & fresh only & 0 & 225 & -- & confirm pass of toy\_1d\_scan \\
+toy\_1d\_scan\_diag & toy\_1d\_scan\_diag & fresh only & 0 & 75 & -- & diag pass of toy\_1d\_scan \\
+toy\_1d\_scan\_timing & toy\_1d\_scan\_timing & both & 65 & 75 & excluded &  \\
+\bottomrule
+\end{tabular}

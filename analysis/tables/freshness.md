@@ -15,7 +15,7 @@
 | cifar10_resnet_scan_labelRegression | scan | True | 600 | 2026-09-20 05:36:07 | 0 | 0 | False |
 | cifar10_resnet_scan_labelRegression | confirm | False | 55 | 2026-09-20 09:54:20 | 55 | 0 | False |
 | cifar10_resnet_scan_labelRegression | timing | False | 55 | 2026-09-20 11:41:36 | 55 | 0 | False |
-| cifar10_resnet_ce_scan | scan | True | 749 | 2026-09-20 23:24:48 | 9 | 5 | True |
+| cifar10_resnet_ce_scan | scan | True | 778 | 2026-09-21 01:39:10 | 38 | 5 | True |
 | cifar10_resnet_ce_scan | confirm | False | 55 | 2026-09-20 11:21:00 | 55 | 0 | False |
 | cifar10_resnet_ce_scan | timing | False | 55 | 2026-09-20 11:37:29 | 55 | 0 | False |
 | exp_nanogpt_speedrun | scan | True | 140 | 2026-09-19 13:05:43 | 0 | 0 | False |

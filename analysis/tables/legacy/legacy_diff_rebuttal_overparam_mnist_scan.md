@@ -1,0 +1,7 @@
+| n_data | Sven rank, legacy | Sven rank, fresh | change | best method, legacy | best method, fresh | Sven config, legacy | Sven config, fresh | Sven val, legacy | Sven val, fresh |
+|---|---|---|---|---|---|---|---|---|---|
+| 2500 | 2/12 | 1/12 | -1 | MuonW | Sven | k=48, lr=1, rtol=0.0001 | k=64, lr=1, rtol=0.0001 | 0.1345 | 0.1243 |
+| 5000 | 1/12 | 1/12 | = | Sven | Sven | k=32, lr=1, rtol=0.0001 | k=64, lr=1, rtol=0.0001 | 0.1052 | 0.09889 |
+| 10000 | 3/12 | 1/12 | -2 | KFAC | Sven | k=48, lr=0.5, rtol=0.0001 | k=48, lr=0.5, rtol=0.0001 | 0.08284 | 0.08143 |
+| 20000 | 4/12 | 2/12 | -2 | MuonW | MuonW | k=32, lr=0.5, rtol=0.0001 | k=32, lr=0.5, rtol=0.0001 | 0.06783 | 0.06746 |
+| 40000 | 3/11 | 2/11 | -1 | MuonW | MuonW | k=32, lr=0.5, rtol=0.0001 | k=48, lr=0.5, rtol=0.0001 | 0.0564 | 0.05724 |
