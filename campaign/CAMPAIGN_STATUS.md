@@ -224,3 +224,14 @@ schema-2 analysis notebooks.
   hidden layers only) was never run - state as a non-answer; campaign-wide checkpoint verification only sampled (diag
   passes); remaining grid edges: rtol high edge on MNIST-CE and CIFAR-CE (accepted).
   Paper workflow (wc9dsdk4f) still running; it must re-run `python -m paper_assets` after these commits.
+* 09-21 ~12:05 EDT — **MANUSCRIPT v2 DRAFT COMPLETE.** `iclr_manuscript/iclr2026_conference_v2.tex` (copy of the original,
+  edits in blue via \new{} / newtext; 18 appendix fragments in `iclr_manuscript/sections_v2/`; figures
+  `figures_iclr/` (45 PDFs), tables `tables_v2/` (55), number macros `numbers_v2*.tex` (1,352 macros), new bib
+  `references_v2.bib`; change log + author decisions in `iclr_manuscript/CHANGES_v2.md`). Proof PDF:
+  `iclr_manuscript/iclr2026_conference_v2_PROOF.pdf` (96 pages; main text ends on page 9; 0 LaTeX errors, 0 undefined
+  refs/cites, 0 overfull > 10pt). Nothing committed in the Overleaf repo. Regenerate everything with
+  `cd analysis && ../.venv/bin/python -m paper_assets` then `bash agent_lab/paper_build/build.sh` (local TeX Live 2018
+  lacks algpseudocode/bbm/nicefrac -> out-of-repo shim in agent_lab/paper_build/shim; Overleaf is authoritative for the
+  page count). Workflow reports: `campaign/paper_reports/` (3 adversarial reviews: 28 high findings, all dispositioned by
+  the fixer). Asset package committed in sv3 (1c09159). Assets re-generated after the final analysis gate: only
+  timestamps changed.
