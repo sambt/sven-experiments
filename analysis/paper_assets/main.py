@@ -1,0 +1,1825 @@
+"""``paper_assets.main`` -- the headline assets of the ICLR revision.
+
+Owns (``campaign/PAPER_PLAN.md`` section 5):
+
+* **F1** ``figures_iclr/main/headline_curves.pdf`` -- validation loss vs epoch (top) and
+  vs standalone synchronised training time (bottom) for the three headline tasks
+  (random polynomial, MNIST label regression, nanoGPT), confirmation seeds, +/- 1 std.
+  The main-text panels draw the front of the field plus Sven; the all-methods version of
+  the same figure is ``headline_curves_all.pdf`` for the appendix.
+* **F3** ``figures_iclr/main/cost_memory.pdf`` -- step time and peak memory against
+  parameter count over five architectures, measured in the standalone timing pass.
+* **F12** ``figures_iclr/main/k_sweeps.pdf`` + ``hparam_landscape.pdf`` -- Sven's
+  ``k`` sweep at each scan's SELECTED ``rtol`` (the corrected version of the old Fig. 2
+  top row) and the final-loss landscape over ``k`` and over ``rtol``.
+* **F13** ``figures_iclr/main/allseed_curves.pdf`` + ``allseed_curves_ce_lm.pdf`` --
+  the all-methods / all-seeds appendix versions for every headline scan, 1D regression
+  and MNIST-CE included.
+* **T1--T5, T10, T18, T20** in ``tables_v2/``, and the **G1** macro group in
+  ``numbers_v2_main.tex``.
+
+Nothing here computes a number: every value comes from :mod:`headline`,
+:mod:`headline_figs` or :mod:`scan_analysis` and is only formatted.  Run it with::
+
+    cd analysis && ../.venv/bin/python -m paper_assets.main
+"""
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pandas as pd
+
+import headline as hl
+import headline_figs as hf
+import paired
+import scan_analysis as sa
+import style
+
+from . import common as C
+
+GROUP = 'main'
+
+#: the three tasks the revised main text leads with (PAPER_PLAN section 1)
+HEADLINE_MAIN = ('polynomial_scan', 'mnist_scan_labelRegression', 'exp_nanogpt_speedrun')
+
+#: the four MLP/regression scans whose Sven hyperparameter sweeps are re-derived
+SWEEP_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
+               'mnist_scan_ce')
+
+#: App. E's all-seed figure: three scans x three axes
+ALLSEED_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression')
+#: and the two the second all-seed figure covers, so every headline scan has one
+ALLSEED_SCANS_B = ('mnist_scan_ce', 'exp_nanogpt_speedrun')
+
+#: the methods the main-text results table lists beside Sven.  The leaders (HIG on the
+#: synthetics, MuonW on the classification scans) and the first-order field the paper
+#: claims to beat; the full field is in the per-scan appendix tables (T5).
+MAIN_TABLE_METHODS = ('Sven', 'HIG', 'MuonW', 'Muon', 'SOAP', 'AdamW', 'Adam', 'SGD')
+
+#: how many methods the front-of-the-field panels of F1 draw, Sven always included
+MAIN_PANEL_TOP_N = 5
+
+#: scan -> the letters a macro name uses for it (no digits: TeX forbids them)
+SCAN_KEY = {
+    'toy_1d_scan': 'Toy',
+    'polynomial_scan': 'Poly',
+    'mnist_scan_labelRegression': 'MnistLR',
+    'mnist_scan_ce': 'MnistCE',
+    'cifar10_resnet_scan_labelRegression': 'CifarLR',
+    'cifar10_resnet_ce_scan': 'CifarCE',
+    'exp_nanogpt_speedrun': 'Nanogpt',
+}
+
+#: The scans this module emits MACROS for.  One macro, one owner: a name defined in two
+#: of the four ``numbers_v2_*.tex`` files makes LaTeX abort, so the ownership follows the
+#: EXPLICIT half of ``PAPER_PLAN`` section 5.3 wherever the two group descriptions
+#: overlap.  G3 (``paper_assets.large``) names "both CIFAR scans' levels, accuracies,
+#: train-eval, costs and ranks" and "nanoGPT and GPT-2 levels, perplexities, costs", so
+#: all three of those scans' numbers come from ``numbers_v2_large.tex``; G1's generic
+#: "the 7 scans" yields to it.  The three scans still appear in this module's cross-scan
+#: FIGURES and TABLES (F1, T1--T5, T18), which ``large`` does not produce --
+#: :func:`common.write_numbers_index` re-checks the split on every build and prints a
+#: clash if either side changes its mind.
+MACRO_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
+               'mnist_scan_ce')
+
+#: the scans whose macros another module owns, and which one (for the report / a reader)
+MACRO_DEFERRED = {'exp_nanogpt_speedrun': 'large', 'cifar10_resnet_ce_scan': 'large',
+                  'cifar10_resnet_scan_labelRegression': 'large'}
+
+#: individual macro families this module leaves to another module, and why.  Checked on
+#: every build by :func:`common.write_numbers_index`, which prints a clash if either side
+#: starts emitting the other's names.
+MACRO_FAMILIES_DEFERRED = {
+    'num<Scan>SvenK': 'spectra (T8: "per scan: selected k, rtol, which cut binds")',
+    'num<Scan>SvenRtol': 'spectra (T8)',
+    'numNanogpt*': 'large (G3: nanoGPT levels, perplexities, costs)',
+    'numCifar*': 'large (G3: both CIFAR scans levels, accuracies, costs, ranks)',
+}
+
+#: method -> the letters a macro name uses for it
+METHOD_KEY = {
+    'Sven': 'Sven', 'Adam': 'Adam', 'AdamW': 'AdamW', 'SGD': 'Sgd',
+    'SGDm': 'Sgdm', 'RMSprop': 'Rmsprop', 'Muon': 'Muon', 'MuonW': 'MuonW',
+    'SOAP': 'Soap', 'Shampoo': 'Shampoo', 'KFAC': 'Kfac', 'LBFGS': 'Lbfgs',
+    'PolyakSGD': 'Polyak', 'JD': 'Jd', 'HIG': 'Hig',
+}
+
+#: the methods a per-scan macro block is emitted for (the ones the prose quotes): Sven,
+#: the first-order reference the paper claims to beat, and the two leaders.  Every other
+#: method's number is in the per-scan tables (T5) -- a macro exists because a SENTENCE
+#: quotes it, not because the number exists.
+MACRO_METHODS = ('Sven', 'Adam', 'AdamW', 'MuonW', 'HIG')
+
+#: the methods whose per-step cost and time-to-target the prose quotes
+MACRO_COST_METHODS = ('Sven', 'Adam', 'AdamW')
+
+#: the methods whose paired difference against Sven the prose quotes
+MACRO_PAIRED_METHODS = ('Adam', 'AdamW')
+
+#: the five methods the Introduction and the Conclusion name as "first-order": no
+#: preconditioner beyond a diagonal second-moment estimate, and in particular NOT the
+#: orthogonalizing family (Muon / MuonW), which uses gradient information only but is
+#: read as its own class.  ``num<Scan>NFirstOrderResolved`` of ``num<Scan>NFirstOrder``
+#: is what lets those two sentences state the resolution instead of asserting it.
+FIRST_ORDER_METHODS = ('Adam', 'AdamW', 'SGD', 'SGDm', 'RMSprop')
+
+#: the scans the abstract's "Sven's step is N-Mx Adam's" range is taken over: every MLP
+#: and LM scan (the ResNet's 27x is quoted separately, as its own number, in App. J)
+STEP_RATIO_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
+                    'mnist_scan_ce', 'exp_nanogpt_speedrun')
+
+#: the target whose epochs / seconds the paper quotes (``headline.TARGET_NAMES``)
+MAIN_TARGET = hl.TARGET_NAMES[1.0]
+
+_SWEEP_CMAP = 'viridis'
+
+#: panel titles / axis labels short enough for a 1.76 in panel.  ``style.DATASET_TITLES``
+#: is the one spelling for a table or a prose sentence; a 0.32-width panel title of
+#: "nanoGPT (tiny-shakespeare)" is clipped, so the corpus is named in the caption instead.
+SHORT_TITLE = {'exp_nanogpt_speedrun': 'nanoGPT',
+               'mnist_scan_labelRegression': 'MNIST (label reg.)',
+               'polynomial_scan': 'Random polynomial'}
+SHORT_XLABEL = {'time': 'Standalone train time (s)'}
+
+#: legends that sit over data get a white frame rather than a different (worse) position:
+#: with four to eight ordered lines per panel there is no corner that is empty in every
+#: panel, and a semi-transparent frame keeps both the key and the curve readable.
+_LEGEND_FRAME = dict(frameon=True, framealpha=0.88, edgecolor='none', borderpad=0.25)
+
+
+def _short_title(scan):
+    return SHORT_TITLE.get(scan, hl.scan_title(scan))
+
+
+def _short_xlabel(ax, versus):
+    label = SHORT_XLABEL.get(versus)
+    if label:
+        ax.set_xlabel(label)
+    return ax.get_xlabel()
+
+
+def _clip_outliers(ax, note_xy=(0.97, 0.95)):
+    """Truncate a panel's y axis at 5x the median pre-training loss, and SAY SO.
+
+    On the all-methods figures one diverging method (SOAP on MNIST label regression
+    spikes to 6e9 in the training loss) compresses thirteen other curves into the bottom
+    tenth of the panel.  Clipping is only honest if it is announced, so the panel is
+    annotated whenever the limit actually bites; the run is still counted as diverged in
+    every table, and its final value is in the confirmation table.
+    """
+    firsts = []
+    for line in ax.get_lines():
+        y = np.asarray(line.get_ydata(), dtype=float)
+        y = y[np.isfinite(y)]
+        if y.size:
+            firsts.append(float(y[0]))
+    if not firsts:
+        return False
+    # 20x the median pre-training loss, and only when the panel currently spans more
+    # than another 1.7 decades above that -- i.e. only for a genuine blow-up (SOAP's
+    # 6e9 training spike), never to trim an ordinary first-epoch transient.
+    top = 20.0 * float(np.median(firsts))
+    lo, hi = ax.get_ylim()
+    if not (np.isfinite(top) and top > 0 and hi > 50 * top):
+        return False
+    ax.set_ylim(lo, top)
+    ax.text(*note_xy, 'axis truncated', transform=ax.transAxes, ha='right', va='top',
+            fontsize=4.4, color='0.35')
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Shared context: every table, figure and macro reads the same frames once
+# ---------------------------------------------------------------------------
+class Ctx:
+    """The analysis tables of record, computed once per build.
+
+    Loading a pass from Lustre costs ~20 s cold, and T1, F1, the macros and the
+    time-to-target table all want the same three frames, so they are memoised here
+    rather than recomputed per asset (which is also the only way the numbers in the
+    table and the curve in the figure are guaranteed to be the same numbers).
+    """
+
+    def __init__(self, root=None, scans=hl.HEADLINE_SCANS):
+        self.root = root
+        self.scans = tuple(scans)
+        self.payload = hl.load_selection()
+        self._conf, self._eff, self._ttt, self._runs = {}, {}, {}, {}
+        self._times, self._paired, self._scan_obj, self._tune = {}, {}, {}, {}
+        self.provisional = set(C.provisional_scans())
+        self.ranking = hl.ranking_summary(scans=self.scans, payload=self.payload,
+                                          results_root=root)
+
+    # -- per-scan tables -------------------------------------------------
+    def conf(self, scan):
+        if scan not in self._conf:
+            self._conf[scan] = hl.confirmation_table(scan, payload=self.payload,
+                                                     results_root=self.root)
+        return self._conf[scan]
+
+    def eff(self, scan):
+        if scan not in self._eff:
+            self._eff[scan] = hl.efficiency_table(scan, payload=self.payload,
+                                                  results_root=self.root)
+        return self._eff[scan]
+
+    def ttt(self, scan):
+        if scan not in self._ttt:
+            self._ttt[scan] = hl.time_to_target_table(scan, payload=self.payload,
+                                                      results_root=self.root)
+        return self._ttt[scan]
+
+    def paired(self, scan):
+        if scan not in self._paired:
+            self._paired[scan] = hl.paired_vs_sven(scan, payload=self.payload,
+                                                   results_root=self.root)
+        return self._paired[scan]
+
+    def runs(self, scan):
+        if scan not in self._runs:
+            self._runs[scan] = hf.confirm_runs(scan, payload=self.payload,
+                                               results_root=self.root)
+        return self._runs[scan]
+
+    def times(self, scan):
+        if scan not in self._times:
+            self._times[scan] = hf.standalone_epoch_times(scan, payload=self.payload,
+                                                          results_root=self.root)
+        return self._times[scan]
+
+    def tune(self, scan):
+        if scan not in self._tune:
+            self._tune[scan] = hl.load(scan, '', results_root=self.root)
+        return self._tune[scan]
+
+    def scan_obj(self, scan):
+        """A :class:`scan_analysis.Scan` over the TUNING grid -- what the Sven sweeps need."""
+        if scan not in self._scan_obj:
+            self._scan_obj[scan] = sa.Scan(
+                name=scan, title=hl.scan_title(scan),
+                plot_dir=C.LAB / 'scan_plots' / scan,
+                df=self.tune(scan).copy(), results_root=self.root)
+        return self._scan_obj[scan]
+
+    # -- derived lookups -------------------------------------------------
+    def order(self, scan):
+        """Methods best-first on confirmation validation loss."""
+        return hf.method_ranking(scan, table=self.conf(scan))
+
+    def main_panel_methods(self, scan):
+        """The front of the field plus Sven -- what a main-text panel draws."""
+        order = [m for m in self.order(scan) if m in self.runs(scan)]
+        top = order[:MAIN_PANEL_TOP_N]
+        if hl.SVEN_LABEL in order and hl.SVEN_LABEL not in top:
+            top.append(hl.SVEN_LABEL)
+        return top
+
+    def row(self, scan, method, table='conf'):
+        tbl = {'conf': self.conf, 'eff': self.eff}[table](scan)
+        sub = tbl[tbl['method'] == method]
+        return sub.iloc[0] if len(sub) else None
+
+    def rank(self, scan, method, column='rank_val'):
+        sub = self.ranking[(self.ranking['scan'] == scan)
+                           & (self.ranking['method'] == method)]
+        if not len(sub):
+            return np.nan, np.nan
+        return float(sub.iloc[0][column]), float(sub.iloc[0]['n_methods'])
+
+    def target_row(self, scan, method, target=MAIN_TARGET):
+        t = self.ttt(scan)
+        sub = t[(t['target'] == target) & (t['method'] == method)]
+        return sub.iloc[0] if len(sub) else None
+
+    def is_provisional(self, *scans):
+        return bool(self.provisional.intersection(scans))
+
+
+# ---------------------------------------------------------------------------
+# Formatting helpers local to this module
+# ---------------------------------------------------------------------------
+def _short_config(sel_or_config):
+    """A compact statement of a selected configuration for a narrow table column.
+
+    ``headline.config_label`` is the full one (and is what the per-scan appendix tables
+    print); the main-text table has room for the learning rate, the weight decay when it
+    is not zero, and Sven's ``k`` / ``rtol``.
+    """
+    text = sel_or_config if isinstance(sel_or_config, str) else ''
+    bits, extra = [], []
+    for part in text.split(', '):
+        if '=' not in part:
+            continue
+        name, _, value = part.partition('=')
+        if name == 'lr':
+            bits.insert(0, rf'$\eta$={value}')
+        elif name == 'k':
+            bits.append(f'$k$={value}')
+        elif name == 'rtol':
+            bits.append(f'rtol={value}')
+        elif name == 'weight_decay':
+            bits.append(f'wd={value}')
+        elif name in ('max_iter', 'history_size', 'tau', 'kappa'):
+            extra.append(f'{name.replace("_", " ")}={value}')
+    if not bits and not extra:
+        return C.Raw('--')
+    return C.Raw(', '.join(bits + extra[:1]))
+
+
+def _name_list(names):
+    """``'A'`` / ``'A and B'`` / ``'A, B and C'`` -- an English list for a prose macro.
+
+    The names are method display labels (``style.method_label``), so they are escaped for
+    LaTeX exactly as a table cell would be.
+    """
+    items = [C.latex_escape(str(n)) for n in names]
+    if not items:
+        return ''
+    if len(items) == 1:
+        return items[0]
+    return ', '.join(items[:-1]) + ' and ' + items[-1]
+
+
+def _counts_cell(row, prefix='conf'):
+    cell = C.fmt_counts(row.get(f'fin_{prefix}'), row.get(f'att_{prefix}'))
+    if not row.get(f'elig_{prefix}', True):
+        return C.Raw(f'{cell}$^{{\\dagger}}$')
+    return cell
+
+
+def _epochs_cell(ctx, scan, method):
+    """Epochs to the median-method target, with the reach count when it is not all runs."""
+    r = ctx.target_row(scan, method)
+    if r is None or not C.finite(r['epochs']):
+        return C.Raw('never')
+    cell = C.fmt_sig(r['epochs'], 3)
+    if not bool(r['all_reached']):
+        cell = C.Raw(f'{cell} ({int(r["n_reached"])}/{int(r["n_runs"])})')
+    return cell
+
+
+def _n_epochs(ctx, scan):
+    df = ctx.tune(scan)
+    v = pd.to_numeric(df.get('num_epochs'), errors='coerce').dropna()
+    return int(v.max()) if len(v) else np.nan
+
+
+def _scalar(ctx, scan, column):
+    df = ctx.tune(scan)
+    v = pd.to_numeric(df.get(column), errors='coerce').dropna()
+    return float(v.iloc[0]) if len(v) else np.nan
+
+
+# ---------------------------------------------------------------------------
+# F1 -- the headline convergence figure
+# ---------------------------------------------------------------------------
+def _panel(ctx, ax, scan, versus, methods, title=None, lw=1.1, sven_lw=2.0,
+           show_ylabel=True, show_xlabel=True):
+    drawn = hf.plot_curves(scan, ax, which='val', versus=versus, methods=methods,
+                           runs=ctx.runs(scan),
+                           times=ctx.times(scan) if versus == 'time' else None,
+                           lw=lw, sven_lw=sven_lw, quiet=True,
+                           payload=ctx.payload, results_root=ctx.root)
+    if title:
+        ax.set_title(title, pad=2.0)
+    if not show_ylabel:
+        ax.set_ylabel('')
+    if not show_xlabel:
+        ax.set_xlabel('')
+    leg = ax.get_legend()
+    if leg is not None:
+        leg.remove()
+    ax.grid(which='major', ls=':', alpha=0.35)
+    ax.grid(which='minor', ls=':', alpha=0.18)
+    return drawn
+
+
+def _headline_curves(ctx, name, all_methods=False):
+    """F1: 2 rows (vs epoch, vs standalone training time) x the three headline tasks."""
+    import matplotlib.pyplot as plt
+
+    C.set_paper_style(0.32)
+    scans = HEADLINE_MAIN
+    nrow, ncol = 2, len(scans)
+    legend_h = 0.62 if all_methods else 0.38
+    fig, axes = plt.subplots(nrow, ncol, figsize=C.figsize(ncol, nrow, 0.32, aspect=0.86,
+                                                           extra_h=legend_h),
+                             squeeze=False)
+    used, per_scan = [], {}
+    for j, scan in enumerate(scans):
+        methods = (ctx.order(scan) if all_methods else ctx.main_panel_methods(ctx_scan := scan))
+        methods = [m for m in methods if m in ctx.runs(scan)]
+        per_scan[scan] = methods
+        # epoch on top, standalone synchronised training time below (F1's two axes in
+        # PAPER_CONTRACTS.md); see _ALLSEED_COLS for why the top axis is epochs
+        for i, versus in enumerate(('epoch', 'time')):
+            # the x label goes on the MIDDLE column only: "Synchronised training time
+            # (s), standalone" is wider than a 1.76 in panel and three of them collide
+            _panel(ctx, axes[i][j], scan, versus, methods,
+                   title=_short_title(scan) if i == 0 else None,
+                   lw=0.9 if all_methods else 1.1,
+                   sven_lw=1.9, show_ylabel=(j == 0),
+                   show_xlabel=(j == ncol // 2))
+        used.extend(methods)
+        if not all_methods:
+            # A PER-PANEL legend.  With a single shared legend the reader cannot tell
+            # which of the nine named methods are the five drawn in a given panel -- and
+            # the fields differ between panels -- so each panel names its own curves.
+            h, lab = C.method_handles(methods)
+            leg = axes[0][j].legend(h, lab, loc='lower left', fontsize=4.3,
+                                    handlelength=1.0, handletextpad=0.4,
+                                    borderpad=0.25, labelspacing=0.18,
+                                    borderaxespad=0.3, framealpha=0.82,
+                                    fancybox=False, edgecolor='0.8')
+            leg.get_frame().set_linewidth(0.3)
+    order = [m for m in hl.method_order(dict.fromkeys(used)) if m in set(used)]
+    if all_methods:
+        handles, labels = C.method_handles(order)
+    else:
+        handles, labels = [], []
+    handles.append(plt.Rectangle((0, 0), 1, 1, fc='0.45', alpha=0.25, lw=0))
+    labels.append(style.seed_spread_label())
+    fig.legend(handles, labels, loc='outside lower center',
+               ncol=min(6, max(3, (len(labels) + 1) // 2)), fontsize=6.0,
+               handlelength=1.2, columnspacing=0.8)
+    rec = C.provenance(
+        functions=['headline_figs.plot_curves', 'headline_figs.confirm_runs',
+                   'headline_figs.standalone_epoch_times',
+                   'headline.confirmation_table', 'scan_analysis.seed_band'],
+        scans=[hl.dir_name(s, k) for s in scans for k in ('confirm', 'timing')],
+        note=('validation loss vs epoch and vs the standalone timing pass\'s synchronised '
+              'training time; confirmation seeds, mean +/- 1 std'),
+        methods_drawn={s: v for s, v in per_scan.items()},
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return C.save_fig(fig, name, GROUP, rec), per_scan
+
+
+# ---------------------------------------------------------------------------
+# F3 -- cost and memory across five architectures
+# ---------------------------------------------------------------------------
+#: the five architectures F3 spans, smallest first, and where each one's cost is measured
+F3_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
+            'exp_nanogpt_speedrun', 'cifar10_resnet_scan_labelRegression')
+F3_METHODS = ('Sven', 'Adam', 'MuonW', 'HIG', 'LBFGS', 'SGD')
+#: the architecture family behind each F3 point, for the capture-mode note
+ARCH_NAME = {'toy_1d_scan': 'MLP', 'polynomial_scan': 'MLP',
+             'mnist_scan_labelRegression': 'MLP', 'exp_nanogpt_speedrun': 'nanoGPT',
+             'cifar10_resnet_scan_labelRegression': 'ResNet18'}
+#: the short task names used in F3's top-axis MLP tick labels
+F3_SHORT = {'toy_1d_scan': '1D', 'polynomial_scan': 'poly',
+            'mnist_scan_labelRegression': 'MNIST'}
+
+
+def _cluster_params(scans, ctx, decades=0.5):
+    """Group scans whose parameter counts are within ``decades`` of each other on a log
+    axis, so the top axis of F3 gets one tick per visually distinct position."""
+    got = sorted(((float(_scalar(ctx, s, 'n_params')), s) for s in scans
+                  if C.finite(_scalar(ctx, s, 'n_params'))))
+    out = []
+    for P, s in got:
+        if out and abs(math.log10(P) - math.log10(out[-1][-1][0])) <= decades:
+            out[-1].append((P, s))
+        else:
+            out.append([(P, s)])
+    return [[s for _P, s in group] for group in out]
+
+
+def _cost_memory(ctx, name='cost_memory'):
+    """F3: step time (left) and peak memory (right) vs the parameter count.
+
+    Both come from ``headline.efficiency_table``, i.e. from the standalone ``_timing``
+    pass -- one selected configuration at a time, alone on the GPU.  That is the only
+    wall clock in the campaign that is a statement about the optimizer, and for the ResNet
+    it is also the only measurement that exists (``profile_results_v3`` has no
+    ``cifar_resnet18`` directory, PAPER_PLAN risk 3).
+    """
+    import matplotlib.pyplot as plt
+
+    C.set_paper_style(0.49)
+    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, 0.49, aspect=0.80,
+                                                     extra_h=0.34), squeeze=False)
+    rows, capture = [], {}
+    for scan in F3_SCANS:
+        eff = ctx.eff(scan)
+        P = _scalar(ctx, scan, 'n_params')
+        timing = hl.load(scan, 'timing', results_root=ctx.root)
+        sven = timing[timing['optimizer'] == hl.SVEN_METHOD]
+        modes = sorted({str(v) for v in sven.get('gram_capture', pd.Series()).dropna()})
+        capture[scan] = modes
+        for _, r in eff.iterrows():
+            if r['method'] not in F3_METHODS:
+                continue
+            rows.append({'scan': scan, 'P': P, 'method': r['method'],
+                         'ms_per_step': r['ms_per_step'],
+                         'mem': r['peak_gpu_mem_mb'],
+                         'gram_capture': '/'.join(modes)})
+    frame = pd.DataFrame(rows)
+    # The architectures behind the x positions, named once at the top of the figure, and
+    # read off the plotted data rather than typed: the caption quotes the endpoints of
+    # this axis as macros, so the two must come from the same place.  The two MLP scans
+    # sit 0.06 of a decade apart, so they share one tick.
+    groups = {}
+    for scan in F3_SCANS:
+        P = _scalar(ctx, scan, 'n_params')
+        if not C.finite(P):
+            continue
+        groups.setdefault(ARCH_NAME.get(scan, scan), []).append(float(P))
+    arch = []
+    for family, ps in groups.items():
+        label = family
+        if family == 'MLP':
+            tasks = [s for s in F3_SCANS if ARCH_NAME.get(s) == 'MLP']
+            # one tick per decade-cluster of MLPs: 1D+poly together, MNIST on its own
+            for cluster in _cluster_params(tasks, ctx):
+                names = ', '.join(F3_SHORT.get(s, s) for s in cluster)
+                arch.append((float(np.mean([_scalar(ctx, s, 'n_params')
+                                            for s in cluster])),
+                             f'MLP\n({names})'))
+            continue
+        arch.append((float(np.mean(ps)), label))
+    arch.sort()
+    for ax, col, label in ((axes[0][0], 'ms_per_step', 'Time per optimizer step (ms)'),
+                           (axes[0][1], 'mem', 'Peak GPU memory (MB)')):
+        for m in F3_METHODS:
+            sub = frame[frame['method'] == m].dropna(subset=['P', col]).sort_values('P')
+            if not len(sub):
+                continue
+            is_sven = m == hl.SVEN_LABEL
+            ax.plot(sub['P'], sub[col], marker='o' if is_sven else 's',
+                    ms=3.4 if is_sven else 2.6, color=style.method_color(m),
+                    lw=1.8 if is_sven else 1.0, zorder=5 if is_sven else 2)
+        # C3: the parity is a property of the CAPTURE, not of the algebra -- the ResNet's
+        # dense `full` capture is the one point that is not at parity.  Stated once per
+        # panel rather than per marker: the two MLP scans are 0.06 of a decade apart and
+        # per-point labels overprint each other and the neighbouring curves.
+        modes = {}
+        for scan in F3_SCANS:
+            for mode in capture.get(scan, ()):
+                family = ARCH_NAME.get(scan, scan)
+                if family not in modes.setdefault(mode, []):
+                    modes[mode].append(family)
+        if modes:
+            note = '; '.join(f'{m}: ' + ', '.join(v) for m, v in modes.items())
+            ax.text(0.98, 0.02, f'Sven capture -- {note}', transform=ax.transAxes,
+                    ha='right', va='bottom', fontsize=4.8, color='0.2',
+                    bbox=dict(facecolor='white', alpha=0.85, lw=0, pad=0.8))
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Parameters $P$')
+        ax.set_ylabel(label)
+        ax.grid(which='both', ls=':', alpha=0.3)
+        top = ax.secondary_xaxis('top')
+        top.set_xticks([p for p, _ in arch])
+        top.set_xticklabels([t for _, t in arch], fontsize=4.4)
+        top.tick_params(length=1.6, pad=1.0)
+    handles, labels = C.method_handles(
+        [m for m in F3_METHODS if m in set(frame['method'])])
+    fig.legend(handles, labels, loc='outside lower center', ncol=6, fontsize=6.2,
+               handlelength=1.2, columnspacing=0.8)
+    rec = C.provenance(
+        functions=['headline.efficiency_table', 'headline.run_efficiency'],
+        scans=[hl.dir_name(s, 'timing') for s in F3_SCANS],
+        note=('step time and peak memory of each method\'s SELECTED configuration, '
+              'measured in the standalone timing pass (one run per GPU); the label under '
+              'a Sven point is its Gram capture mode, which is what sets the memory'),
+        architectures={s: _scalar(ctx, s, 'n_params') for s in F3_SCANS},
+        gram_capture=capture,
+        provisional=sorted(ctx.provisional.intersection(F3_SCANS)))
+    return C.save_fig(fig, name, GROUP, rec), frame
+
+
+# ---------------------------------------------------------------------------
+# F12 -- Sven's hyperparameter sweeps, at the SELECTED setting of the other knobs
+# ---------------------------------------------------------------------------
+def _sweep_curves(ctx, ax, scan, axis='k', which='val'):
+    """Validation curves across one Sven axis with the other two pinned at the selection.
+
+    This is ``scan_analysis.plot_k_sweep``'s quantity (same ``sven_rows`` /
+    ``seed_band`` / ``epoch_axis``) drawn at panel size and, crucially, at the scan's
+    **selected** ``rtol`` rather than one conservative value -- the correction X8 asks
+    for.  Returns the values actually drawn.
+    """
+    import matplotlib.pyplot as plt
+
+    obj = ctx.scan_obj(scan)
+    chosen, _sel = hf.selected_sven(scan, payload=ctx.payload)
+    values = {'k': obj.ks, 'rtol': obj.rtols}[axis]
+    colors = plt.get_cmap(_SWEEP_CMAP)(np.linspace(0.05, 0.9, max(len(values), 1)))
+    drawn = []
+    for i, v in enumerate(values):
+        cfg = {a: chosen.get(a) for a in sa.SVEN_CONFIG}
+        cfg[axis] = v
+        rows = obj.sven_rows(**cfg)
+        mean, lower, upper = sa.seed_band(rows, which)
+        if mean is None:
+            continue
+        x = sa.epoch_axis(rows, mean, which)
+        n = min(len(x), len(mean))
+        sel = np.isclose(float(v), float(chosen.get(axis, np.nan)))
+        ax.plot(x[:n], mean[:n], color=colors[i], lw=1.9 if sel else 1.0,
+                zorder=5 if sel else 2)
+        if len(rows) > 1:
+            ax.fill_between(x[:n], lower[:n], upper[:n], color=colors[i],
+                            alpha=0.15, lw=0)
+        drawn.append(float(v))
+    ax.set_yscale('log')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Validation loss')
+    ax.grid(which='both', ls=':', alpha=0.3)
+    ax.set_title(_short_title(scan), pad=2.0)
+    return drawn, chosen, values, colors
+
+
+def _k_sweeps(ctx, name='k_sweeps'):
+    """F12: the ``k`` sweep at each scan's selected ``(lr, rtol)``."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    C.set_paper_style(0.32)
+    scans = SWEEP_SCANS
+    fig, axes = plt.subplots(1, len(scans),
+                             figsize=C.figsize(len(scans), 1, 0.245, aspect=1.05,
+                                               extra_h=0.42), squeeze=False)
+    info = {}
+    for j, scan in enumerate(scans):
+        drawn, chosen, values, colors = _sweep_curves(ctx, axes[0][j], scan, 'k')
+        info[scan] = {'k_drawn': drawn, 'selected': {k: (None if v is None else float(v))
+                                                     for k, v in chosen.items()}}
+        axes[0][j].text(0.03, 0.03,
+                        rf'$\eta={chosen["lr"]:g}$, rtol$={chosen["rtol"]:g}$',
+                        transform=axes[0][j].transAxes, fontsize=5.4, va='bottom')
+        if j:
+            axes[0][j].set_ylabel('')
+        ks = [int(v) for v in values]
+        handles = [Line2D([], [], color=colors[i], lw=1.4) for i in range(len(ks))]
+        axes[0][j].legend(handles, [f'$k$={v}' for v in ks], fontsize=4.8, ncol=2,
+                          loc='upper right', handlelength=1.0, labelspacing=0.15,
+                          columnspacing=0.6, **_LEGEND_FRAME)
+    rec = C.provenance(
+        functions=['headline_figs.selected_sven', 'scan_analysis.Scan.sven_rows',
+                   'scan_analysis.seed_band', 'scan_analysis.epoch_axis'],
+        scans=list(scans),
+        note=('validation loss vs epoch over k with lr and rtol pinned at the SELECTED '
+              'configuration of each scan (the thick curve is the selected k); the old '
+              'figure swept k at one conservative rtol'),
+        selected=info)
+    return C.save_fig(fig, name, GROUP, rec), info
+
+
+def _hparam_landscape(ctx, name='hparam_landscape'):
+    """Sven's final-loss landscape: vs ``k`` (one line per ``rtol``) and vs ``rtol``
+    (one line per ``k``), both at the selected learning rate, with the selected point
+    ringed and ineligible configurations left out of the line but marked.
+
+    This is the figure behind C9 / X8: the two knobs are separated, and the saturation
+    point is read off the curve at the rtol that was actually selected.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    C.set_paper_style(0.32)
+    scans = SWEEP_SCANS
+    fig, axes = plt.subplots(2, len(scans),
+                             figsize=C.figsize(len(scans), 2, 0.245, aspect=1.0,
+                                               extra_h=0.30), squeeze=False)
+    info = {}
+    for j, scan in enumerate(scans):
+        obj = ctx.scan_obj(scan)
+        chosen, _sel = hf.selected_sven(scan, payload=ctx.payload)
+        cfg = obj.configs(obj.sven[obj.sven['lr'] == chosen['lr']], sa.SVEN_CONFIG)
+        cfg = cfg[cfg['eligible']]
+        saturate = {}
+        for i, (x_axis, line_axis) in enumerate((('k', 'rtol'), ('rtol', 'k'))):
+            ax = axes[i][j]
+            lines = sorted(cfg[line_axis].dropna().unique())
+            colors = plt.get_cmap(_SWEEP_CMAP)(np.linspace(0.05, 0.9, max(len(lines), 1)))
+            for t, v in enumerate(lines):
+                sub = cfg[np.isclose(cfg[line_axis].astype(float), float(v))]
+                sub = sub.sort_values(x_axis)
+                if not len(sub):
+                    continue
+                sel = np.isclose(float(v), float(chosen.get(line_axis, np.nan)))
+                ax.plot(sub[x_axis].astype(float), sub['score'], marker='o', ms=2.4,
+                        color=colors[t], lw=1.8 if sel else 0.9, zorder=5 if sel else 2)
+                if sel and x_axis == 'k':
+                    # the saturation point the paper may quote: the smallest k within
+                    # 5% of the best score on the SELECTED rtol line
+                    best = float(sub['score'].min())
+                    hit = sub[sub['score'] <= 1.05 * best]
+                    if len(hit):
+                        saturate['k_within_5pct'] = float(hit.iloc[0][x_axis])
+                        saturate['best_score_on_selected_rtol'] = best
+            ax.plot([float(chosen[x_axis])],
+                    [float(cfg[np.isclose(cfg['k'].astype(float), float(chosen['k']))
+                               & np.isclose(cfg['rtol'].astype(float),
+                                            float(chosen['rtol']))]['score'].iloc[0])],
+                    marker='*', ms=7, mfc='none', mec='k', mew=0.9, zorder=8)
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+            ax.set_xlabel({'k': 'Rank cap $k$', 'rtol': 'Relative tolerance'}[x_axis])
+            if j == 0:
+                ax.set_ylabel('Final val. loss\n(seed mean)')
+            ax.grid(which='both', ls=':', alpha=0.3)
+            if i == 0:
+                ax.set_title(_short_title(scan), pad=2.0)
+            handles = [Line2D([], [], color=colors[t], lw=1.2)
+                       for t in range(len(lines))]
+            labels = [(f'$k$={int(v)}' if line_axis == 'k' else f'{v:g}')
+                      for v in lines]
+            ax.legend(handles, labels, fontsize=4.4, ncol=2, loc='best',
+                      handlelength=0.9, labelspacing=0.12, columnspacing=0.5,
+                      title=('rtol' if line_axis == 'rtol' else None),
+                      title_fontsize=4.4, **_LEGEND_FRAME)
+        info[scan] = {'selected': {k: (None if v is None else float(v))
+                                   for k, v in chosen.items()},
+                      'n_eligible_at_selected_lr': int(len(cfg)), **saturate}
+    rec = C.provenance(
+        functions=['scan_analysis.Scan.configs', 'headline_figs.selected_sven'],
+        scans=list(scans),
+        note=('seed-mean final validation loss over k at fixed rtol (top) and over rtol '
+              'at fixed k (bottom), both at the selected learning rate; the star is the '
+              'selected configuration and ineligible configurations are dropped'),
+        landscape=info)
+    return C.save_fig(fig, name, GROUP, rec), info
+
+
+# ---------------------------------------------------------------------------
+# F13 -- the all-methods / all-seeds appendix figures
+# ---------------------------------------------------------------------------
+#: F13's three axes, per ``PAPER_PLAN`` section 5.1 (``curve_figure`` "(epoch, time,
+#: train)").  The x axis is the EPOCH index, not the optimizer step: the batch size
+#: differs between scans, the paper's time-to-target claim (C7) is quoted in epochs, and
+#: ``PAPER_CONTRACTS.md`` names "log-y validation loss vs epoch and vs wall time" as the
+#: manuscript's visual language.  ``versus='step'`` is available from
+#: :func:`headline_figs.plot_curves` for a per-scan notebook, but no paper figure uses it.
+_ALLSEED_COLS = (('val', 'epoch'), ('val', 'time'), ('train', 'epoch'))
+
+
+def _allseed_curves(ctx, scans, name):
+    """Every method's selected configuration, confirmation seeds, on three axes.
+
+    One row per scan, one column per axis.  This is the figure that retires every
+    single-seed curve in the current manuscript (X15): the line is the seed mean and the
+    band is +/- 1 std over the confirmation seeds.
+    """
+    import matplotlib.pyplot as plt
+
+    C.set_paper_style(0.32)
+    nrow, ncol = len(scans), len(_ALLSEED_COLS)
+    fig, axes = plt.subplots(nrow, ncol,
+                             figsize=C.figsize(ncol, nrow, 0.32, aspect=0.82,
+                                               extra_h=0.70), squeeze=False)
+    used, clipped = [], []
+    for i, scan in enumerate(scans):
+        methods = [m for m in ctx.order(scan) if m in ctx.runs(scan)]
+        used.extend(methods)
+        for j, (which, versus) in enumerate(_ALLSEED_COLS):
+            ax = axes[i][j]
+            hf.plot_curves(scan, ax, which=which, versus=versus, methods=methods,
+                           runs=ctx.runs(scan),
+                           times=ctx.times(scan) if versus == 'time' else None,
+                           lw=0.85, sven_lw=1.8, quiet=True,
+                           payload=ctx.payload, results_root=ctx.root)
+            leg = ax.get_legend()
+            if leg is not None:
+                leg.remove()
+            ax.grid(which='both', ls=':', alpha=0.3)
+            _short_xlabel(ax, versus)
+            if _clip_outliers(ax):
+                clipped.append((scan, which, versus))
+            if j == 0:
+                ax.set_ylabel(f'{_short_title(scan)}\n' + ax.get_ylabel())
+            if i < nrow - 1:
+                ax.set_xlabel('')
+    order = [m for m in hl.method_order(dict.fromkeys(used)) if m in set(used)]
+    handles, labels = C.method_handles(order)
+    handles.append(plt.Rectangle((0, 0), 1, 1, fc='0.45', alpha=0.25, lw=0))
+    labels.append(style.seed_spread_label())
+    fig.legend(handles, labels, loc='outside lower center', ncol=5, fontsize=6.0,
+               handlelength=1.2, columnspacing=0.8)
+    rec = C.provenance(
+        functions=['headline_figs.plot_curves', 'headline_figs.confirm_runs',
+                   'headline_figs.standalone_epoch_times', 'scan_analysis.seed_band'],
+        scans=[hl.dir_name(s, k) for s in scans for k in ('confirm', 'timing')],
+        note=('all methods with a selected configuration, confirmation seeds, '
+              'mean +/- 1 std; validation loss vs epoch, vs standalone synchronised '
+              'training time, and training loss vs epoch'),
+        axis_truncated=[list(c) for c in clipped],
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return C.save_fig(fig, name, GROUP, rec), order
+
+
+# ---------------------------------------------------------------------------
+# Tables
+# ---------------------------------------------------------------------------
+def _t1_headline(ctx, name='headline_confirm', compact=False):
+    """T1: the main-text results table -- Sven and seven baselines on the three
+    headline tasks, on the confirmation seeds with the tuning seeds beside."""
+    rows, groups_of = [], []
+    for scan in HEADLINE_MAIN:
+        conf, eff = ctx.conf(scan), ctx.eff(scan)
+        present = [m for m in MAIN_TABLE_METHODS if m in set(conf['method'])]
+        groups_of.append((scan, len(present)))
+        # the task names a BLOCK, not a column: a repeated 26-character task name is
+        # 1 in of a 5.5 in text block spent on nothing
+        rows.append(C.span_row(hl.scan_title(scan)))
+        eff_by = {r['method']: r for _, r in eff.iterrows()}
+        for m in present:
+            c = ctx.row(scan, m)
+            e = eff_by.get(m)
+            row = {
+                'Method': hl.display_name(m),
+                'Configuration': _short_config(c['config']),
+                'Val. loss': C.fmt_pm(c['val_conf'], c['val_conf_std'], 4),
+                'Val. (tune)': C.fmt_sig(c['val_tune'], 4),
+                'Test loss': C.fmt_pm(c['test_conf'], c.get('test_conf_std'), 4),
+                'Test acc.': (C.fmt_pct(c.get('acc_conf'), 1)
+                              if C.finite(c.get('acc_conf')) else C.Raw('--')),
+                'fin./att.': _counts_cell(c),
+                'Ep. to tgt.': _epochs_cell(ctx, scan, m),
+            }
+            if not compact:
+                row['s/ep.'] = C.fmt_sig(e['epoch_s'], 3) if e is not None else C.Raw('--')
+                row['MB'] = C.fmt_sig(e['peak_gpu_mem_mb'], 4) if e is not None \
+                    else C.Raw('--')
+            rows.append(row)
+    notes = [
+        'confirmation seeds (5 fresh model seeds; the two synthetics also carry 3 data '
+        'seeds, so 15 runs); mean +/- 1 std over seeds',
+        'the target is the median method\'s confirmation-seed final validation loss '
+        '(headline.TARGET_MULTIPLIERS); a bracket gives reached/attempted when not '
+        'every run got there',
+        's/epoch and peak memory come from the standalone timing pass, one run per GPU',
+        'dagger on fin./att. = more than half the confirmation runs failed, so the mean '
+        'beside it is a mean over the survivors',
+    ]
+    rec = C.provenance(
+        functions=['headline.confirmation_table', 'headline.confirmation_view',
+                   'headline.efficiency_table', 'headline.time_to_target_table',
+                   'headline.epochs_to_target'],
+        scans=[hl.dir_name(s, k) for s in HEADLINE_MAIN
+               for k in ('', 'confirm', 'timing')],
+        note='T1, the main-text results table',
+        methods_per_scan=dict(groups_of),
+        provisional=sorted(ctx.provisional.intersection(HEADLINE_MAIN)))
+    return C.write_table(name, rows, provenance_record=rec, fit=True,
+                         align=['l', 'p{0.95in}'] + ['r'] * (6 if compact else 8),
+                         notes=notes,
+                         caption=('Headline results on the confirmation seeds. Sven is '
+                                  'second on the polynomial scan, third on MNIST and '
+                                  'tied with AdamW on nanoGPT.'),
+                         label='tab:headline' + ('compact' if compact else ''))
+
+
+def _t2_time_to_target(ctx, name='time_to_target', scans=None, compact=False):
+    """T2: epochs / steps / examples / standalone seconds to each pre-declared target."""
+    scans = scans or HEADLINE_MAIN
+    methods = MAIN_TABLE_METHODS if compact else None
+    rows = []
+    targets_seen = {}
+    for scan in scans:
+        t = ctx.ttt(scan)
+        targets_seen[scan] = t.attrs['targets']
+        for label in (t['target'].unique() if not compact else [MAIN_TARGET]):
+            sub = t[t['target'] == label]
+            if methods is not None:
+                sub = sub[sub['method'].isin(methods)]
+            sub = sub.sort_values('epochs', na_position='last')
+            if not len(sub):
+                continue
+            target_value = float(sub.iloc[0]['target_value'])
+            rows.append(C.span_row(
+                C.Raw(f'{C.latex_escape(hl.scan_title(scan))}, target '
+                      f'{C.latex_escape(label)} = {C.fmt_sig(target_value, 3)}')))
+            for _, r in sub.iterrows():
+                rows.append({
+                    'Method': hl.display_name(r['method']),
+                    'Epochs': C.fmt_pm(r['epochs'], r['epochs_std'], 3),
+                    'Steps': C.fmt_sig(r['steps'], 3),
+                    'Examples': C.fmt_sig(r['examples'], 3),
+                    'Alone (s)': C.fmt_sig(r['standalone_s'], 3),
+                    'Reached': C.fmt_counts(r['n_reached'], r['n_runs']),
+                    'Never': C.fmt_int(r['n_never_reached']),
+                    'Div.': C.fmt_int(r['n_diverged']),
+                })
+    notes = [
+        'epochs from the confirmation runs; seconds = epochs x the standalone timing '
+        'pass\'s seconds per epoch for the same configuration',
+        '"Never" = the run trained to the end without reaching the target; "Diverged" = '
+        'the run has no trajectory to ask. The two are different facts and are not added',
+        'on the two synthetics one pooled target is applied to three random problem '
+        'instances, so compare methods at a target, not targets with each other',
+    ]
+    rec = C.provenance(
+        functions=['headline.time_to_target_table', 'headline.targets_for',
+                   'headline.target_reference', 'headline.epochs_to_target'],
+        scans=[hl.dir_name(s, k) for s in scans for k in ('confirm', 'timing')],
+        note='T2' + (' (compact, main text)' if compact else ' (full, appendix)'),
+        targets={s: {k: float(v) for k, v in t.items()}
+                 for s, t in targets_seen.items()},
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return C.write_table(name, rows, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * 7, notes=notes,
+                         caption='Time to a pre-declared target.',
+                         label='tab:ttt' + ('main' if compact else 'full'))
+
+
+def _t3_protocol(ctx, name='protocol'):
+    """T3: the protocol table -- one row per scan, what was actually run."""
+    rows = []
+    for scan in ctx.scans:
+        df = ctx.tune(scan)
+        conf = ctx.conf(scan)
+        sels = hl.selection_methods(scan, ctx.payload)
+        n_ds = int(pd.to_numeric(conf['n_data_seeds'], errors='coerce').max() or 0)
+        rows.append({
+            'Task': hl.scan_title(scan),
+            'Loss': {'mse': 'squared error', 'label_regression': 'label regression',
+                     'ce': 'cross-entropy', 'lm_ce': 'token cross-entropy'}.get(
+                         str(df['loss'].dropna().iloc[0]) if 'loss' in df.columns
+                         else '', '--'),
+            'Train/val/test': C.Raw('/'.join(
+                str(C.fmt_int(_scalar(ctx, scan, c)))
+                for c in ('n_train', 'n_val', 'n_test'))),
+            C.Raw('$P$'): C.fmt_int(_scalar(ctx, scan, 'n_params')),
+            C.Raw('$B$'): C.fmt_int(_scalar(ctx, scan, 'batch_size')),
+            'Epochs': C.fmt_int(_n_epochs(ctx, scan)),
+            'Seeds': C.Raw('5+5' + (f'$\\times{n_ds}$' if n_ds > 1 else '')),
+            'Methods': C.fmt_int(len(sels)),
+            'Grid runs': C.fmt_int(len(df)),
+            'Confirm fin./att.': C.fmt_counts(
+                pd.to_numeric(conf['fin_conf'], errors='coerce').sum(),
+                pd.to_numeric(conf['att_conf'], errors='coerce').sum()),
+        })
+    notes = [
+        'selection uses the seed-mean final VALIDATION loss only (eligible -> fewest '
+        'diverged -> seed mean); test metrics are outcomes of the configuration '
+        'validation chose',
+        '"5 + 5" = five tuning seeds, then the selected configuration re-run on five '
+        'fresh confirmation seeds, which is what every number in the paper reports',
+        'a diverged run is counted, never dropped, under the wider analysis rule '
+        '(recorded status, a non-finite curve, or a final validation loss more than 10x '
+        'its pre-training value)',
+    ]
+    rec = C.provenance(
+        functions=['headline.load_selection', 'headline.confirmation_table',
+                   'headline.assert_no_test_selection', 'style.is_diverged'],
+        scans=[hl.dir_name(s, k) for s in ctx.scans for k in ('', 'confirm')],
+        note='T3, the protocol table for App. C',
+        n_selections_checked=hl.assert_no_test_selection(payload=ctx.payload,
+                                                         scans=ctx.scans),
+        provisional=sorted(ctx.provisional))
+    return C.write_table(name, rows, provenance_record=rec, notes=notes, fit=True,
+                         align=['l', 'l'] + ['r'] * 8,
+                         caption='The protocol, as run.', label='tab:protocol')
+
+
+#: short scan names for a table HEADER (a 5.5 in page cannot take seven full titles)
+TABLE_SCAN_SHORT = {
+    'toy_1d_scan': '1D reg.', 'polynomial_scan': 'Poly.',
+    'mnist_scan_labelRegression': 'MNIST-LR', 'mnist_scan_ce': 'MNIST-CE',
+    'cifar10_resnet_scan_labelRegression': 'CIFAR-LR',
+    'cifar10_resnet_ce_scan': 'CIFAR-CE', 'exp_nanogpt_speedrun': 'nanoGPT',
+}
+
+
+def _t4_ranking(ctx, name='ranking'):
+    """T4: rank of every method on every scan, validation and test.
+
+    Methods down the side and scans across the top, with the two ranks in one cell as
+    ``validation/test``.  The transpose (scans down, 15 method columns) needs 17 columns
+    and overflows a 5.5 in page by 1.6 in even at ``\\tiny``; this shape is eight columns
+    wide and carries the same content.
+    """
+    ranking = ctx.ranking
+    n_by_scan = {s: int(ranking[ranking['scan'] == s]['n_methods'].max())
+                 for s in ctx.scans}
+    methods = sorted({m for m in ranking['method']},
+                     key=lambda m: (m != hl.SVEN_LABEL, m))
+    columns = ['Method'] + [TABLE_SCAN_SHORT.get(s, hl.scan_title(s))
+                            for s in ctx.scans]
+    rows = [{'Method': C.Raw(r'\emph{field size} $n$'),
+             **{TABLE_SCAN_SHORT.get(s, hl.scan_title(s)): C.fmt_int(n_by_scan[s])
+                for s in ctx.scans}}]
+    for m in methods:
+        row = {'Method': hl.display_name(m)}
+        for s in ctx.scans:
+            sub = ranking[(ranking['scan'] == s) & (ranking['method'] == m)]
+            col = TABLE_SCAN_SHORT.get(s, hl.scan_title(s))
+            if not len(sub):
+                row[col] = C.Raw('--')
+                continue
+            rv, rt = sub.iloc[0]['rank_val'], sub.iloc[0]['rank_test']
+            if not C.finite(rv):
+                row[col] = C.Raw('--')
+            elif C.finite(rt):
+                row[col] = C.Raw(f'{int(rv)}/{int(rt)}')
+            else:
+                row[col] = C.fmt_int(rv)
+        rows.append(row)
+    notes = [
+        'each cell is the rank on the confirmation-seed mean final VALIDATION loss / the '
+        'rank on the final TEST loss, out of the field size n in the first row',
+        'a dash means the method was not run on that scan (HIG refuses '
+        'batch-statistics normalisation; K-FAC has no eligible MNIST configuration) or '
+        'produced no finite confirmation value',
+    ]
+    rec = C.provenance(
+        functions=['headline.ranking_summary', 'headline.rank_matrix',
+                   'headline.confirmation_table'],
+        scans=[hl.dir_name(s, 'confirm') for s in ctx.scans],
+        note='T4, the ranking summary',
+        provisional=sorted(ctx.provisional))
+    return C.write_table(name, rows, columns=columns, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * (len(columns) - 1), notes=notes,
+                         midrules={1}, caption='Rank of every method on every scan, '
+                                                'validation / test.',
+                         label='tab:ranking')
+
+
+def _t5_confirmation(ctx, scan):
+    """T5: the full per-scan confirmation table."""
+    conf = ctx.conf(scan)
+    has_acc = pd.to_numeric(conf.get('acc_conf'), errors='coerce').notna().any()
+    has_tre = pd.to_numeric(conf.get('treval_conf'), errors='coerce').notna().any()
+    has_ds = bool(conf.attrs.get('data_seeds')) and len(conf.attrs['data_seeds']) > 1
+    rows = []
+    for _, r in conf.iterrows():
+        row = {'Method': hl.display_name(r['method']),
+               'Selected configuration': C.latex_escape(r['config']),
+               'Val. loss': C.fmt_pm(r['val_conf'], r['val_conf_std'], 4),
+               'Test loss': C.fmt_pm(r.get('test_conf'), r.get('test_conf_std'), 4)}
+        # a wrapping p-column carries the configuration; the numeric columns stay right
+        # aligned, so the table is as wide as its NUMBERS and not as its longest string
+        if has_acc:
+            row['Test acc.'] = (C.fmt_pct(r.get('acc_conf'), 2)
+                                if C.finite(r.get('acc_conf')) else C.Raw('--'))
+        if has_tre:
+            row['Train (eval)'] = C.fmt_pm(r.get('treval_conf'),
+                                           r.get('treval_conf_std'), 4)
+        row['fin./att.'] = _counts_cell(r)
+        row['Val. (tune)'] = C.fmt_pm(r['val_tune'], r['val_tune_std'], 4)
+        row['tune fin./att.'] = C.fmt_counts(r['fin_tune'], r['att_tune'])
+        if has_ds:
+            row['Betw. inst.'] = C.fmt_sig(r.get('val_conf_dsspread'), 3)
+            row['Optimism'] = C.fmt_pct(r.get('gap_val_same_instance_rel'), 1,
+                                        signed=True)
+        else:
+            row['Optimism'] = C.fmt_pct(r.get('gap_val_rel'), 1, signed=True)
+        rows.append(row)
+    notes = [
+        f'{hl.scan_title(scan)}: confirmation seeds, mean +/- 1 std over seeds, '
+        f'sorted by validation loss -- the row order is the ranking',
+        '"Optimism" is (confirmation - tuning)/tuning on the problem instance the '
+        'tuning ran on; positive means the tuning seeds flattered the configuration',
+    ]
+    if has_ds:
+        notes.append('"Between-instance" is the std of the three per-data-seed means: '
+                     'variation of the random problem, not the seed band')
+    rec = C.provenance(
+        functions=['headline.confirmation_table', 'headline.confirmation_view'],
+        scans=[hl.dir_name(scan, k) for k in ('', 'confirm')],
+        note=f'T5 confirmation table for {scan}',
+        provisional=sorted(ctx.provisional.intersection({scan})))
+    return C.write_table(f'confirmation_{scan}', rows, provenance_record=rec, fit=True,
+                         align=['l', 'p{1.15in}'] + ['r'] * 10, notes=notes,
+                         caption=f'{hl.scan_title(scan)}: every method\'s selected '
+                                 f'configuration on the confirmation seeds.',
+                         label=f'tab:confirm{SCAN_KEY.get(scan, scan)}')
+
+
+def _t5_paired(ctx, scan):
+    """T5b: the paired per-seed differences against Sven, with 95% t-intervals."""
+    tbl = ctx.paired(scan)
+    rows = []
+    for _, r in tbl.iterrows():
+        rows.append({
+            'Method': hl.display_name(r['method']),
+            C.Raw('Sven $-$ method'): C.fmt_sig(r['mean'], 3),
+            '95\\% interval': C.fmt_ci(r['ci_low'], r['ci_high'], 3),
+            'Pairs': C.fmt_int(r['n']),
+            'Unpaired': C.fmt_int(r.get('n_unpaired')),
+            'Sven better': C.fmt_counts(r['sven_better'], r['n']),
+            'Resolved': C.Raw('yes' if bool(r.get('significant')) else 'no'),
+        })
+    notes = [
+        f'{hl.scan_title(scan)}: the difference is taken WITHIN a pair '
+        f'({tbl.attrs.get("pair_on", "model_seed")}), i.e. at the same initialisation '
+        f'and data order, so the seed-to-seed variation is removed',
+        'negative means Sven has the lower validation loss; the interval is a Student-t '
+        'interval on the mean difference, not the seed band',
+        '"Unpaired" counts the seeds only one side finished -- a diverged run has no '
+        'value and is not imputed',
+    ]
+    rec = C.provenance(
+        functions=['headline.paired_vs_sven', 'paired.paired_table',
+                   'paired.paired_difference'],
+        scans=[hl.dir_name(scan, 'confirm')],
+        note=f'T5 paired differences vs Sven for {scan}: {tbl.attrs.get("sign", "")}',
+        provisional=sorted(ctx.provisional.intersection({scan})))
+    return C.write_table(f'paired_{scan}', rows, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * 6, notes=notes,
+                         caption=f'{hl.scan_title(scan)}: paired per-seed differences '
+                                 f'against Sven.',
+                         label=f'tab:paired{SCAN_KEY.get(scan, scan)}')
+
+
+#: the grid axes T10 reports, in the order a row lists them
+_GRID_AXES = ('lr', 'weight_decay', 'k', 'rtol', 'kappa', 'lbfgs_max_iter',
+              'lbfgs_history_size', 'tau', 'polyak_max_lr', 'polyak_eps',
+              'aggregator', 'inner_optimizer')
+_GRID_LABEL = {'lr': r'$\eta$', 'weight_decay': 'wd', 'k': '$k$', 'rtol': 'rtol',
+               'kappa': r'$\kappa$', 'lbfgs_max_iter': 'max iter',
+               'lbfgs_history_size': 'history', 'tau': r'$\tau$',
+               'polyak_max_lr': 'max lr', 'polyak_eps': 'eps',
+               'aggregator': 'aggregator', 'inner_optimizer': 'inner'}
+
+
+def _grid_rows(ctx, scan):
+    """Per method: the grid actually swept and how many distinct configurations it has.
+
+    Read off the tuning records rather than a plan file, so what the table prints is
+    what ran.  ``style.config_key`` counts configurations (a run_id without its seed
+    suffix), which is the same identity the selection used.
+    """
+    df = ctx.tune(scan)
+    sels = hl.selection_methods(scan, ctx.payload)
+    out = []
+    for raw in hl.method_order(sels):
+        m = hl.method_key(raw)
+        sub = df[df['optimizer'].map(hl.method_key) == m]
+        if not len(sub):
+            continue
+        chosen = hl.record_hparams(sels[raw]) or {}
+        bits, edges = [], []
+        for axis in _GRID_AXES:
+            if axis not in sub.columns:
+                continue
+            vals = sub[axis].dropna().unique()
+            if len(vals) < 2:
+                continue
+            try:
+                order = sorted(float(v) for v in vals)
+                shown = ', '.join(f'{v:g}' for v in order)
+            except (TypeError, ValueError):
+                order, shown = None, ', '.join(sorted(str(v) for v in vals))
+            bits.append(f'{_GRID_LABEL.get(axis, axis)} $\\in$ {{{shown}}}')
+            # App. C-continued promises "a flag where that configuration sits at the edge
+            # of its own grid".  An edge selection is not a defect, but it bounds the
+            # result -- CIFAR-CE's Sven selection is at the MAXIMUM of both its rtol and
+            # its lr axis -- so the table says so instead of leaving the reader to
+            # compare the "Selected" column against the "Grid swept" column by eye.
+            if order is None or axis not in chosen or chosen[axis] is None:
+                continue
+            try:
+                got = float(chosen[axis])
+            except (TypeError, ValueError):
+                continue
+            if got == order[0]:
+                edges.append((axis, 'min'))
+            elif got == order[-1]:
+                edges.append((axis, 'max'))
+        n_cfg = len({style.config_key(r) for r in sub['run_id']})
+        label = hl.config_label(sels[raw])
+        out.append({'method': m, 'display': hl.display_name(m),
+                    'grid': '; '.join(bits) or 'no swept hyperparameter',
+                    'n_configs': n_cfg, 'n_runs': len(sub),
+                    'selected': label,
+                    'edges': edges,
+                    'selected_marked': _mark_edges(label, edges)})
+    return out
+
+
+def _EDGE_MARK(where):
+    return r'$^{\downarrow}$' if where == 'min' else r'$^{\uparrow}$'
+
+
+def _mark_edges(label, edges):
+    """``'k=128, lr=0.5, rtol=0.3'`` with an arrow on every value at an axis endpoint.
+
+    ``$^\\uparrow$`` = the largest value that axis was swept over, ``$^\\downarrow$`` =
+    the smallest.  Returned as LaTeX (the caller writes it with ``C.Raw``).
+    """
+    where = dict(edges)
+    parts = []
+    for part in str(label).split(', '):
+        name, _, value = part.partition('=')
+        cell = C.latex_escape(part)
+        if name in where:
+            cell = cell + _EDGE_MARK(where[name])
+        parts.append(cell)
+    return ', '.join(parts)
+
+
+def _t10_grids(ctx, name='grids'):
+    """T10: the hyperparameter grid per method per scan.
+
+    Emitted as one compact ``methods x scans`` matrix of grid sizes (which fits on a page
+    without ``longtable``, and no new package may be loaded) plus one per-scan table with
+    the grid itself and the selected configuration.
+    """
+    written = []
+    per_scan = {}
+    for scan in ctx.scans:
+        per_scan[scan] = _grid_rows(ctx, scan)
+    methods = sorted({r['method'] for rows in per_scan.values() for r in rows},
+                     key=lambda m: (m != hl.SVEN_LABEL, m))
+    columns = ['Method'] + [TABLE_SCAN_SHORT.get(s, hl.scan_title(s))
+                            for s in ctx.scans]
+    rows = []
+    for m in methods:
+        row = {'Method': hl.display_name(m)}
+        for scan in ctx.scans:
+            hit = [r for r in per_scan[scan] if r['method'] == m]
+            row[TABLE_SCAN_SHORT.get(scan, hl.scan_title(scan))] = (
+                C.fmt_int(hit[0]['n_configs']) if hit else C.Raw('--'))
+        rows.append(row)
+    rec = C.provenance(
+        functions=['headline.load_selection', 'headline.config_label',
+                   'style.config_key'],
+        scans=list(ctx.scans), note='T10 grid sizes (distinct configurations per method)',
+        provisional=sorted(ctx.provisional))
+    written.append(C.write_table(
+        name, rows, columns=columns, provenance_record=rec, fit=True,
+        align=['l'] + ['r'] * len(ctx.scans),
+        notes=['the number of DISTINCT configurations of each method on each scan '
+               '(a run_id without its seed suffix); a blank means the method was not '
+               'run there',
+               'Sven sweeps k x lr x rtol, most baselines a learning rate alone -- the '
+               'budget disclosure in App. F reads these against best-of-n curves'],
+        caption='Grid size per method per scan.', label='tab:gridsizes'))
+    for scan in ctx.scans:
+        rows = [{'Method': r['display'], 'Grid swept': C.Raw(r['grid']),
+                 'Configs': C.fmt_int(r['n_configs']),
+                 'Runs': C.fmt_int(r['n_runs']),
+                 'Selected': C.Raw(r['selected_marked'])}
+                for r in per_scan[scan]]
+        n_edge = sum(1 for r in per_scan[scan] if r['edges'])
+        rec = C.provenance(
+            functions=['headline.load_selection', 'headline.config_label',
+                       'headline.record_hparams', 'style.config_key'],
+            scans=[scan], note=f'T10 grid for {scan}',
+            edge_selections={r['method']: r['edges'] for r in per_scan[scan]
+                             if r['edges']})
+        written.append(C.write_table(
+            f'grid_{scan}', rows, provenance_record=rec, fit=True,
+            align=['l', 'p{2.2in}', 'r', 'r', 'p{1.1in}'],
+            notes=[f'{hl.scan_title(scan)}: the grid as the records carry it, and the '
+                   f'configuration the validation loss selected',
+                   'a selected value carrying $\\uparrow$ ($\\downarrow$) is the largest '
+                   '(smallest) value that axis was swept over, so the result is bounded '
+                   f'by the grid on that axis; {n_edge} of {len(rows)} methods here have '
+                   'at least one such axis',
+                   'weight decay is at each optimizer\'s own default and is not swept '
+                   'except where a value appears above'],
+            caption=f'{hl.scan_title(scan)}: hyperparameter grids.',
+            label=f'tab:grid{SCAN_KEY.get(scan, scan)}'))
+    return written, per_scan
+
+
+def _t18_reproducibility(ctx, name='reproducibility'):
+    """T18: did the standalone timing pass reproduce the scan's trajectories?"""
+    rows, detail = [], {}
+    for scan in ctx.scans:
+        tj = hl.timing_join_report(scan, payload=ctx.payload, results_root=ctx.root)
+        if not len(tj):
+            continue
+        med = pd.to_numeric(tj['median_rel_dev'], errors='coerce')
+        mx = pd.to_numeric(tj['max_rel_dev_raw'], errors='coerce')
+        tol = tj.attrs.get('tol', 1e-3)
+        moved = tj[~tj['bit_reproduced'].astype(bool)]
+        worst = tj.loc[mx.idxmax()] if mx.notna().any() else None
+        eff = ctx.eff(scan)
+        gpus = sorted({str(g) for g in eff.get('gpu_timing', pd.Series()).dropna()})
+        sven = tj[tj['method'] == hl.SVEN_LABEL]
+        detail[scan] = {'n_methods': int(len(tj)),
+                        'n_not_reproduced': int(len(moved)),
+                        'median_of_medians': float(med.median()) if med.notna().any()
+                        else None,
+                        'max_rel_dev_raw': float(mx.max()) if mx.notna().any() else None,
+                        'worst_method': (str(worst['method']) if worst is not None
+                                         else None),
+                        'sven_median_rel_dev': (float(sven.iloc[0]['median_rel_dev'])
+                                                if len(sven) else None),
+                        'sven_max_rel_dev': (float(sven.iloc[0]['max_rel_dev'])
+                                             if len(sven) else None)}
+        rows.append({
+            'Task': TABLE_SCAN_SHORT.get(scan, hl.scan_title(scan)),
+            'Methods': C.fmt_int(len(tj)),
+            'Median dev.': C.fmt_sig(med.median(), 2),
+            'Max dev.': C.fmt_sig(mx.max(), 2),
+            'Worst': (hl.display_name(worst['method']) if worst is not None
+                      else C.Raw('--')),
+            C.Raw(f'Within ${tol:g}$'): C.fmt_counts(len(tj) - len(moved), len(tj)),
+            'Sven median': C.fmt_sig(sven.iloc[0]['median_rel_dev'], 2) if len(sven)
+            else C.Raw('--'),
+            'Timing GPU': C.latex_escape((', '.join(gpus) if gpus else '--')
+                                         .replace('NVIDIA ', '')),
+        })
+    notes = [
+        'the standalone timing run of a configuration shares its run_id, seed, '
+        'initialisation and data order with its scan twin; the deviation is in the final '
+        'validation loss',
+        'GPU kernels are not bit-exact across device types and the two passes partly ran '
+        'on different ones, so selection-level results reproduce while seed-level ones '
+        'need not -- Muon (bf16 Newton-Schulz), L-BFGS (line search), SOAP/Shampoo/HIG '
+        'and every CIFAR run deviate',
+        'Sven\'s own MNIST twin deviates too, so "Sven is bit-reproducible" is not '
+        'claimed',
+    ]
+    calib = hl.calibration_report(scans=ctx.scans)
+    if len(calib):
+        notes.append(f'the fixed-step calibration probe drifted at most '
+                     f'{calib.attrs.get("max_abs_drift", float("nan")):.1%} between the '
+                     f'start and the end of a timing pass')
+    rec = C.provenance(
+        functions=['headline.timing_join_report', 'headline_figs.timing_join_view',
+                   'headline.efficiency_table', 'headline.calibration_report'],
+        scans=[hl.dir_name(s, k) for s in ctx.scans for k in ('', 'timing')],
+        note='T18, the reproducibility table for App. R',
+        detail=detail, provisional=sorted(ctx.provisional))
+    return C.write_table(name, rows, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * 6 + ['l'], notes=notes,
+                         caption='Scan against its standalone timing twin.',
+                         label='tab:repro'), detail
+
+
+def _t20_data_seeds(ctx, name='data_seeds'):
+    """T20: between-instance against within-instance spread on the two synthetics."""
+    rows, detail = [], {}
+    for scan in ('toy_1d_scan', 'polynomial_scan'):
+        spread = hf.instance_spread(scan, table=ctx.conf(scan))
+        if spread.empty:
+            continue
+        rows.append(C.span_row(hl.scan_title(scan)))
+        for _, r in spread.iterrows():
+            rows.append({
+                'Method': hl.display_name(r['method']),
+                'Val. (pooled)': C.fmt_sig(r['val_conf'], 4),
+                'Val. (inst. mean)': C.fmt_sig(r['val_conf_dsmean'], 4),
+                'Betw.-inst. std': C.fmt_sig(r['val_conf_dsspread'], 3),
+                'Within-inst. std': C.fmt_sig(r['val_conf_seedspread'], 3),
+                'Ratio': C.fmt_sig(r['ratio_instance_over_seed'], 3),
+                'Tuning inst.': C.fmt_sig(r['val_conf_ds0'], 4),
+            })
+        sven = spread[spread['method'] == hl.SVEN_LABEL]
+        detail[scan] = {
+            'data_seeds': [int(s) for s in spread.attrs.get('data_seeds', [])],
+            'median_ratio': float(pd.to_numeric(spread['ratio_instance_over_seed'],
+                                                errors='coerce').median()),
+            'sven_ratio': (float(sven.iloc[0]['ratio_instance_over_seed'])
+                           if len(sven) else None)}
+    notes = [
+        'each data seed is a DIFFERENT random problem, so the std of the three '
+        'per-instance means is variation of the target, not of the optimizer\'s luck',
+        'a ratio above 1 says the choice of instance moves the answer more than the seed '
+        'does, and no single-instance number should then be quoted without it',
+        '"Tuning instance" is the replicate the tuning scan itself ran on -- the only '
+        'one whose gap against the tuning seeds is a statement about the seeds',
+    ]
+    rec = C.provenance(
+        functions=['headline.data_seed_table', 'headline_figs.instance_spread',
+                   'headline.confirmation_table'],
+        scans=[hl.dir_name(s, 'confirm') for s in ('toy_1d_scan', 'polynomial_scan')],
+        note='T20, the data-seed replicate table', detail=detail)
+    return C.write_table(name, rows, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * 6, notes=notes,
+                         caption='Data-seed replicates on the two synthetic tasks.',
+                         label='tab:dataseeds'), detail
+
+
+def _t6_optimism(ctx, name='optimism'):
+    """The selection-optimism table (C15).  ``paper_assets.reviewer`` owns App. F's
+    budget tables; this one is built here because it is a pure
+    :func:`headline.selection_optimism_table` view of the confirmation tables this
+    module already holds, and the integrator needs it for the protocol discussion."""
+    tbl = hl.selection_optimism_table(tables={s: ctx.conf(s) for s in ctx.scans},
+                                      scans=ctx.scans, payload=ctx.payload,
+                                      results_root=ctx.root)
+    rows = []
+    for _, r in tbl.iterrows():
+        rows.append({
+            'Task': C.latex_escape(r['scan']),
+            'Methods': C.fmt_int(r['n_methods']),
+            'Data seeds': C.fmt_int(r['n_data_seeds']),
+            'Median (inst.)': C.fmt_pct_value(r['median_same_%'], 1, True),
+            'Sven (inst.)': C.fmt_pct_value(r['sven_same_%'], 1, True),
+            'Worse': C.fmt_counts(r['n_worse_same'], r['n_methods']),
+            'Median (pool)': C.fmt_pct_value(r['median_pooled_%'], 1, True),
+            'Sven (pool)': C.fmt_pct_value(r['sven_pooled_%'], 1, True),
+        })
+    notes = [
+        'the tuning-instance column IS selection optimism: fresh model seeds, same data, '
+        'same everything else. Positive means the tuning seeds flattered the selection',
+        'the pooled column also carries the two problem instances the tuning never saw '
+        'on the synthetics, where it has a different magnitude and (for 1D) the opposite '
+        'sign; on the five scans without data seeds the two columns are identical',
+    ]
+    rec = C.provenance(
+        functions=['headline.selection_optimism_table', 'headline.confirmation_table'],
+        scans=[hl.dir_name(s, k) for s in ctx.scans for k in ('', 'confirm')],
+        note='selection optimism (C15)', provisional=sorted(ctx.provisional))
+    return C.write_table(name, rows, provenance_record=rec, fit=True,
+                         align=['l'] + ['r'] * 7, notes=notes,
+                         caption='Selection optimism: confirmation against tuning.',
+                         label='tab:optimism'), tbl
+
+
+# ---------------------------------------------------------------------------
+# G1 -- the macro group
+# ---------------------------------------------------------------------------
+def _macros(ctx, figure_info=None):
+    """Every number the abstract / intro / results / conclusion quotes."""
+    M = C.Macros(module='main')
+    figure_info = figure_info or {}
+
+    def key(scan):
+        return SCAN_KEY[scan]
+
+    # --- field sizes and the protocol -----------------------------------
+    M.add('numNMethodsMlp', len(hl.selection_methods('polynomial_scan', ctx.payload)),
+          source='headline.selection_methods')
+    # The prose enumerates the baselines, so the count it is checked against must be the
+    # baseline count and not the field size (which includes Sven).
+    M.add('numNBaselinesMlp',
+          len(hl.selection_methods('polynomial_scan', ctx.payload)) - 1,
+          source='headline.selection_methods minus Sven')
+    M.add('numNMethodsMnist',
+          len(hl.selection_methods('mnist_scan_ce', ctx.payload)),
+          source='headline.selection_methods')
+    M.add('numNMethodsNanogpt',
+          len(hl.selection_methods('exp_nanogpt_speedrun', ctx.payload)),
+          source='headline.selection_methods')
+    M.add('numNSelections',
+          hl.assert_no_test_selection(payload=ctx.payload, scans=ctx.scans),
+          source='headline.assert_no_test_selection')
+    M.add('numNScans', len(ctx.scans), source='headline.HEADLINE_SCANS')
+    # --- the extent of F3 (fig:cost_memory), so its caption cannot drift --------------
+    # The caption used to claim the figure spans up to "163 million" parameters, which is
+    # GPT-2-small: that model has no standalone timing pass (one epoch, one seed, no
+    # companion passes), so it is not in F3 at all.  The endpoints are now read off the
+    # scans the figure actually draws.
+    f3_params = {s: _scalar(ctx, s, 'n_params') for s in F3_SCANS}
+    f3_finite = {s: float(p) for s, p in f3_params.items() if C.finite(p)}
+    if f3_finite:
+        lo_scan = min(f3_finite, key=f3_finite.get)
+        hi_scan = max(f3_finite, key=f3_finite.get)
+        M.add('numCostMemoryNArchs', len(f3_finite),
+              source='paper_assets.main.F3_SCANS',
+              note='model scales drawn in fig:cost_memory')
+        # Thousands-separated integers, not scientific notation: these two are quoted in
+        # a figure caption as running prose ("spanning 593 to 11,181,642 parameters").
+        M.add('numCostMemoryPMin', C.Raw(f'{int(f3_finite[lo_scan]):,}'.replace(',', '{,}')),
+              source='records n_params',
+              note=f'smallest parameter count drawn in fig:cost_memory ({lo_scan})')
+        M.add('numCostMemoryPMax', C.Raw(f'{int(f3_finite[hi_scan]):,}'.replace(',', '{,}')),
+              source='records n_params',
+              note=f'largest parameter count drawn in fig:cost_memory ({hi_scan})')
+        M.add('numCostMemoryPMaxArch',
+              C.latex_escape(ARCH_NAME.get(hi_scan, hi_scan)),
+              source='paper_assets.main.ARCH_NAME',
+              note='the architecture at the right-hand end of fig:cost_memory')
+    M.add('numNTuningSeeds', 5, source='EXPERIMENTS.md protocol (records: 5 model seeds)')
+    M.add('numNConfirmSeeds', 5, source='headline.load(scan, "confirm") model seeds')
+
+    # --- per-scan blocks -------------------------------------------------
+    for scan in MACRO_SCANS:
+        s, prov = key(scan), ctx.is_provisional(scan)
+        conf, eff = ctx.conf(scan), ctx.eff(scan)
+        n_meth = int(ctx.ranking[ctx.ranking['scan'] == scan]['n_methods'].max())
+        M.add(f'num{s}NMethods', n_meth, source='headline.ranking_summary',
+              provisional=prov)
+        M.add(f'num{s}Params', _scalar(ctx, scan, 'n_params'), sig=9,
+              source='records n_params')
+        M.add(f'num{s}Batch', _scalar(ctx, scan, 'batch_size'), source='records batch_size')
+        M.add(f'num{s}Epochs', _n_epochs(ctx, scan), source='records num_epochs')
+        best = conf.iloc[0]
+        M.add(f'num{s}BestMethod', C.latex_escape(hl.display_name(best['method'])),
+              source='headline.confirmation_table (row 0)', provisional=prov)
+        M.add_pm(f'num{s}BestVal', best['val_conf'], best['val_conf_std'], sig=4,
+                 source='headline.confirmation_table', provisional=prov)
+        med = float(pd.to_numeric(conf['val_conf'], errors='coerce').median())
+        M.add(f'num{s}MedianVal', med, sig=4,
+              source='headline.target_reference (median method)', provisional=prov)
+        eff_by = {r['method']: r for _, r in eff.iterrows()}
+        adam_ms = eff_by.get('Adam', {}).get('ms_per_step') if 'Adam' in eff_by else None
+        for m in MACRO_METHODS:
+            mk = METHOD_KEY.get(m, m)
+            r = ctx.row(scan, m)
+            if r is None:
+                continue
+            M.add_pm(f'num{s}{mk}Val', r['val_conf'], r['val_conf_std'], sig=4,
+                     source='headline.confirmation_table', provisional=prov)
+            if C.finite(r.get('test_conf')):
+                M.add(f'num{s}{mk}Test', r['test_conf'], sig=4,
+                      source='headline.confirmation_table', provisional=prov)
+            if C.finite(r.get('acc_conf')):
+                M.add(f'num{s}{mk}Acc', 100 * float(r['acc_conf']), sig=3,
+                      source='headline.confirmation_table (percent)', provisional=prov)
+            rank, n = ctx.rank(scan, m)
+            if C.finite(rank):
+                M.add(f'num{s}{mk}Rank', rank, source='headline.ranking_summary',
+                      provisional=prov)
+            M.add(f'num{s}{mk}Fin', r['fin_conf'], source='headline.confirmation_table',
+                  provisional=prov)
+            M.add(f'num{s}{mk}Att', r['att_conf'], source='headline.confirmation_table',
+                  provisional=prov)
+            e = eff_by.get(m) if m in MACRO_COST_METHODS else None
+            if e is not None:
+                for col, q, sig in (('ms_per_step', 'MsStep', 3),
+                                    ('peak_gpu_mem_mb', 'MemMb', 4),
+                                    ('wall_s', 'WallS', 3),
+                                    ('epoch_s', 'EpochS', 3)):
+                    if C.finite(e[col]):
+                        M.add(f'num{s}{mk}{q}', e[col], sig=sig,
+                              source='headline.efficiency_table (standalone timing pass)',
+                              provisional=prov)
+                if m != 'Adam' and C.finite(adam_ms) and C.finite(e['ms_per_step']):
+                    M.add(f'num{s}{mk}MsStepVsAdam', e['ms_per_step'] / float(adam_ms),
+                          sig=3, source='headline.efficiency_table (ratio)',
+                          provisional=prov)
+            t = ctx.target_row(scan, m) if m in MACRO_COST_METHODS else None
+            if t is not None and C.finite(t['epochs']):
+                M.add(f'num{s}{mk}TargetEpochs', t['epochs'], sig=3,
+                      source='headline.time_to_target_table (median-method target)',
+                      provisional=prov)
+                if C.finite(t['standalone_s']):
+                    M.add(f'num{s}{mk}TargetSecs', t['standalone_s'], sig=3,
+                          source='headline.time_to_target_table (standalone seconds)',
+                          provisional=prov)
+                M.add(f'num{s}{mk}TargetReached', t['n_reached'],
+                      source='headline.time_to_target_table', provisional=prov)
+                M.add(f'num{s}{mk}TargetRuns', t['n_runs'],
+                      source='headline.time_to_target_table', provisional=prov)
+        # C8's caveat: how many baseline configurations are cheaper per step than Sven's
+        ms = pd.to_numeric(eff['ms_per_step'], errors='coerce')
+        sven_ms = ms[eff['method'] == hl.SVEN_LABEL]
+        if len(sven_ms) and C.finite(sven_ms.iloc[0]):
+            other = ms[eff['method'] != hl.SVEN_LABEL].dropna()
+            M.add(f'num{s}NCheaperThanSven', int((other < sven_ms.iloc[0]).sum()),
+                  source='headline.efficiency_table (ms_per_step)', provisional=prov)
+            M.add(f'num{s}NDearerThanSven', int((other > sven_ms.iloc[0]).sum()),
+                  source='headline.efficiency_table (ms_per_step)', provisional=prov)
+        # target value itself
+        tt = ctx.ttt(scan)
+        tv = tt[tt['target'] == MAIN_TARGET]['target_value']
+        if len(tv):
+            M.add(f'num{s}Target', float(tv.iloc[0]), sig=4,
+                  source='headline.targets_for (median method)', provisional=prov)
+        # --- paired differences against Sven ----------------------------
+        pv = ctx.paired(scan)
+        if len(pv):
+            n_worse = int((pv['mean'] < 0).sum())
+            M.add(f'num{s}NWorseThanSven', n_worse, source='headline.paired_vs_sven',
+                  provisional=prov)
+            M.add(f'num{s}NResolvedWorse',
+                  int(((pv['mean'] < 0) & pv['significant']).sum()),
+                  source='headline.paired_vs_sven (95% t-interval)', provisional=prov)
+            M.add(f'num{s}NPairedMethods', len(pv), source='headline.paired_vs_sven',
+                  provisional=prov)
+            # --- the five first-order baselines, separately ------------------
+            # The Introduction and the Conclusion claim a win over exactly these five.
+            # The claim holds on the seed means everywhere; the RESOLUTION does not, so
+            # the count is generated rather than asserted (on MNIST label regression
+            # only RMSprop's margin clears the interval).
+            fo = pv[pv['method'].isin(FIRST_ORDER_METHODS)]
+            if len(fo):
+                M.add(f'num{s}NFirstOrder', len(fo),
+                      source='headline.paired_vs_sven (FIRST_ORDER_METHODS)',
+                      provisional=prov)
+                M.add(f'num{s}NFirstOrderWorse', int((fo['mean'] < 0).sum()),
+                      source='headline.paired_vs_sven', provisional=prov)
+                M.add(f'num{s}NFirstOrderResolved',
+                      int(((fo['mean'] < 0) & fo['significant']).sum()),
+                      source='headline.paired_vs_sven (95% t-interval)',
+                      provisional=prov)
+            # --- who is ahead of Sven, and whether the lead is resolved ------
+            # Section 4.1 used to name one leader where two or three methods are ahead.
+            ahead = pv[pv['mean'] > 0].sort_values('mean', ascending=False)
+            if len(ahead):
+                M.add(f'num{s}AheadList',
+                      C.Raw(_name_list(ahead['display'])),
+                      source='headline.paired_vs_sven (paired mean > 0)',
+                      provisional=prov,
+                      note='every method with a lower paired mean loss than Sven')
+                M.add(f'num{s}NAhead', len(ahead),
+                      source='headline.paired_vs_sven', provisional=prov)
+                res = ahead[ahead['significant'].astype(bool)]
+                unres = ahead[~ahead['significant'].astype(bool)]
+                if len(res):
+                    M.add(f'num{s}AheadResolvedList', C.Raw(_name_list(res['display'])),
+                          source='headline.paired_vs_sven', provisional=prov,
+                          note='methods ahead of Sven by a resolved paired margin')
+                M.add(f'num{s}NAheadResolved', len(res),
+                      source='headline.paired_vs_sven', provisional=prov)
+                if len(unres):
+                    M.add(f'num{s}AheadUnresolvedList',
+                          C.Raw(_name_list(unres['display'])),
+                          source='headline.paired_vs_sven', provisional=prov,
+                          note='methods ahead of Sven within seed noise (interval '
+                               'covers zero)')
+                M.add(f'num{s}NAheadUnresolved', len(unres),
+                      source='headline.paired_vs_sven', provisional=prov)
+            leaders = [conf.iloc[0]['method']]
+            for m in list(MACRO_PAIRED_METHODS) + [x for x in leaders
+                                                   if x not in MACRO_PAIRED_METHODS
+                                                   and x != hl.SVEN_LABEL]:
+                sub = pv[pv['method'] == m]
+                if not len(sub):
+                    continue
+                mk = METHOD_KEY.get(m, m)
+                r = sub.iloc[0]
+                M.add(f'num{s}Paired{mk}', r['mean'], sig=3,
+                      source='headline.paired_vs_sven (Sven - method)', provisional=prov)
+                M.add(f'num{s}Paired{mk}CiLo', r['ci_low'], sig=3,
+                      source='headline.paired_vs_sven', provisional=prov)
+                M.add(f'num{s}Paired{mk}CiHi', r['ci_high'], sig=3,
+                      source='headline.paired_vs_sven', provisional=prov)
+                M.add(f'num{s}Paired{mk}Pairs', r['n'],
+                      source='headline.paired_vs_sven', provisional=prov)
+                M.add(f'num{s}Paired{mk}SvenBetter', r['sven_better'],
+                      source='headline.paired_vs_sven', provisional=prov)
+        # --- selection optimism -----------------------------------------
+        sven = conf[conf['method'] == hl.SVEN_LABEL]
+        if len(sven) and C.finite(sven.iloc[0].get('gap_val_same_instance_rel')):
+            M.add(f'num{s}SvenOptimism',
+                  C.fmt_pct(sven.iloc[0]['gap_val_same_instance_rel'], 1, signed=True),
+                  source='headline.confirmation_table (gap_val_same_instance_rel)',
+                  provisional=prov)
+        # --- Sven's selected learning rate ------------------------------
+        # `num<Scan>SvenK` and `num<Scan>SvenRtol` belong to G4: PAPER_PLAN's T8 is
+        # "per scan: selected k, rtol, which cut binds, ...", so the two rank knobs are
+        # defined in numbers_v2_spectra.tex and are not repeated here.  The learning
+        # rate is not part of that table, so it stays with the headline numbers.
+        chosen, _sel = hf.selected_sven(scan, payload=ctx.payload)
+        if chosen.get('lr') is not None:
+            M.add(f'num{s}SvenLr', float(chosen['lr']), sig=3,
+                  source='bench/best_configs.json via headline_figs.selected_sven',
+                  provisional=prov)
+
+    # --- the perplexity the LM section quotes ----------------------------
+    # nanoGPT's own levels, perplexities and costs are G3's (see MACRO_DEFERRED): they
+    # are defined in numbers_v2_large.tex and are NOT repeated here.
+
+    # --- cross-scan statements the abstract makes ------------------------
+    sven_ranks = {s: ctx.rank(s, hl.SVEN_LABEL)[0] for s in ctx.scans}
+    finite_ranks = [v for v in sven_ranks.values() if C.finite(v)]
+    M.add('numSvenBestRank', min(finite_ranks), source='headline.ranking_summary')
+    M.add('numSvenWorstRank', max(finite_ranks), source='headline.ranking_summary')
+    M.add('numSvenNeverFirst', int(sum(1 for v in finite_ranks if v == 1)),
+          source='headline.ranking_summary (count of scans where Sven is first)')
+    # the step-time ratio the abstract quotes spans every MLP and LM scan, nanoGPT
+    # included: it is a cross-scan aggregate, so it does not collide with G3's
+    # per-nanoGPT macros (MACRO_DEFERRED)
+    ms_ratios = []
+    for scan in STEP_RATIO_SCANS:
+        eff = ctx.eff(scan)
+        by = {r['method']: r['ms_per_step'] for _, r in eff.iterrows()}
+        if C.finite(by.get(hl.SVEN_LABEL)) and C.finite(by.get('Adam')):
+            ms_ratios.append(by[hl.SVEN_LABEL] / by['Adam'])
+        elif C.finite(by.get(hl.SVEN_LABEL)) and C.finite(by.get('AdamW')):
+            ms_ratios.append(by[hl.SVEN_LABEL] / by['AdamW'])
+    if ms_ratios:
+        M.add('numSvenStepVsAdamMin', min(ms_ratios), sig=3,
+              source='headline.efficiency_table (ms_per_step ratio over the MLP/LM scans)')
+        M.add('numSvenStepVsAdamMax', max(ms_ratios), sig=3,
+              source='headline.efficiency_table (ms_per_step ratio over the MLP/LM scans)')
+
+    # --- the two failures the related-work paragraph names ---------------
+    for scan, label in (('mnist_scan_ce', 'MnistCE'), ('mnist_scan_labelRegression',
+                                                       'MnistLR')):
+        df = ctx.tune(scan)
+        sub = df[df['optimizer'].map(hl.method_key) == 'KFAC']
+        if len(sub):
+            bad = int((sub['diverged'] | sub['failed']).sum())
+            M.add(f'num{label}KfacFailed', bad,
+                  source='headline.load(scan) diverged|failed rows, optimizer=KFAC')
+            M.add(f'num{label}KfacRuns', len(sub),
+                  source='headline.load(scan) rows, optimizer=KFAC')
+    df = ctx.tune('polynomial_scan')
+    sub = df[df['optimizer'].map(hl.method_key) == 'LBFGS']
+    if len(sub):
+        M.add('numPolyLbfgsDiverged', int((sub['diverged'] | sub['failed']).sum()),
+              source='headline.load(polynomial_scan) diverged|failed, optimizer=LBFGS')
+        M.add('numPolyLbfgsRuns', len(sub),
+              source='headline.load(polynomial_scan) rows, optimizer=LBFGS')
+    # Fig. 1's caption used to explain L-BFGS's absence from the polynomial panel with
+    # the TUNING-grid divergence rate above, which reads as if the method could not be
+    # run.  It has a selected configuration and confirmation runs; it is simply not in
+    # the five drawn.  These three macros are the honest reason.
+    conf_poly = ctx.conf('polynomial_scan')
+    lb = conf_poly[conf_poly['method'].map(hl.method_key) == 'LBFGS']
+    if len(lb):
+        rank, _n = ctx.rank('polynomial_scan', 'LBFGS')
+        src = 'headline.confirmation_table'
+        if C.finite(rank):
+            M.add('numPolyLbfgsRank', rank, source='headline.ranking_summary')
+        M.add('numPolyLbfgsFin', lb.iloc[0]['fin_conf'], source=src)
+        M.add('numPolyLbfgsAtt', lb.iloc[0]['att_conf'], source=src)
+
+    # --- the k / rtol saturation the corrected sweep gives ---------------
+    for scan, rec in (figure_info.get('hparam_landscape') or {}).items():
+        s = key(scan)
+        if C.finite(rec.get('k_within_5pct')):
+            M.add(f'num{s}SvenKSaturate', rec['k_within_5pct'],
+                  source='paper_assets.main hparam_landscape (smallest k within 5 per '
+                         'cent of the best score on the selected rtol line)')
+    return M
+
+
+# ---------------------------------------------------------------------------
+# build()
+# ---------------------------------------------------------------------------
+def build(root=None, figures=True, tables=True, numbers=True, dry_run=False):
+    """Build every asset this module owns.  Returns a report dict."""
+    C.banner(GROUP, f'figures={figures} tables={tables} numbers={numbers}')
+    ctx = Ctx(root=root)
+    report = {'figures': [], 'tables': [], 'n_macros': 0,
+              'provisional': sorted(ctx.provisional), 'status': '',
+              'macros_deferred_to': dict(MACRO_DEFERRED),
+              'macro_families_deferred': dict(MACRO_FAMILIES_DEFERRED)}
+    if ctx.provisional:
+        report['status'] = f'PROVISIONAL: {sorted(ctx.provisional)}'
+    if dry_run:
+        report['status'] = (report['status'] + ' (dry run)').strip()
+        report['would_write'] = {
+            'figures': ['headline_curves', 'headline_curves_all', 'cost_memory',
+                        'k_sweeps', 'hparam_landscape', 'allseed_curves',
+                        'allseed_curves_ce_lm'],
+            'tables': ['headline_confirm', 'headline_confirm_compact',
+                       'time_to_target', 'time_to_target_main', 'protocol', 'ranking',
+                       'optimism', 'grids', 'reproducibility', 'data_seeds']
+            + [f'confirmation_{s}' for s in ctx.scans]
+            + [f'paired_{s}' for s in ctx.scans]
+            + [f'grid_{s}' for s in ctx.scans]}
+        return report
+
+    figure_info = {}
+    if figures:
+        (pdf, png), per_scan = _headline_curves(ctx, 'headline_curves',
+                                                all_methods=False)
+        report['figures'].append(str(pdf))
+        figure_info['headline_curves'] = {s: list(v) for s, v in per_scan.items()}
+        (pdf, png), per_scan = _headline_curves(ctx, 'headline_curves_all',
+                                                all_methods=True)
+        report['figures'].append(str(pdf))
+        (pdf, png), frame = _cost_memory(ctx)
+        report['figures'].append(str(pdf))
+        figure_info['cost_memory'] = frame.to_dict('records')
+        (pdf, png), info = _k_sweeps(ctx)
+        report['figures'].append(str(pdf))
+        figure_info['k_sweeps'] = info
+        (pdf, png), info = _hparam_landscape(ctx)
+        report['figures'].append(str(pdf))
+        figure_info['hparam_landscape'] = info
+        (pdf, png), order = _allseed_curves(ctx, ALLSEED_SCANS, 'allseed_curves')
+        report['figures'].append(str(pdf))
+        (pdf, png), order = _allseed_curves(ctx, ALLSEED_SCANS_B,
+                                            'allseed_curves_ce_lm')
+        report['figures'].append(str(pdf))
+
+    if tables:
+        report['tables'].append(str(_t1_headline(ctx)))
+        report['tables'].append(str(_t1_headline(ctx, 'headline_confirm_compact',
+                                                 compact=True)))
+        report['tables'].append(str(_t2_time_to_target(ctx, 'time_to_target')))
+        report['tables'].append(str(_t2_time_to_target(ctx, 'time_to_target_main',
+                                                       compact=True)))
+        report['tables'].append(str(_t3_protocol(ctx)))
+        report['tables'].append(str(_t4_ranking(ctx)))
+        path, _ = _t6_optimism(ctx)
+        report['tables'].append(str(path))
+        for scan in ctx.scans:
+            report['tables'].append(str(_t5_confirmation(ctx, scan)))
+            report['tables'].append(str(_t5_paired(ctx, scan)))
+        grids, _ = _t10_grids(ctx)
+        report['tables'].extend(str(p) for p in grids)
+        (path, detail) = _t18_reproducibility(ctx)
+        report['tables'].append(str(path))
+        report['reproducibility'] = detail
+        (path, detail) = _t20_data_seeds(ctx)
+        report['tables'].append(str(path))
+
+    if numbers:
+        M = _macros(ctx, figure_info)
+        path = M.write(provenance=C.provenance(
+            functions=['headline.confirmation_table', 'headline.efficiency_table',
+                       'headline.ranking_summary', 'headline.paired_vs_sven',
+                       'headline.time_to_target_table',
+                       'headline.assert_no_test_selection',
+                       'headline_figs.selected_sven'],
+            scans=[hl.dir_name(s, k) for s in ctx.scans
+                   for k in ('', 'confirm', 'timing')],
+            note='G1: every number the abstract / intro / results / conclusion quotes',
+            provisional=sorted(ctx.provisional)))
+        report['n_macros'] = len(M)
+        report['macros'] = str(path)
+        report['macro_names'] = sorted(M.values)
+    return report
+
+
+if __name__ == '__main__':
+    import json as _json
+    print(_json.dumps(build(), indent=2, default=str)[:4000])
