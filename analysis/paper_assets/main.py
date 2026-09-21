@@ -508,7 +508,8 @@ def _headline_curves(ctx, opts):
     leg_ncol = opts['figure_legend_ncol']
     if leg_ncol is None:                       # as many rows as columns, 3 to 6 wide
         leg_ncol = min(6, max(3, (len(labels) + 1) // 2))
-    fig.legend(handles, labels, ncol=leg_ncol, **opts['figure_legend_kw'])
+    fig.legend(handles, labels,
+               **figspec.merge_kw(opts['figure_legend_kw'], ncol=leg_ncol))
     rec = C.provenance(
         functions=['headline_figs.plot_curves', 'headline_figs.confirm_runs',
                    'headline_figs.standalone_epoch_times',

@@ -286,3 +286,26 @@ def test_a_figure_is_saved_under_the_rcparams_it_was_drawn_with(spec, store,
     assert seen == {'fonttype': 42, 'bbox': None}      # saved under the paper style
     assert matplotlib.rcParams['pdf.fonttype'] == 3    # and restored again afterwards
     plt.close(fig)
+
+
+def test_merge_kw_lets_a_pinned_kw_entry_win_instead_of_raising():
+    """A builder with both a dedicated knob and a free-form kwargs dict for the same
+    matplotlib call used to raise `TypeError: got multiple values for keyword argument
+    'ncol'` as soon as the dict named that key -- which is the first thing somebody
+    tuning a legend from a notebook does."""
+    assert F.merge_kw({'ncol': 5}, ncol=8) == {'ncol': 5}          # the dict wins
+    assert F.merge_kw({}, ncol=8, lw=1.3) == {'ncol': 8, 'lw': 1.3}
+    assert F.merge_kw(None, ncol=8) == {'ncol': 8}
+    assert F.merge_kw({'fontsize': None}, ncol=4) == {'ncol': 4}   # None = not set
+
+
+def test_no_builder_splats_a_kw_dict_next_to_the_same_keyword():
+    """The pattern `legend(..., ncol=opts['x_ncol'], **opts['x_kw'])` is a landmine: it
+    works until the kw dict names `ncol`.  Every site must go through merge_kw."""
+    import re
+    for module in F.FIGURE_MODULES:
+        src = (REPO / 'analysis' / 'paper_assets' / f'{module}.py').read_text()
+        for match in re.finditer(r'\n[^\n]*?[a-z_]+=\s*opts\[[^\n]*?\*\*opts\[', src,
+                                 re.S):
+            snippet = ' '.join(match.group(0).split())[:160]
+            assert 'merge_kw' in snippet, f'{module}.py: {snippet}'

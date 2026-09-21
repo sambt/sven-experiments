@@ -804,8 +804,9 @@ def _spectrum_truncation(data, opts):
     cc.set_title('(c) rank actually used')
 
     if opts['show_legend']:
-        _scan_legend(fig, scans, ncol=opts['legend_ncol'], lw=opts['scan_lw'],
-                     **opts['legend_kw'])
+        _scan_legend(fig, scans, **figspec.merge_kw(opts['legend_kw'],
+                                                   ncol=opts['legend_ncol'],
+                                                   lw=opts['scan_lw']))
     prov = c.provenance(
         functions=['spectra_figs.sven_diag', 'spectra_figs.plot_spectra_over_training',
                    'spectra_figs.diag_arrays', 'spectra_figs.seed_stack',
@@ -952,8 +953,9 @@ def _online_mechanism(data, opts):
     seeds.legend(**opts['seed_legend_kw'])
 
     if opts['show_legend']:
-        _scan_legend(fig, scans, ncol=opts['legend_ncol'], lw=opts['scan_lw'],
-                     **opts['legend_kw'])
+        _scan_legend(fig, scans, **figspec.merge_kw(opts['legend_kw'],
+                                                   ncol=opts['legend_ncol'],
+                                                   lw=opts['scan_lw']))
     prov = c.provenance(
         functions=['spectra_figs.seed_stack', 'spectra_figs.smooth_steps',
                    'spectra_figs.diag_arrays', 'sv_diagnostics.smooth'],
@@ -986,8 +988,9 @@ def _online_norms(data, opts):
                             Line2D([], [], color='#DD8452', lw=lw),
                             Patch(color='0.45', alpha=0.25)],
                       [r'$\|\Delta\theta\|$ (applied, incl. $\eta$)', r'$\|r\|$',
-                       style.seed_spread_label()], ncol=opts['legend_ncol'],
-                      **opts['legend_kw'])
+                       style.seed_spread_label()],
+                      **figspec.merge_kw(opts['legend_kw'],
+                                         ncol=opts['legend_ncol']))
     prov = c.provenance(
         functions=['spectra_figs.plot_norms', 'spectra_figs.seed_stack'],
         scans=[hl.dir_name(s, 'diag') for s in scans], reads=[c.results_root()],
@@ -1095,7 +1098,8 @@ def _lr_vs_ce(data, opts):
         _legend_below(fig, handles + [Patch(color='0.45', alpha=0.25)],
                       [SCAN_SHORT.get(s, s) for s in scans]
                       + [style.seed_spread_label()],
-                      ncol=opts['legend_ncol'], **opts['legend_kw'])
+                      **figspec.merge_kw(opts['legend_kw'],
+                                         ncol=opts['legend_ncol']))
     prov = c.provenance(
         functions=['spectra_figs.diag_arrays', 'spectra_figs.seed_stack',
                    'spectra_figs.smooth_steps'],
@@ -1316,7 +1320,8 @@ def _probe_metric_grid(data, opts, scans, metrics, prov, transpose=False, logy=N
                          band=bool(opts['band']), cond_pad=float(opts['cond_pad']),
                          title=SCAN_SHORT.get(scan, scan) if named else None)
     if opts['show_legend']:
-        _axes_legend(fig, ncol=opts['legend_ncol'], **opts['legend_kw'])
+        _axes_legend(fig, **figspec.merge_kw(opts['legend_kw'],
+                                            ncol=opts['legend_ncol']))
     return fig, {'axes': axes, 'provenance': prov, 'scans': list(scans),
                  'metrics': list(metrics)}
 

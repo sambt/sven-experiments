@@ -251,6 +251,21 @@ COMMON_KEYS = ('figsize', 'xlabel', 'ylabel', 'title', 'xlim', 'ylim', 'xscale',
                'legend', 'suptitle', 'grid', 'tick_labelsize', 'rc')
 
 
+def merge_kw(kw, **dedicated):
+    """``kw`` on top of the knob-level defaults, so neither call raises.
+
+    A builder often has both a dedicated knob and a free-form kwargs dict for the same
+    matplotlib call (``figure_legend_ncol`` beside ``figure_legend_kw``).  Splatting the
+    dict next to the keyword -- ``fig.legend(..., ncol=n, **opts['figure_legend_kw'])`` --
+    raises ``TypeError: got multiple values for keyword argument 'ncol'`` the moment
+    somebody pins the same key inside the dict, which is exactly what a person tuning a
+    legend from a notebook does first.  The more specific value (the one in ``kw``) wins.
+    """
+    out = dict(dedicated)
+    out.update(kw or {})
+    return {k: v for k, v in out.items() if v is not None}
+
+
 def check_defaults(specs):
     """Refuse a figure whose own knob shadows a generic one (it would be applied twice)."""
     bad = {n: sorted(set(s.defaults) & set(COMMON_KEYS)) for n, s in specs.items()
