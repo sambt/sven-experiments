@@ -42,3 +42,6 @@ analysis/legacy_repair/*.parquet
 analysis/legacy_repair/_cache/
 slurm_logs/
 experiment_results_legacy_2026-09-18
+
+# the ICLR manuscript is its own (Overleaf-synced) git repo
+iclr_manuscript/
