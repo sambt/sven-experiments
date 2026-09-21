@@ -13,9 +13,10 @@ which is exact: the equal-weight mean of the same per-batch blocks reproduces th
 8.6 % median / 53 % max on the masked CIFAR Fig-5 runs. The legacy *selection* is the binding rule
 (`CHANGES_NEEDED.md` §1) applied to legacy data; the fresh numbers are not re-selected at all but
 read from `bench/best_configs.json` through `analysis/headline.py`. As a gate, this module's own
-rule reproduces **84 of 85** selections exactly; the single exception is CIFAR-CE Sven, whose
-scan is still growing (the rtol extension), and the notebook asserts that any such drift is
-confined to the scans `headline.freshness_report()` flags as provisional.
+rule reproduces **85 of 85** selections exactly, with no exception, and the notebook asserts that
+any such drift is confined to the scans `headline.freshness_report()` flags as provisional — a set
+that is now empty, since the CIFAR-CE `rtol` extension has landed (45/45 `ok`) and
+`bench/best_configs.json` was re-spliced for it.
 
 **Scope.** 27 scan directories exist in both roots: 7 headline (full per-method diff), 4 swept
 studies (ranked within each axis value), 10 Sven-only ablations (configuration + level only),
@@ -57,7 +58,7 @@ about Sven here rests on that fallback.
 | MNIST (label reg.) | 4/13 | 3/13 | −1 | 0.0504 → 0.0533 |
 | MNIST (CE) | 5/13 | 4/13 | −1 | 0.1131 → 0.1134 |
 | CIFAR-10 (label reg.) | **2/6** | **5/6** | **+3** | 0.4107 → 0.4838 (+17.8 %) |
-| CIFAR-10 (CE) *(provisional)* | 5/6 | 5/6 | = | 1.415 → 1.424 |
+| CIFAR-10 (CE) | 5/6 | 5/6 | = | 1.415 → 1.355 (−4.2 %) |
 | nanoGPT (tiny-shakespeare) | 2/5 | 2/5 | = | 1.760 → 1.715 |
 
 **The aggregate must be split by target, and is then flat.** Of the 26 comparable points (the 7
@@ -75,8 +76,8 @@ a pooled "−0.69 places on average" is mostly a statement about which function 
 places, and on the headline scans 2 better, 3 unchanged, 1 worse (the worse one being CIFAR
 label regression, +3). All three large gains (−6, −6, −5) are additive-cubic comparisons. In the
 **full** fresh field Sven is 2nd/15 (toy), 2nd/15 (polynomial), 3rd/14 (MNIST-LR), 4th/14
-(MNIST-CE), 9th/11 (CIFAR-LR), 9th/11 on validation and 11th/11 on test accuracy (CIFAR-CE,
-provisional), 2nd/5 (nanoGPT).
+(MNIST-CE), 9th/11 (CIFAR-LR), 9th/11 on validation and 10th/11 on test accuracy (CIFAR-CE),
+2nd/5 (nanoGPT).
 
 Swept studies (rank within each axis value): MNIST P/N sweep 2,1,3,4,3 → 1,1,1,2,2 (Sven
 improves at every n_data); polynomial P/N 2,2,2,2 → 1,2,2,4; toy P/N 2,2,1,4 → 2,4,3,3;
@@ -172,7 +173,7 @@ WP2's table too.
 **Must change.** (i) **CIFAR.** `REBUTTALS.md` §1's "the single true dataset-overparam case
 (ResNet18/CIFAR) merely matches baselines at higher wall-time" is wrong: under a correct
 BatchNorm policy Sven is 9th of 11 on label regression (test accuracy 69.4 % vs 77.9 % for SOAP)
-and, provisionally, 9th of 11 on validation and last on test accuracy on cross-entropy, at
+and 9th of 11 on validation and 10th of 11 on test accuracy (58.2 %) on cross-entropy, at
 63 s/epoch against 2.7–12.4 s (WP2's efficiency table). (ii) **"Outperforms standard first-order
 methods" needs qualifying**: Muon with weight decay beats Sven on both MNIST scans and both CIFAR
 scans, and HIG beats it on toy and polynomial. Sven is never first on any headline scan.
@@ -189,6 +190,8 @@ three), different seed counts (5 tuning vs 5 tuning **and** 5 confirmation), dif
 data on every scan, and different GPU types between the scans (mostly MIG A100-40GB) and the
 confirmation/timing passes (A100-80GB) — nothing here is a bit-level comparison. A rank change of
 one place is often a few per cent of loss between methods whose seed bands overlap; the paired
-differences in `analysis/headline.py` are where that is quantified. **CIFAR-CE is provisional**
-until the rtol extension lands and `tools/select_best.py` is re-run; re-executing the notebook
-updates every CIFAR-CE number in it.
+differences in `analysis/headline.py` are where that is quantified. **CIFAR-CE is settled as of
+2026-09-21**: the `rtol` extension landed (45/45 `ok`, 0 diverged), `tools/select_best.py` moved
+the Sven pick from k = 128 / lr = 0.1 / rtol = 1e-2 (1.4028) to **k = 128 / lr = 0.5 / rtol = 0.3
+(1.3552)**, and the timing / diag / confirm passes were re-run for it; every CIFAR-CE number here
+is recomputed by the notebook rather than typed in, so re-executing it is what keeps them true.

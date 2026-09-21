@@ -8,10 +8,11 @@ decisions), `campaign/CAMPAIGN_STATUS.md` (timeline, snapshots, job ids),
 `campaign/plan_campaign.yaml` / `plan_gpt2.yaml` / `plan_phase5.yaml` (what was submitted),
 `bench/best_configs.json` (the selection of record), and the `schema_version: 2` records under
 `experiment_results/`. Every run count, divergence count, parameter count and SHA below was
-reproduced on 2026-09-20 by running `tools/reconcile.py`, `tools/select_best.py`,
-`bench/check_timing_join.py` and a first-line read of all **24,824** records at 19:10 EDT
-(24,818 at the start of the analysis phase, before GPT-2's last run and the first CIFAR-CE
-extension runs landed; 24,826 at 19:21 as two more extension runs finished; storage figures are `du`/`stat` on the files).
+reproduced on 2026-09-20/21 by running `tools/reconcile.py`, `tools/select_best.py`,
+`bench/check_timing_join.py` and a first-line read of every record. The **settled** total, with
+every phase of the campaign finished, is **24,894** records (2026-09-21): 24,819 once GPT-2's last
+run had landed, plus the 45 + 15 + 15 of the three follow-up phases in the table below; storage
+figures are `du`/`stat` on the files.
 
 **The campaign in one line.** 23,215 in-plan runs across 21 scans plus 29 runs of
 `exp_gpt2_small_comparison`, then 1,575 runs in three result-dependent passes over the seven
@@ -22,15 +23,16 @@ recorded as such rather than being absent. The **analysis** definition of failur
 **2,553** of them; that wider count is the one that governs selection and every analysis table,
 so no claim about a method's robustness may be read off the status field alone (§7).
 
-*As of 2026-09-20 19:08 EDT, one additive follow-up is in flight:* `p2_cifar_ce_rtol`, the
-approved 45-run CIFAR-CE Sven `rtol` extension (§5), pushes `cifar10_resnet_ce_scan`'s expected
-count from 740 to **785**, so `tools/reconcile.py --all campaign/plan_campaign.yaml` now
-reports `N run(s) to do; incomplete: cifar10_resnet_ce_scan` instead of the clean `0`
-(at 19:21 EDT: 747 records on disk, all `ok`, none diverged; at 19:05 it was 745 on disk with
-`35 run(s) to do`). Every count in this document for that one scan is therefore a snapshot
-until the extension finishes; every other scan is final. Nothing else changes: the
-extension is off-grid (its `rtol` values are not in the config's `rtol` list) and purely
-additive, so no existing `run_id` or `run_hash` moves.
+*Settled as of 2026-09-21 01:00 EDT.* The one additive follow-up, `p2_cifar_ce_rtol` — the
+approved 45-run CIFAR-CE Sven `rtol` extension (§5) — **has landed**: it pushed
+`cifar10_resnet_ce_scan`'s expected count from 740 to **785**, and all **785 / 785** records are
+on disk, every one `ok`, **0 diverged**, so `tools/reconcile.py --all campaign/plan_campaign.yaml`
+reports the clean `0` again and **every count in this document for that scan is final**. The
+extension was off-grid by design (its `rtol` values are deliberately not in the config's `rtol`
+list) and purely additive, so no existing `run_id` or `run_hash` moved. It *did* move the pick,
+which is why three further phases follow it in the table below: the Fig-5 re-run at the selected
+configuration (§3.3), the CIFAR-CE Sven timing / diag / confirm re-runs (§5), and the step-time /
+memory re-profile into `profile_results_v3/` (§1.6).
 
 The **window** column is the span of the records' own `start_time` / `end_time`, in **UTC**
 (= EDT + 4 h); `analysis/RERUNS_NEEDED.md`'s launch log gives the same phases in EDT.
@@ -41,7 +43,10 @@ The **window** column is the span of the records' own `start_time` / `end_time`,
 | grid-extension round | 7,480 | `62e5105e` | `203a4e61` | 47322040–47322082 (10) | 09-20 03:34:11 → 09-20 07:48:53 |
 | GPT-2 small | **29 of 29** | `e5b6fb77` | `203a4e61` | 47330243–47330265 (10) | 09-20 05:49:58 → 09-20 23:13:06 |
 | phase 5: timing + diag + confirm | 1,575 | `b8fadc6f` | `203a4e61` | 47337921–47337941 (15) | 09-20 08:00:18 → 09-20 14:39:44 |
-| CIFAR-CE `rtol` extension (in flight) | 5 of 45 | `f0f89b24` | `203a4e61` | 47394881–47394885 (5) | 09-20 22:37:48 → *running* |
+| CIFAR-CE `rtol` extension | **45 of 45** | `f0f89b24` | `203a4e61` | 47394881–47394885 (5) | 09-20 22:37:48 → 09-21 02:05:57 |
+| Fig-5 re-run at the selected config | **15 of 15** | `1b7b61dc` | `203a4e61` | 47414023, 47414026, 47414038, 47414060, 47414064 (5) | 09-21 01:58:37 → 09-21 04:25:45 |
+| phase 5 re-run: CIFAR-CE Sven only | **15** (5 timing + 5 diag + 5 confirm) | `6e7fc72f` | `203a4e61` | 47415168 (diag), 47415171 (confirm), 47415182 (timing) | 09-21 02:11:29 → 09-21 03:57:52 |
+| step-time / memory re-profile → `profile_results_v3/` | **720 of 720** configurations | `118156ae` | `203a4e61` | 47396284 (1, exclusive A100-80GB) | 09-21 01:49:50 → 09-21 02:56:18 |
 
 The main campaign's last-ending record is job 47080834 in `cifar10_resnet_ce_scan`
 (09-20 02:10:43Z) and the extension round's first record starts 09-20 03:34:11Z, so the two
@@ -198,11 +203,19 @@ told apart from a correct pass by reading the records. Set points, `study=method
 | nanogpt        | Gram, full `J`   | 257.4 → **229.2**  | 0.89 | 2893 → 2892   | 1.00 |
 | mnist          | Gram, full `J`   | 19.4 → **14.3**    | 0.74 | 49 → 48       | 0.99 |
 | mnist          | classic rand-SVD | 15.5 → **10.1**    | 0.65 | 48 → 48       | 0.99 |
-| toy_1d / polynomial | all four    | within ±2%         | ~1   | unchanged     | 1.00 |
+| toy_1d / polynomial | Gram (3 variants) | within ±2%     | ~1   | 19 → 19       | 1.00 |
+| toy_1d / polynomial | classic rand-SVD | within ±2%      | ~1   | 22.2 → 21.4   | 0.96 |
 
-Two things to read out of it. **The fix buys step time and costs no memory** — every `mem ×` is
-1.00, as it must be: `empty_cache` changes *when* the caching allocator hands blocks back, not
-how many are live at once. And **it changes the capture ranking on CIFAR**: under v3 `full`
+Two things to read out of it. **The fix buys step time and costs essentially no memory** —
+`empty_cache` changes *when* the caching allocator hands blocks back, not how many are live at
+once, so the mem ratio is 1.00 wherever it is the only thing that changed. It is **not exactly
+1.00 everywhere**, and the exceptions are the second fix, not the first: `expandable_segments` is
+a process-wide allocator setting, so the classic randomized-SVD set point on toy-1D and polynomial
+falls 22.2 → 21.4 MiB (**×0.965**, the same ×0.964 that SOAP shows on those two architectures),
+MNIST full `J` and classic both read ×0.99, and among the baselines Muon on CIFAR moves ×0.82.
+None of these is a Sven-specific effect and none changes a cost conclusion — they are a smaller
+allocator footprint at the same live set. And **it changes the capture ranking on CIFAR**:
+under v3 `full`
 (188.0 ms) beats `chunked` (207.9), the same order the GPU probe found, whereas v2 had
 `chunked` ahead by 1.8×. The Gram cost statement above is unaffected; the profile is a cost
 measurement, not a selection input, and the campaign's own timing pass puts the selected
@@ -334,7 +347,7 @@ notebook must show the wide `finished / attempted`, not the column below.
 | `mnist_scan_labelRegression` | MNIST 50k/10k/10k (label-reg), B = 64 | MLP 784→[32,32,32]→10 · **27,562** | k ∈ {1,2,4,8,16,32,48,64} × lr ∈ {.05,.1,.5,1} × rtol ∈ {1e-4…1e-1} = 640 | STD 8 lrs (400) · L-BFGS lr ∈ {.1,.5,1} × mi × hs (135) · Polyak (5) · JD (30) · HIG (150) | 5 · 20 | **1231 / 1360** |
 | `mnist_scan_ce` | MNIST 50k/10k/10k (cross-entropy), B = 64 | same · **27,562** | k ∈ {1…64, 8 values} × lr ∈ {.05,.1,.5,1} × rtol ∈ {1e-4,1e-3,1e-2,1e-1,3e-1} = 800 | STD 8 lrs (400) · L-BFGS 5 lrs × mi × hs (225) · Polyak (5) · JD (30) · HIG (150) | 5 · 20 | **1490 / 1610** |
 | `cifar10_resnet_scan_labelRegression` | CIFAR-10 45k/5k/10k (label-reg), B = 128 | ResNet18, torch.func-compatible BN · **11,181,642** | k ∈ {64,128} × lr ∈ {.1,.5,1} × rtol ∈ {1e-4,1e-3,1e-2}, κ = 2 = 90 · `gram_capture: full`, `bn_mode: batch` | Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP on 7 lrs 1e-5…3e-1 (280) · L-BFGS 5 lrs × mi × hs (225) · Polyak (5) | 5 · 20 | **572 / 600** |
-| `cifar10_resnet_ce_scan` | CIFAR-10 45k/5k/10k (cross-entropy), B = 128 | same · **11,181,642** | k ∈ {64,128} × lr ∈ {.02,.05,.1,.5,1} × rtol ∈ {1e-4,1e-3,1e-2}, κ = 2 = 150 | same 8 optimizers on 9 lrs 1e-5…3.0 (360) · L-BFGS (225) · Polyak (5) | 5 · 20 | **740 / 740** on the config grid (+45 off-grid `rtol` runs in flight, §5; 747 records at 19:21) |
+| `cifar10_resnet_ce_scan` | CIFAR-10 45k/5k/10k (cross-entropy), B = 128 | same · **11,181,642** | k ∈ {64,128} × lr ∈ {.02,.05,.1,.5,1} × rtol ∈ {1e-4,1e-3,1e-2}, κ = 2 = 150 | same 8 optimizers on 9 lrs 1e-5…3.0 (360) · L-BFGS (225) · Polyak (5) | 5 · 20 | **740 / 740** on the config grid, **+45 / 45** off-grid `rtol` runs (§5) = **785 records** |
 | `exp_nanogpt_speedrun` | tiny-shakespeare char (lm_ce), B = 64 | nanoGPT 4L·4H·128d, block 128, untied, dropout 0 · **826,368** | k = 64 × lr ∈ {.05,.1,.5,1} × rtol 1e-3 = 20 · `gram_capture: hooks` | AdamW, Muon, MuonW, SOAP on 6 lrs 1e-5…3e-3 (120) | 5 · 50 | **140 / 140** |
 
 `steps_per_epoch` as recorded: 312 (toy, polynomial), 781 (MNIST), 351 (CIFAR), 108 (nanoGPT).
@@ -404,10 +417,18 @@ point rests on 3 of 3.
 **Caveat, now closed.** The legacy set point is the *pre-Gram classic* best, still flagged
 `SET POINT, STILL TENTATIVE` in the config, and was **not** re-derived from the BN-fixed
 headline scan (`cifar10_resnet_scan_labelRegression`, Sven optimum k = 128, lr = 0.5,
-rtol = 1e-3) before the first launch. Its single lr = 1.0 is also the cell where *all five* of
-that headline scan's Sven divergences sit, so the legacy figure could not separate "masking at
-fraction `f` hurts" from "lr = 1 is unstable here". The whole figure was therefore re-run at
-the selected configuration, and **it separates the two**: the divergences are gone, and the
+rtol = 1e-3) before the first launch. Its single lr = 1.0 is also the lr where *all five* of that
+headline scan's Sven divergences sit (5 of its 90 Sven runs). **Read precisely** — the earlier
+wording overstated this: all five sit at lr = 1.0 **and rtol = 1e-4** (2 at k = 128, 3 at k = 64;
+final val 31–124 against `val[0]` 1.3–2.0, all carrying `status: ok`, i.e. finite blow-ups caught
+only by the wider rule). At the legacy Fig-5's own `rtol = 1e-3` the headline grid has **0 of 10**
+Sven divergences at lr = 1.0, and 0 at every other rtol; the whole lr = 1.0 column is clean except
+that one (lr, rtol) cell. So the confound the legacy figure carried is weaker than "lr = 1 is
+unstable here": lr = 1.0 is the *only* lr that blows up anywhere, but it does so only in
+combination with the tightest truncation, which Fig-5 did not use. What the legacy figure could
+still not separate is "masking at fraction `f` hurts" from "lr = 1, never re-tuned per `f`, is a
+bad operating point" — its own two blow-ups at pf 0.05 and 0.1 are the evidence for the second
+reading. The whole figure was therefore re-run at the selected configuration, and **it separates the two**: the divergences are gone, and the
 low-`f` collapse survives (seed-mean final val / test accuracy at pf 1 → 0.05:
 **0.471 → 0.503 → 0.876 → 2.40 → 4.94** and **69.1% → 68.8% → 67.8% → 25.6% → 19.2%**, against
 chance 10%). Cost is unchanged by the re-point, as the Gram statement of §1.5 requires:
@@ -574,9 +595,24 @@ Sven's selected configuration per headline scan, with the flagged grid edges:
 | `exp_nanogpt_speedrun` | k = 64, lr = 0.1, rtol = 1e-3 | 1.72363 | interior |
 
 `k:EDGE-HIGH` always means `k = B`, a **method boundary rather than a grid edge**, and is not
-extended. Two open edges remain:
+extended. **Three** open edges remain:
 
 * `toy_1d_scan`'s Sven `lr` at 0.01, the new bottom point after the extension round — accepted.
+* `mnist_scan_ce`'s Sven `rtol` at 0.3, which is the top of that scan's `rtol` grid
+  [1e-4, 1e-3, 1e-2, 1e-1, 3e-1] — flagged `rtol:EDGE-HIGH` in `bench/best_configs.json`'s own
+  `edges` dict for that pick, and the same knob whose CIFAR-CE twin was judged worth ~20 GPU-h
+  to extend, with "MNIST-CE prefers 0.1–0.3" as the stated rationale (ANALYSIS_PLAN §7.5).
+  **Decision: accepted, not extended**, on two grounds. First, the pick at that edge is an
+  **exact three-way tie**: k = 32, 48 and 64 at lr = 0.5 / rtol = 0.3 all give the identical
+  seed-mean 0.11493559425553576 over 5/5 seeds, because at rtol = 0.3 the rtol-rank (3.4 of
+  B = 64, `analysis/comparisons.ipynb` §2) truncates far below every one of those k, so k does
+  not bind and the tie-break on smallest k picks 32; the optimum is a plateau in k, not a point.
+  Second, the direction of the edge is a *weaker* truncation, and the CIFAR-CE extension is the
+  measurement of what lies past it: pushing `rtol` from 1e-2 to 0.3 there bought 3.4 % of
+  validation loss and did not change the rank (10th of 11 either way). Extending MNIST-CE would
+  therefore buy a number, not a conclusion. The honest statement is that **Sven's `rtol` optimum
+  on both cross-entropy scans sits at the largest truncation the grid offers**, i.e. Sven does
+  best on CE when it keeps the fewest singular values — which is §7's story, not a tuning gap.
 * `cifar10_resnet_ce_scan`'s Sven `rtol`, which was at 1e-2 while MNIST-CE prefers 0.1–0.3.
   **Extended, and it moved the pick** — `p2_cifar_ce_rtol` (committed as `f0f89b2`,
   snapshot `f0f89b24_203a4e61`): `rtol ∈ {0.03, 0.1, 0.3}` restricted to `k = 128` and
@@ -776,23 +812,56 @@ passes ran partly or wholly on **A100-SXM4-80GB** (CIFAR, nanoGPT and GPT-2 ran 
 part throughout). `bench/check_timing_join.py` compares each timing run's final validation
 loss with its scan twin at identical `run_id` **and** `run_hash`:
 
-| scan | median relative deviation | max | verdict |
-|---|---|---|---|
-| `exp_nanogpt_speedrun` | 0.00e+00 | 0.00e+00 | bit-identical |
-| `polynomial_scan` | 8.7e-09 | 2.5e-01 (Muon / MuonW at lr 0.01) | hardware-sensitive methods only |
-| `toy_1d_scan` | 4.5e-07 | 2.1e-01 (HIG at 1e-9-scale losses) | as above |
-| `mnist_scan_ce` | 5.7e-05 | 3.1e-01 (L-BFGS line search, SOAP) | as above |
-| `mnist_scan_labelRegression` | 8.3e-03 | **2.0e+02** (one SOAP run at lr 0.01) | see caveat |
-| `cifar10_resnet_scan_labelRegression` | 2.5e-02 | 2.3e-01 | cuDNN kernel selection |
-| `cifar10_resnet_ce_scan` | 3.1e-02 | 2.1e-01 | cuDNN kernel selection |
+The `median` / `max` columns are over **all** methods of the scan, so they are aggregates over 14
+(MLP), 11 (CIFAR) or 5 (nanoGPT) optimizers and must not be read as any one method's number —
+which is exactly the mistake corrected below. **Sven's own** median / max is given beside them.
 
-Sven and the plain first-order MLP runs reproduce; **Muon (bf16 Newton–Schulz), L-BFGS
-(`strong_wolfe` line search), SOAP / Shampoo / HIG (eigendecompositions at 1e-9-scale losses)
-and every CIFAR run are not bit-reproducible across GPU types.** This is cross-hardware
-nondeterminism, not a lifecycle bug — the hashes match, so the two numbers are of the same
-experiment — and it does not affect the validity of the timing measurements. It deserves a
-sentence in the paper: *seed-level* results for Muon and L-BFGS are not reproducible across
-GPU types.
+| scan | pairs | GPU pair | median (all methods) | max (all methods) | **Sven** median / max |
+|---|---|---|---|---|---|
+| `exp_nanogpt_speedrun` | 25 | same (80GB→80GB) | 0.00e+00 | 0.00e+00 | **0.0e+00 / 0.0e+00** |
+| `polynomial_scan` | 75 | MIG-40→80GB | 8.7e-09 | 2.5e-01 (Muon / MuonW at lr 0.01) | 6.0e-09 / 1.7e-08 |
+| `toy_1d_scan` | 75 | MIG-40→80GB | 4.5e-07 | 2.1e-01 (HIG at 1e-9-scale losses) | 1.9e-05 / 2.6e-05 |
+| `mnist_scan_ce` | 70 | MIG-40→80GB | 5.7e-05 | 3.1e-01 (L-BFGS line search, SOAP) | **1.40e-02 / 3.80e-02** |
+| `mnist_scan_labelRegression` | 70 | MIG-40→80GB | 8.3e-03 | **2.0e+02** (one SOAP run at lr 0.01) | 1.4e-04 / 1.3e-03 |
+| `cifar10_resnet_scan_labelRegression` | 55 | **same** (80GB→80GB) | 2.5e-02 | 2.3e-01 | 1.1e-02 / 8.3e-02 |
+| `cifar10_resnet_ce_scan` | 60 | **same** (80GB→80GB) | 3.0e-02 | 2.1e-01 | 1.4e-02 / 3.2e-02 |
+
+**Corrected 2026-09-21.** An earlier version of this section said "Sven and the plain first-order
+MLP runs reproduce" and listed Sven among the bit-reproducible methods. **That is false, and the
+per-scan medians above hide it** — each is an aggregate over 14 methods. Joining every timing run
+to its scan twin at identical `run_id` **and** `run_hash` and splitting by method and by GPU pair
+gives the honest statement:
+
+* **No method is bit-reproducible across GPU types.** Sven's own cross-GPU deviation is
+  method- *and* scan-dependent: `polynomial_scan` median 6.0e-09 / max 1.7e-08 · `toy_1d_scan`
+  1.9e-05 / 2.6e-05 · `mnist_scan_labelRegression` 1.4e-04 / 1.3e-03 · **`mnist_scan_ce`
+  1.40e-02 / 3.80e-02** over its 4 MIG-40GB → A100-80GB pairs (0.1165537 in the scan vs
+  0.1121249 in the timing pass). That 3.8 % is *larger* than the ±1.4 % confirm-vs-tuning gap
+  the MNIST-CE table reports for Sven, and comparable to Sven's own 4.5 % confirmation seed std
+  — so a single MNIST-CE Sven seed is not a reproducible number across hardware.
+* **The "plain first-order" half fails too.** On `mnist_scan_labelRegression` the cross-GPU
+  median is Adam 1.01e-02, AdamW 5.05e-03 and RMSprop 2.38e-02 — all of them **larger** than
+  Sven's 1.4e-04 on the same scan. Only SGD and SGD+momentum are near-zero there (1.6e-07 and
+  2.0e-08), and even they are not exactly 0.
+* **Same-GPU pairs on the MLP scans and nanoGPT are exactly bit-identical** (relative deviation
+  `0.000e+00`), which is the control that makes the attribution to hardware rather than to a
+  lifecycle bug: the same code, seeds and hash on the same GPU model reproduce to the last bit.
+  Where a MIG-slice run was re-timed on an A100-80GB it does not.
+* **The two CIFAR scans are the exception to that control**, and the mechanism there is *not*
+  cross-type: both passes ran wholly on A100-SXM4-80GB, and Sven's same-GPU pairs still deviate
+  by a median 1.1e-02 (label regression) and 1.4e-02 (CE), with every baseline in the same 1e-02
+  range. That is within-hardware cuDNN nondeterminism (kernel selection and atomics), so **no
+  CIFAR seed-level result is bit-reproducible at all**, on any GPU.
+* Worst offenders overall remain **Muon (bf16 Newton–Schulz)**, up to 2.5e-01 on polynomial,
+  **L-BFGS** (`strong_wolfe` line search, up to 3.1e-01 on MNIST-CE) and **SOAP / Shampoo / HIG**
+  (eigendecompositions at 1e-9-scale losses, up to 2.1e-01 on toy).
+
+The hashes match in every case, so the two numbers are of the same experiment, and none of this
+affects the validity of the timing measurements. The paper sentence is therefore not "Muon and
+L-BFGS are not reproducible" but: **seed-level results are not bit-reproducible across GPU types
+for any method, the magnitude is method- and task-dependent (1e-08 to 1e-01), and on CIFAR they
+are not bit-reproducible even on identical hardware** — which is why every number reported is a
+mean over 5 seeds with its spread, never a single run.
 
 **One caveat to carry forward:** on `mnist_scan_labelRegression` a single SOAP run
 (`lr 0.01, mseed 3001`) ends at 0.901 in the scan and **184.8** in the timing pass. That is
@@ -847,10 +916,13 @@ Flagged, not fixed — each is in a file this document does not own.
    at an unchanged cost (177.3 → 177.6 ms/step, 22.96 GB either way — as §1.5's Gram statement
    requires, since `rtol` and `lr` do not enter the step cost). It is still an optimisation
    failure against 73–78% for the baselines, and the paper sentence does not survive.
-4. **`campaign/CAMPAIGN_STATUS.md`'s 09-19 22:11 headline table is pre-extension.** It quotes
-   toy Sven 4.8e-07 and polynomial Sven 0.118; after the extension round the selected values
-   are 2.873e-07 and 0.10948. The status file is a living log and says so, but the numbers
-   should not be quoted from it.
+4. **`campaign/CAMPAIGN_STATUS.md`'s 09-19 22:11 headline table is pre-extension**, and its
+   09-20 16:10 and ~21:55 entries are pre-**re-selection**. Superseded numbers, with the value of
+   record beside each: toy Sven 4.8e-07 → **2.873e-07**; polynomial Sven 0.118 → **0.10948**;
+   **CIFAR-CE Sven 1.40 (10th of 11) → 1.3552** at the new pick k = 128 / lr = 0.5 / rtol = 0.3
+   (§5), with test accuracy **11/11 → 10/11** and `train_eval` 0.82 → 0.159; GPT-2 "Muon 3.77" →
+   **3.741** at its best lr (0.003). The status file is a living log and says so, but no number
+   may be quoted from it — §5, §3.3 and `analysis/tables/` carry the values of record.
 5. **`bn_mode` is recorded per family on models that have no running statistics.** MLP,
    nanoGPT and GPT-2 svd rows record `bn_mode: "frozen"` while their `standard` rows record
    `"batch"`, from the same config. It is cosmetic — those models have no norm layer with
@@ -891,6 +963,21 @@ pre-campaign state and appear in no launcher):
 250–2000 images and are superseded.
 
 **Also parked:** the 200 enumerated JD + HIG runs on the two CIFAR configs (§2).
+
+**Never run, and not answered anywhere — reviewer 2's question 2b.** *"Can you give results on a
+classifier model using CCE loss with Sven used only on intermediate layers? Can you also compare
+your result with Muon?"* The second half is answered on every scan (Muon and MuonW are baselines
+throughout, and §1.7 documents the grouping rule that decides which tensors Muon gets). **The
+first half has no experiment.** It is easy to mistake three things for it, and none of them is it:
+§1.7's Muon grouping rule describes what *Muon* is applied to, not Sven; `param_fraction` (§3.6,
+and Fig-5 in §3.3) masks a random subset of parameter **elements**, resampled every step, not a
+layer group — so `paramfrac_analysis` and Fig-5 do not answer it either; and `mnist_scan_ce` /
+`cifar10_resnet_ce_scan` run Sven on *all* parameters. The mirrored ablation — Sven restricted to
+exactly the hidden-matrix group Muon receives (hidden 2-D weights and flattened convs), with
+AdamW on embeddings / head / 1-D tensors — was never configured or launched, and
+`campaign/ANALYSIS_PLAN.md` §4 does not list it, so this is a scope gap inherited from the plan
+rather than an execution failure. It would need a new optimizer-group option in the runner, not
+just a grid edit. **State it as an open question, not as answered.**
 
 **Stale, in no launcher:** `mnist_scan`, `mnist_microbatch_scan` (legacy configs with learning
 rates up to 100, superseded by `mnist_scan_ce` and the label-regression micro-batch scan),
