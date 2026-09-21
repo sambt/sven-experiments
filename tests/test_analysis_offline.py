@@ -729,7 +729,7 @@ def test_make_plots_resolves_a_notebook_by_name_and_a_group_by_directory():
 def test_the_paper_figure_notebooks_are_generated_from_the_registry():
     """`analysis/notebooks/paper/` is one notebook per figure group, and every figure the
     paper carries must have a cell in one of them -- which is what the generator
-    (`agent_lab/paper_nb/build_fig_notebooks.py`) guarantees by reading the registry.
+    (`tools/build_fig_notebooks.py`) guarantees by reading the registry.
     Regenerate after adding a figure; this test is what catches forgetting to."""
     sys.path.insert(0, str(REPO / 'analysis'))
     from paper_assets import figspec as F

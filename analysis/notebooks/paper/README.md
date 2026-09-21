@@ -76,5 +76,5 @@ screen copy only. To judge the type size, open the PNG twin under
 Write the builder in the right `paper_assets` module as `draw(ctx, opts) -> (fig, meta)`
 with `meta` carrying `provenance` and `axes`, add a `FigureSpec` to that module's
 `FIGURE_SPECS`, and regenerate these notebooks with
-`cd analysis && ../.venv/bin/python ../agent_lab/paper_nb/build_fig_notebooks.py`. The
+`.venv/bin/python tools/build_fig_notebooks.py`. The
 new figure then appears in `pf.figures()`, in its group's notebook and in the CLI build.
