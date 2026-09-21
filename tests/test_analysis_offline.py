@@ -14,7 +14,7 @@ through ``campaign/run_cpu_tests.sh``.
 ``experiments/optimizer_profile.py`` imports torch at module scope, so its copy of
 ``cycle_mean`` / ``summarize`` cannot be imported here.  The tests EXTRACT those two
 functions from the source with ``ast`` and exercise them directly, which is what
-keeps the duplicate in ``analysis/profile_helpers.py`` honest.
+keeps the duplicate in ``analysis/lib/profile_helpers.py`` honest.
 """
 
 import ast
@@ -23,6 +23,7 @@ import itertools
 import json
 import math
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -35,7 +36,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt   # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import analysis_helpers as ah    # noqa: E402
 import budget                    # noqa: E402
@@ -653,3 +655,70 @@ def test_nbconvert_is_a_recorded_dev_dependency_and_installed():
     assert importlib.util.find_spec('nbconvert') is not None, \
         "uv pip install --python .venv/bin/python nbconvert"
     assert (REPO / '.venv' / 'bin' / 'jupyter').is_file()
+
+
+# ===========================================================================
+# The analysis/ layout (2026-09-21 reorganisation)
+# ===========================================================================
+NB_GROUPS = ('headline', 'spectra', 'mlp_studies', 'large_models', 'profiling', 'legacy')
+
+
+def _notebooks():
+    return sorted((REPO / 'analysis' / 'notebooks').glob('*/*.ipynb'))
+
+
+def test_every_notebook_lives_in_a_group_directory():
+    """No notebook is left at the top of analysis/, and every one is in a known group."""
+    assert not list((REPO / 'analysis').glob('*.ipynb'))
+    nbs = _notebooks()
+    assert len(nbs) == 23, [p.name for p in nbs]
+    assert {p.parent.name for p in nbs} <= set(NB_GROUPS)
+    names = [p.stem for p in nbs]
+    assert len(set(names)) == len(names), 'a notebook name must resolve to ONE path'
+
+
+def test_every_notebook_bootstraps_to_the_analysis_directory():
+    """The first cell must chdir to analysis/ and put analysis/lib on sys.path: every
+    path in the notebooks (`../experiment_results`, `plots_v2/`, `tables/`) and in the
+    helpers is relative to analysis/, not to the notebook's group directory."""
+    for path in _notebooks():
+        first = next(''.join(c['source']) for c in json.loads(path.read_text())['cells']
+                     if c['cell_type'] == 'code')
+        assert 'os.chdir(_A)' in first, path.name
+        assert "sys.path.insert(0, os.path.join(_A, 'lib'))" in first, path.name
+        assert "sys.path.insert(0, '.')" not in first, path.name
+
+
+def test_the_helper_modules_are_in_analysis_lib():
+    lib = REPO / 'analysis' / 'lib'
+    for module in ('style', 'scan_analysis', 'analysis_helpers', 'headline', 'headline_figs',
+                   'reviewer_figs', 'large_figs', 'spectra_figs', 'sv_diagnostics',
+                   'ckpt_tools', 'paired', 'budget', 'profile_helpers', 'legacy_diff',
+                   'repair_legacy'):
+        assert (lib / f'{module}.py').is_file(), module
+    assert not list((REPO / 'analysis').glob('*.py'))       # none left at the top
+
+
+def test_helper_anchors_point_at_the_analysis_directory():
+    """The modules that derive paths from __file__ moved one level deeper, so their
+    anchors must climb one level further (headline.TABLES_DIR = analysis/tables, ...)."""
+    import headline as hl
+    import legacy_diff as ld
+    import profile_helpers as ph
+    analysis = REPO / 'analysis'
+    assert hl.TABLES_DIR == analysis / 'tables'
+    assert hl.SELECTION_PATH == REPO / 'bench' / 'best_configs.json'
+    assert ld.PLOT_DIR == analysis / 'plots_v2' / 'legacy_vs_fresh'
+    assert ph.ROOT_V3 == REPO / 'profile_results_v3'
+
+
+def test_make_plots_resolves_a_notebook_by_name_and_a_group_by_directory():
+    src = (REPO / 'make_plots.sh').read_text()
+    assert 'analysis/notebooks' in src
+    # the script names notebooks WITHOUT a group or a suffix and looks them up; the four
+    # lists must therefore stay in step with what is on disk, in both directions.
+    known = {p.stem for p in _notebooks()}
+    listed = {w for w in re.findall(r'[A-Za-z0-9_]+', src) if w in known}
+    assert listed == known, (known - listed, listed - known)
+    assert 'find "$NBDIR" -name "${1%.ipynb}.ipynb"' in src   # by name
+    assert 'if [ -d "$NBDIR/$1" ]; then' in src               # by group directory

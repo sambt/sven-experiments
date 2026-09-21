@@ -3,17 +3,25 @@
 #
 #   ./make_plots.sh                 every notebook, in dependency-free order
 #   ./make_plots.sh toy_1d_analysis comparisons     just these (name without .ipynb)
+#   ./make_plots.sh mlp_studies     every notebook in one group directory
 #   ONLY_SCANS=1 ./make_plots.sh    the four headline scan notebooks + comparisons
 #   NO_PROFILES=1 ./make_plots.sh   everything except the four profile_* notebooks
 #                                   (those read profile_results_v2/ -> v3, not the scans)
+#
+# The notebooks live in group directories under analysis/notebooks/ (see
+# analysis/notebooks/README.md); a notebook is named here WITHOUT its group or its
+# .ipynb suffix and looked up by name, so moving one between groups needs no edit here.
+# Each notebook's first cell chdir's to analysis/, which is what every analysis path is
+# relative to (plots_v2/, tables/, ../experiment_results), and puts analysis/lib/ on
+# sys.path.
 #
 # A notebook whose data is not in experiment_results/ prints "[skip] ... not found" /
 # "missing ..." and carries on (see analysis/RERUNS_NEEDED.md, item 7); a notebook that
 # errors stops the script and leaves its partially executed copy in place.
 #
-# Every notebook loads the shared helpers (style.py, scan_analysis.py, ...) fresh, so this
-# is also how the saved outputs are brought back in line after a helper change -- they are
-# stale until it is run (analysis/ANALYSIS_FIXES.md).
+# Every notebook loads the shared helpers (lib/style.py, lib/scan_analysis.py, ...) fresh,
+# so this is also how the saved outputs are brought back in line after a helper change --
+# they are stale until it is run (analysis/ANALYSIS_FIXES.md).
 set -eu
 REPO=$(cd "$(dirname "$0")" && pwd)
 # The venv's OWN jupyter: the `jupyter` on PATH (~/.local/bin) cannot import
@@ -25,6 +33,7 @@ if [ ! -x "$JUPYTER" ] || ! "$JUPYTER" nbconvert --version >/dev/null 2>&1; then
   echo "       'uv pip install --python .venv/bin/python nbconvert')" >&2
   exit 1
 fi
+NBDIR=$REPO/analysis/notebooks
 cd "$REPO/analysis"
 
 SCANS=(toy_1d_analysis polynomial_analysis mnist_analysis mnist_analysis_labelRegression comparisons)
@@ -44,14 +53,34 @@ NEW=(
   legacy_vs_fresh      # WP5: what the robustness fixes changed
 )
 
+# name (or group directory) -> path under analysis/notebooks/
+resolve() {
+  if [ -d "$NBDIR/$1" ]; then
+    find "$NBDIR/$1" -name '*.ipynb' | sort
+    return
+  fi
+  local hits
+  hits=$(find "$NBDIR" -name "${1%.ipynb}.ipynb" | sort)
+  if [ -z "$hits" ]; then
+    echo "error: no notebook or group named '$1' under analysis/notebooks/" >&2
+    exit 1
+  fi
+  echo "$hits"
+}
+
 if [ $# -gt 0 ]; then NBS=("$@")
 elif [ "${ONLY_SCANS:-0}" = 1 ]; then NBS=("${SCANS[@]}")
 elif [ "${NO_PROFILES:-0}" = 1 ]; then NBS=("${SCANS[@]}" "${STUDIES[@]}" ${NEW[@]+"${NEW[@]}"})
 else NBS=("${SCANS[@]}" "${STUDIES[@]}" ${NEW[@]+"${NEW[@]}"} "${PROFILES[@]}"); fi
 
+PATHS=()
 for nb in "${NBS[@]}"; do
-  printf '== %s ==\n' "$nb"
-  "$JUPYTER" nbconvert --to notebook --execute --inplace "$nb.ipynb" \
+  while IFS= read -r p; do PATHS+=("$p"); done < <(resolve "$nb")
+done
+
+for path in "${PATHS[@]}"; do
+  printf '== %s ==\n' "${path#"$NBDIR"/}"
+  "$JUPYTER" nbconvert --to notebook --execute --inplace "$path" \
       --ExecutePreprocessor.timeout=3600 --log-level=ERROR
 done
-echo "done: ${#NBS[@]} notebook(s); plots under analysis/plots_v2/"
+echo "done: ${#PATHS[@]} notebook(s); plots under analysis/plots_v2/"

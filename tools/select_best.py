@@ -4,7 +4,7 @@
     tools/select_best.py                       # the seven headline scans -> bench/best_configs.json
     tools/select_best.py --print               # table only, write nothing
     tools/select_best.py toy_1d_scan --print
-    tools/select_best.py --compare-analysis    # also cross-check analysis/scan_analysis.py
+    tools/select_best.py --compare-analysis    # also cross-check analysis/lib/scan_analysis.py
 
 This is the ONE place Phase 5 decides what "the best configuration" is; the timing,
 diagnostics and confirmation passes are generated from its output
@@ -26,7 +26,7 @@ Note that `tools/reconcile.py:best_configs` implements only the LAST tier (seed 
 the two disagree exactly where a configuration wins on the mean by diverging on seeds its
 rivals survive -- on the real results that is LBFGS and SOAP, 6 of 85 selections. This
 tool therefore ranks itself and reports the difference (`--rule seed_mean` reproduces
-reconcile's answer); `analysis/scan_analysis.py:Scan.configs`, which makes the paper's
+reconcile's answer); `analysis/lib/scan_analysis.py:Scan.configs`, which makes the paper's
 plots, implements the same full rule and is cross-checked with `--compare-analysis`.
 
 What this tool adds on top of the rule is the step neither of the others takes -- turning
@@ -85,7 +85,7 @@ SVEN_METHOD = "SVD"
 TEST_KEYS = ("test", "test_acc", "test_step")
 
 #: `full` = CHANGES_NEEDED.md section 1 (eligible -> fewest diverged -> seed mean), which
-#: is what `analysis/scan_analysis.py` plots; `seed_mean` = `reconcile.best_configs`'s
+#: is what `analysis/lib/scan_analysis.py` plots; `seed_mean` = `reconcile.best_configs`'s
 #: single tier, kept so the two tables can be diffed without editing reconcile.
 RULES = ("full", "seed_mean")
 
@@ -382,7 +382,7 @@ def rank_key(cfg, hparams, rule="full"):
     Everything after the score is a TIE-BREAK, and exact ties are the normal case, not a
     corner case: whenever Sven's rtol-rank stays below k, every larger k is the same
     trajectory, and every HIG tau below the numerical floor cuts nothing. The order is
-    `analysis/scan_analysis.py:Scan.configs`'s -- smallest k, largest rtol, smallest lr,
+    `analysis/lib/scan_analysis.py:Scan.configs`'s -- smallest k, largest rtol, smallest lr,
     i.e. the cheapest equivalent configuration -- extended with tau (which that function
     leaves to a stable sort over the dataframe, i.e. to file order) and finally the
     configuration key, so the answer does not depend on which machine globbed the results.
@@ -540,7 +540,7 @@ def assert_no_test_metric(report):
 # ---------------------------------------------------------------------------
 
 def compare_with_analysis(reports, root):
-    """Disagreements with `analysis/scan_analysis.py`'s `best_sven` / `best_baseline`.
+    """Disagreements with `analysis/lib/scan_analysis.py`'s `best_sven` / `best_baseline`.
 
     That module implements one rule this tool's does NOT: it ranks `eligible ->
     n_diverged -> seed mean` and then breaks exact ties deterministically (smallest k,
@@ -554,11 +554,12 @@ def compare_with_analysis(reports, root):
     error, if the import or a scan fails.
     """
     out = []
+    sys.path.insert(0, os.path.join(REPO, "analysis", "lib"))
     sys.path.insert(0, os.path.join(REPO, "analysis"))
     try:
         import scan_analysis                                     # noqa: WPS433
     except Exception as exc:
-        return [f"cannot import analysis/scan_analysis.py: {type(exc).__name__}: {exc}"]
+        return [f"cannot import analysis/lib/scan_analysis.py: {type(exc).__name__}: {exc}"]
     for rep in reports:
         try:
             s = scan_analysis.load_scan(rep["scan"], rep["scan"], "/tmp/_select_best",
@@ -688,7 +689,7 @@ def main(argv=None):
     ap.add_argument("--print", dest="print_only", action="store_true",
                     help="print the table, write nothing")
     ap.add_argument("--compare-analysis", action="store_true",
-                    help="also run analysis/scan_analysis.py's selection and diff it "
+                    help="also run analysis/lib/scan_analysis.py's selection and diff it "
                          "(needs numpy/pandas)")
     a = ap.parse_args(argv)
 
@@ -732,7 +733,7 @@ def main(argv=None):
               + ", ".join(f"{s} ({n} run(s) to do)" for s, n in incomplete))
 
     if a.compare_analysis:
-        print("\n[select] cross-check against analysis/scan_analysis.py:")
+        print("\n[select] cross-check against analysis/lib/scan_analysis.py:")
         diffs = compare_with_analysis(reports, root)
         for d in diffs:
             print(f"[select]   DIFF {d}")

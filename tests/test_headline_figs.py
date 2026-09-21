@@ -1,4 +1,4 @@
-"""CPU tests for `analysis/headline_figs.py` -- the WP2 phase-B notebook helpers.
+"""CPU tests for `analysis/lib/headline_figs.py` -- the WP2 phase-B notebook helpers.
 
 The synthetic campaign is the one `tests/test_headline.py` builds (a tuning scan, its
 ``_confirm`` and ``_timing`` passes and a hand-written schema-2 selection file, read
@@ -34,6 +34,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))
 sys.path.insert(0, str(REPO / 'analysis'))
 sys.path.insert(0, str(REPO / 'tests'))
 

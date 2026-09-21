@@ -20,7 +20,7 @@ payoff:
    logging (`SvenGram.step` records all B singular values). Delete the `k = B` Sven files of
    the four headline scans and resubmit with `k_values: [B]`.
 3. **Item 2 -- timing**: regenerate `bench/best_configs.json` from the current
-   `analysis/scan_analysis.py` (`Scan.best_sven` / `best_baseline`; rule: eligible -> fewest
+   `analysis/lib/scan_analysis.py` (`Scan.best_sven` / `best_baseline`; rule: eligible -> fewest
    diverged seeds -> seed-mean final val loss -> smallest k, largest rtol) and run
    `submit_timing_runs.sh` for every scan; at minimum MNIST-CE LBFGS and the new AdamW/MuonW.
 4. Items 4-5 (missing seeds, more seeds) as budget allows.
@@ -318,7 +318,7 @@ disagree, one of them has been hand-edited.
   ran mostly on A100-40GB MIG slices and the passes on A100-80GB. Hashes match, so these are
   the same experiments.
 * `bench/best_configs.json` (schema 2, rule `full`, generated 2026-09-20T03:58:14-0400) agrees
-  with `analysis/scan_analysis.py` on all **85** (scan, method) picks; `tools/reconcile.py`'s
+  with `analysis/lib/scan_analysis.py` on all **85** (scan, method) picks; `tools/reconcile.py`'s
   quick table differs on 6 of the 85 because it omits the fewest-diverged tier.
 * No `_stale/` and no `attempts/` directory exists under any of the 43 result directories.
 

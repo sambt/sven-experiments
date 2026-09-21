@@ -1,4 +1,4 @@
-"""CPU tests for `analysis/legacy_diff.py` -- the legacy-vs-fresh account (WP5).
+"""CPU tests for `analysis/lib/legacy_diff.py` -- the legacy-vs-fresh account (WP5).
 
 Two SYNTHETIC results roots in a tmp directory (a "legacy" one with no manifest and no
 test columns, a "fresh" one with both and a ``_confirm`` pass), a hand-written repair
@@ -30,7 +30,8 @@ import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import headline as hl             # noqa: E402
 import legacy_diff as ld          # noqa: E402

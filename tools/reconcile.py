@@ -18,7 +18,7 @@ For each scan it answers three questions and nothing else:
    written LAST, `started/{run_id}.started` means "attempted and crashed", a fresh
    `claims/{run_id}.claim*` means "a live worker has it".
 3. **Is the answer on an edge?** For every method, the best configuration by seed-mean
-   final validation loss (diverged runs excluded, `analysis/style.py` semantics) and
+   final validation loss (diverged runs excluded, `analysis/lib/style.py` semantics) and
    whether its lr -- k / rtol for Sven, tau for HIG -- sits at the end of its grid, which
    is what C-B3 extension rounds key off. A record of a configuration the grid no longer
    describes never wins (see :func:`best_configs`).
@@ -61,7 +61,7 @@ STATUSES = ("ok", "diverged", "oom", "error")
 DONE_STATUSES = frozenset({"ok", "diverged"})
 CLAIM_TIMEOUT_S = 600.0          # claims.CLAIM_TIMEOUT_S: older mtime => stale
 
-# --- analysis conventions (copies of analysis/style.py, which imports numpy/pandas) ----
+# --- analysis conventions (copies of analysis/lib/style.py, which imports numpy/pandas) ----
 DIVERGED_FACTOR = 10.0           # style.DIVERGED_FACTOR
 STATUS_DIVERGED = "diverged"
 _SEED_SUFFIX_RE = re.compile(r"_mseed-?\d+(_lseed-?\d+)?")   # style.config_key

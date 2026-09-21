@@ -1,18 +1,18 @@
 # What the robustness fixes changed
 
 `CHANGES_NEEDED.md` §4.2 phase 7 and §6 ask for the differences from the legacy tables in
-writing. This is that account. Every number here is computed by `analysis/legacy_vs_fresh.ipynb`
-(module `analysis/legacy_diff.py`, tables exported to `analysis/tables/legacy/`, figures to
+writing. This is that account. Every number here is computed by `analysis/notebooks/legacy/legacy_vs_fresh.ipynb`
+(module `analysis/lib/legacy_diff.py`, tables exported to `analysis/tables/legacy/`, figures to
 `analysis/plots_v2/legacy_vs_fresh/`); re-executing that notebook regenerates all of them.
 
 **How the two sides are made comparable.** Legacy = `experiment_results_legacy_2026-09-18/`,
 read-only. Its validation losses averaged per-batch means, so every legacy number below is the
-**example-weighted repair** (`analysis/repair_legacy.py` → `analysis/legacy_repair/*.parquet`),
+**example-weighted repair** (`analysis/lib/repair_legacy.py` → `analysis/legacy_repair/*.parquet`),
 which is exact: the equal-weight mean of the same per-batch blocks reproduces the stored curve to
 < 2e-5 on all 21 repaired scans. The correction is 0.06–0.42 % median on the headline scans and
 8.6 % median / 53 % max on the masked CIFAR Fig-5 runs. The legacy *selection* is the binding rule
 (`CHANGES_NEEDED.md` §1) applied to legacy data; the fresh numbers are not re-selected at all but
-read from `bench/best_configs.json` through `analysis/headline.py`. As a gate, this module's own
+read from `bench/best_configs.json` through `analysis/lib/headline.py`. As a gate, this module's own
 rule reproduces **85 of 85** selections exactly, with no exception, and the notebook asserts that
 any such drift is confined to the scans `headline.freshness_report()` flags as provisional — a set
 that is now empty, since the CIFAR-CE `rtol` extension has landed (45/45 `ok`) and
@@ -190,7 +190,7 @@ three), different seed counts (5 tuning vs 5 tuning **and** 5 confirmation), dif
 data on every scan, and different GPU types between the scans (mostly MIG A100-40GB) and the
 confirmation/timing passes (A100-80GB) — nothing here is a bit-level comparison. A rank change of
 one place is often a few per cent of loss between methods whose seed bands overlap; the paired
-differences in `analysis/headline.py` are where that is quantified. **CIFAR-CE is settled as of
+differences in `analysis/lib/headline.py` are where that is quantified. **CIFAR-CE is settled as of
 2026-09-21**: the `rtol` extension landed (45/45 `ok`, 0 diverged), `tools/select_best.py` moved
 the Sven pick from k = 128 / lr = 0.1 / rtol = 1e-2 (1.4028) to **k = 128 / lr = 0.5 / rtol = 0.3
 (1.3552)**, and the timing / diag / confirm passes were re-run for it; every CIFAR-CE number here

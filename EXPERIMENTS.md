@@ -86,7 +86,7 @@ N = 50,000 and not 60,000.
 
 * **Selection uses validation only.** The best configuration of a method is chosen by the
   seed-mean final validation loss under the binding rule (§5). **Test metrics are outcomes and
-  are never selection inputs** — `analysis/scan_analysis.py`, `analysis/analysis_helpers.py`
+  are never selection inputs** — `analysis/lib/scan_analysis.py`, `analysis/lib/analysis_helpers.py`
   and `tools/select_best.py` assert this.
 * One `evaluate()` for val, test and `train_eval`: **example-weighted** (token-weighted for
   language models), in **eval mode** with every submodule's previous training flag restored
@@ -224,7 +224,7 @@ CIFAR-CE Sven step at 177.6 ms with 22.96 GB peak, consistent with the v3 profil
 **The baselines are the control**, since only Sven ever called `empty_cache`: median `v3/v2`
 step time is 0.993 (toy-1D), 1.010 (polynomial), 0.969 (MNIST), 0.999 (nanoGPT), 1.008
 (CIFAR). 5 of 63 baseline set points moved by more than 10%, each accounted for in
-`analysis/profile_overview.ipynb`: two L-BFGS entries whose strong-Wolfe line search switches
+`analysis/notebooks/profiling/profile_overview.ipynb`: two L-BFGS entries whose strong-Wolfe line search switches
 regime mid-measurement (p90/p10 up to 9.1), one whose polynomial run diverged in one pass, and
 Muon on MNIST (×0.85) and CIFAR (×1.20) — real, and allowed, because
 `PYTORCH_CUDA_ALLOC_CONF` is a process-wide setting and the second fix is not Sven-only. Eight
@@ -434,7 +434,7 @@ low-`f` collapse survives (seed-mean final val / test accuracy at pf 1 → 0.05:
 chance 10%). Cost is unchanged by the re-point, as the Gram statement of §1.5 requires:
 187.5 ms/step and 22.96 GB at pf = 1, and masking makes the *full-Jacobian capture no cheaper*
 — the slowest point is pf = 0.5 at 453.2 ms (×2.42) and memory falls only to ×0.51 at
-pf = 0.05 while its step is ×1.71. `analysis/cifar_analysis.ipynb` §6 draws both
+pf = 0.05 while its step is ×1.71. `analysis/notebooks/large_models/cifar_analysis.ipynb` §6 draws both
 configurations, reading which is selected out of `bench/best_configs.json` rather than having
 it typed in; see also §9 item 1.
 
@@ -501,7 +501,7 @@ SOAP 1,126 ms. Its 29 runs are ~122 GPU-h — a third of the whole campaign's GP
 doubling the scan. Sven's best validation loss is at lr 0.1 (interior optimum) against
 baselines around 3.8–4.0 — a **negative** scaling data point, to be reported as such with the
 untuned-`k`/`B` caveat. The headline numbers belong to the analysis notebooks
-(`analysis/gpt2_analysis.ipynb`), not here.
+(`analysis/notebooks/large_models/gpt2_analysis.ipynb`), not here.
 
 ---
 
@@ -566,7 +566,7 @@ The **selection of record** is `bench/best_configs.json`, produced by `tools/sel
 > missing) → **fewest diverged seeds** → **lowest seed-mean final VALIDATION loss** over the
 > non-diverged runs. Diverged = `analysis/style.is_diverged`. Test metrics are never read.
 
-`analysis/scan_analysis.py` implements the same rule and agrees with it on all 85 (scan,
+`analysis/lib/scan_analysis.py` implements the same rule and agrees with it on all 85 (scan,
 method) picks. **`tools/reconcile.py`'s quick "best config per method" table omits the
 fewest-diverged tier and differs on 6 of the 85 — never quote it.** `select_best.py` proves
 that each entry's `overrides` string expands to exactly the five seed `run_id`s (and run
@@ -605,7 +605,7 @@ extended. **Three** open edges remain:
   **Decision: accepted, not extended**, on two grounds. First, the pick at that edge is an
   **exact three-way tie**: k = 32, 48 and 64 at lr = 0.5 / rtol = 0.3 all give the identical
   seed-mean 0.11493559425553576 over 5/5 seeds, because at rtol = 0.3 the rtol-rank (3.4 of
-  B = 64, `analysis/comparisons.ipynb` §2) truncates far below every one of those k, so k does
+  B = 64, `analysis/notebooks/spectra/comparisons.ipynb` §2) truncates far below every one of those k, so k does
   not bind and the tie-break on smallest k picks 32; the optimum is a plateau in k, not a point.
   Second, the direction of the edge is a *weaker* truncation, and the CIFAR-CE extension is the
   measurement of what lies past it: pushing `rtol` from 1e-2 to 0.3 there bought 3.4 % of
@@ -677,7 +677,7 @@ stays per step. Legacy `sv_min` is **not** written for schema-2 records: it chan
 between old records (smallest kept SV) and new ones (σ_B, i.e. numerical noise), so the name
 was retired rather than reused.
 
-Records predating 2026-09-10 carry the spectra inline in the JSONL; `analysis/style.py` reads
+Records predating 2026-09-10 carry the spectra inline in the JSONL; `analysis/lib/style.py` reads
 both layouts. Legacy spectra were truncated at `rtol` and their tails are survivorship
 averages — **nothing in the fresh analysis may read them**.
 
@@ -1037,7 +1037,7 @@ SNAP=$(tools/deploy_snapshot.sh | tail -1)
 # 4. once reconcile is clean: the selection of record
 .venv/bin/python tools/select_best.py --require-complete   # -> bench/best_configs.json
 #   --require-complete refuses a half-finished grid extension (3-of-5 seeds can win)
-#   --compare-analysis also diffs against analysis/scan_analysis.py's selection
+#   --compare-analysis also diffs against analysis/lib/scan_analysis.py's selection
 
 # 5. regenerate the phase-5 plan from that selection and launch the passes
 .venv/bin/python tools/gen_phase5_plan.py             # -> campaign/plan_phase5.yaml

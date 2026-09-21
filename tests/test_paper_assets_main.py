@@ -30,6 +30,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 ANALYSIS = REPO / 'analysis'
 if str(ANALYSIS) not in sys.path:
+    sys.path.insert(0, str(ANALYSIS / 'lib'))
     sys.path.insert(0, str(ANALYSIS))
 
 from paper_assets import common as C            # noqa: E402

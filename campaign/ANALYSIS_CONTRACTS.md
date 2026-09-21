@@ -1,5 +1,16 @@
 # Analysis-phase contracts (2026-09-20) — binding for every analysis agent
 
+> **Layout change 2026-09-21 (after this document was written).** `analysis/` was
+> reorganised: the notebooks moved into group directories `analysis/notebooks/{headline,
+> spectra,mlp_studies,large_models,profiling,legacy}/` and the helper modules into
+> `analysis/lib/`. Every path named below therefore reads `analysis/lib/<module>.py` and
+> `analysis/notebooks/<group>/<notebook>.ipynb`; the file-ownership table at the bottom is
+> unchanged in substance. A notebook's first cell chdir's to `analysis/` and puts
+> `analysis/lib/` on `sys.path`, so all the path conventions below (`../experiment_results`,
+> `plots_v2/<name>/`, `tables/`) are unchanged. `./make_plots.sh` takes a notebook NAME
+> (no group, no suffix) or a group directory. Map: `analysis/README.md`,
+> index: `analysis/notebooks/README.md`. Nothing else about the analysis changed.
+
 The plan is `campaign/ANALYSIS_PLAN.md` (read it fully, incl. section 0 "Known facts" and section 7 "Decisions").
 Background: `campaign/CAMPAIGN_STATUS.md`, `campaign/CONTRACTS.md` (record schema 2 and results layout),
 `analysis/ANALYSIS_FIXES.md` (analysis conventions already decided), `CHANGES_NEEDED.md` §1 (binding selection rule).

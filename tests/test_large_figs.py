@@ -1,4 +1,4 @@
-"""CPU tests for `analysis/large_figs.py` -- the CIFAR / nanoGPT / GPT-2 figures (WP4b).
+"""CPU tests for `analysis/lib/large_figs.py` -- the CIFAR / nanoGPT / GPT-2 figures (WP4b).
 
 Two kinds of fixture, no dependence on `experiment_results/`:
 
@@ -38,7 +38,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import analysis_helpers as ah            # noqa: E402
 import headline as hl                    # noqa: E402

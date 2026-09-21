@@ -1,5 +1,13 @@
 # Manuscript-update contracts (2026-09-20) — binding for every paper agent
 
+> **Layout change 2026-09-21.** The analysis layer this document points at was reorganised:
+> the helper modules are now `analysis/lib/*.py` (`headline.py`, `headline_figs.py`,
+> `large_figs.py`, `spectra_figs.py`, `reviewer_figs.py`, `legacy_diff.py`,
+> `profile_helpers.py`, ...) and the notebooks are grouped under
+> `analysis/notebooks/<group>/`. `analysis/paper_assets/` and its entry point
+> (`cd analysis && ../.venv/bin/python -m paper_assets`) are unchanged, and so is every
+> output path. Map: `analysis/README.md`.
+
 ## What the user asked for (verbatim priorities, condensed)
 Update the ICLR manuscript in `iclr_manuscript/` in a **NEW tex file, starting from a copy of the existing manuscript**
 (`iclr2026_conference.tex`), with **every edit in blue text** so it is distinguishable from the old text. Priorities:

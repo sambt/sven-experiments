@@ -1,4 +1,4 @@
-"""CPU tests for the WP3 phase-B mechanism helpers (`analysis/spectra_figs.py`)
+"""CPU tests for the WP3 phase-B mechanism helpers (`analysis/lib/spectra_figs.py`)
 and for the one shared-helper fix they rest on (`sv_diagnostics` noise floor).
 
 Everything runs against SYNTHETIC diag passes and a SYNTHETIC probe-spectra cache
@@ -44,7 +44,8 @@ matplotlib.use('Agg')          # no plotting windows, no DISPLAY
 import matplotlib.pyplot as plt   # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import headline                  # noqa: E402
 import spectra_figs as sf        # noqa: E402

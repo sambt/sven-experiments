@@ -168,7 +168,7 @@ if [ "$rc_all" -eq 0 ] && [ "${PROFILE_SMOKE:-0}" != 1 ] && [ "$CONFIGS" = "$DEF
 fi
 
 echo "################ all done $(date -Is)  rc=$rc_all ################"
-echo "Next: the four analysis/profile_*.ipynb notebooks. profile_helpers.results_root()"
+echo "Next: the four analysis/notebooks/profiling/profile_*.ipynb notebooks. profile_helpers.results_root()"
 echo "      switches to v3 by itself once the pass is COMPLETE (720 of 720, or the"
 echo "      _profile_complete file above); a partial root is announced and skipped."
 exit $rc_all

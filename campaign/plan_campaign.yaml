@@ -415,7 +415,7 @@ work_lists:
            tests/test_tools_launch.OFF_GRID_ITEMS carries the exemption (which asserts the
            item really is off-grid and pins its run count). The 15 legacy-set-point runs of
            p1_cifar_fig5 are NOT superseded on disk: different run_ids, so nothing is
-           re-hashed or deleted, and analysis/cifar_analysis.ipynb shows the selected
+           re-hashed or deleted, and analysis/notebooks/large_models/cifar_analysis.ipynb shows the selected
            configuration as the main result with the legacy set point beside it."
     items:
       - {config: rebuttal_fig5_cifar_paramfrac_scan, nproc: *np_cifar_sven,

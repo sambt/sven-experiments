@@ -33,6 +33,7 @@ import pytest
 matplotlib.use('Agg')
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))
 sys.path.insert(0, str(REPO / 'analysis'))
 
 from paper_assets import common as C          # noqa: E402

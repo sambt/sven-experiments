@@ -51,8 +51,9 @@ import torch
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-if str(_REPO_ROOT / "analysis") not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT / "analysis"))
+for _p in (_REPO_ROOT / "analysis" / "lib", _REPO_ROOT / "analysis"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import ckpt_tools as ct                                              # noqa: E402
 

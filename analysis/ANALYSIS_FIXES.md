@@ -1,5 +1,10 @@
 # Analysis fixes — audit of `analysis/` (2026-09-17)
 
+> Paths in this document predate the 2026-09-21 reorganisation: the helper modules are now
+> in `analysis/lib/` and the notebooks in `analysis/notebooks/<group>/`
+> (`analysis/README.md`). Nothing else here changed — a module or notebook named by its bare
+> name still means the same file.
+
 Working checklist from the full audit of every analysis script and notebook. Fix one
 piece at a time; tick items off here and note what was decided.
 

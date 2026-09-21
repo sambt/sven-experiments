@@ -1,4 +1,4 @@
-"""CPU tests for `analysis/headline.py` -- the paper's headline tables (WP2).
+"""CPU tests for `analysis/lib/headline.py` -- the paper's headline tables (WP2).
 
 Everything runs against a SYNTHETIC campaign built in a tmp root and read through
 ``$SV3_RESULTS_ROOT``: a tuning scan, its ``_confirm`` pass (5 fresh seeds, here 3, on 2
@@ -35,7 +35,8 @@ import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import headline as hl            # noqa: E402
 import style                     # noqa: E402

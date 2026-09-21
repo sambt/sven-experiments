@@ -11,7 +11,7 @@ this module enforces mechanically:
   ``\\input``s.  A PNG twin of every figure goes to ``agent_lab/paper_assets/<group>/``
   -- **never** into the manuscript repo, which is Overleaf-synced.
 * **No number is typed by hand.**  A module calls the analysis functions of record
-  (``analysis/headline.py``, ``headline_figs.py``, ``large_figs.py``, ``spectra_figs.py``,
+  (``analysis/lib/headline.py``, ``headline_figs.py``, ``large_figs.py``, ``spectra_figs.py``,
   ``reviewer_figs.py``, ``profile_helpers.py``) and formats what they return.  Every
   generated file is accompanied by ``<name>.provenance.json`` naming the functions
   called, the scan directories read, the hash of ``bench/best_configs.json`` and the
@@ -43,8 +43,9 @@ import pandas as pd
 # notebooks use it.  Running ``python -m paper_assets.<module>`` from ``analysis/`` already
 # puts it on the path; this makes an import from elsewhere work too.
 ANALYSIS = Path(__file__).resolve().parent.parent
-if str(ANALYSIS) not in sys.path:
-    sys.path.insert(0, str(ANALYSIS))
+for _p in (ANALYSIS / "lib", ANALYSIS):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import style  # noqa: E402  (after the sys.path fix)
 

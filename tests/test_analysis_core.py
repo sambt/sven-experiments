@@ -36,7 +36,8 @@ matplotlib.use('Agg')          # no plotting windows, no DISPLAY
 import matplotlib.pyplot as plt   # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import analysis_helpers as ah    # noqa: E402
 import scan_analysis as sa       # noqa: E402

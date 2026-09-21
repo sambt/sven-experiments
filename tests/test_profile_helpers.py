@@ -1,4 +1,4 @@
-"""`analysis/profile_helpers.py`: which results root is read, where the cache goes, and what
+"""`analysis/lib/profile_helpers.py`: which results root is read, where the cache goes, and what
 the v2-vs-v3 comparison is allowed to claim.
 
 The first two were found by review of the 2026-09-20 re-profile work package; the third came
@@ -35,7 +35,8 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import profile_helpers as ph     # noqa: E402
 

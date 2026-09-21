@@ -235,3 +235,25 @@ schema-2 analysis notebooks.
   page count). Workflow reports: `campaign/paper_reports/` (3 adversarial reviews: 28 high findings, all dispositioned by
   the fixer). Asset package committed in sv3 (1c09159). Assets re-generated after the final analysis gate: only
   timestamps changed.
+* 09-21 ~15:00 EDT — **`analysis/` REORGANISED** (user request; a pure move, no analysis or plotting logic touched).
+  The 23 notebooks are now grouped under `analysis/notebooks/`: `headline/` (6: the four MLP scans, baselines,
+  headline_tables), `spectra/` (2: spectra_analysis, comparisons), `mlp_studies/` (6: overparam, batchsize, kappa,
+  microbatch, paramfrac, critbatch), `large_models/` (4: cifar, nanogpt, gpt2, finetune), `profiling/` (4: profile_*),
+  `legacy/` (1: legacy_vs_fresh); the 15 helper modules are in `analysis/lib/`. New: `analysis/README.md` (directory
+  map + what each helper does) and `analysis/notebooks/README.md` (index in reading order). Every notebook's first cell
+  now walks up to `analysis/`, chdir's there and puts `analysis/lib/` (and `analysis/`) on `sys.path`, so every path
+  convention is unchanged (`../experiment_results`, `plots_v2/<name>/`, `tables/`) and a notebook runs from anywhere.
+  `HERE`/`_REPO` anchors in headline.py, legacy_diff.py, repair_legacy.py, profile_helpers.py and ckpt_tools.py were
+  repointed one level up (same resolved paths, verified). `make_plots.sh` now resolves a notebook by NAME (no group, no
+  suffix) or by group directory — same CLI otherwise. Everything that inserted `analysis/` on `sys.path` (14 test files,
+  `tools/compute_ckpt_spectra.py`, `tools/select_best.py`, `analysis/paper_assets/common.py`) also inserts
+  `analysis/lib/`. Path references rewritten in README.md, EXPERIMENTS.md, analysis/*.md, notebook prose and module
+  docstrings; layout notes added to `campaign/ANALYSIS_CONTRACTS.md` and `campaign/PAPER_CONTRACTS.md`. Campaign reports
+  and ANALYSIS_PLAN.md keep their original paths as a historical record.
+  Verified: full CPU suite `1469 passed, 34 skipped` (170 s); all 23 notebooks' bootstrap cells exec clean from their own
+  directory with every module they import resolving (harness: scratch `nb_smoke.py`); notebook execution and a
+  `python -m paper_assets` rebuild re-checked by subagents (see the report below this entry when they land).
+  Not rewritten, deliberately: `CHANGES_NEEDED.md`, `CODEX_CRITIQUES.md`, `campaign/ANALYSIS_PLAN.md`, the workflow
+  scripts and `campaign/{analysis,paper,stage0,stage1}_reports/` keep the paths they were written with (they are the
+  record of what was done); the gitignored `agent_lab/` notebook builders also still target the old locations, so
+  re-running one would write a notebook to `analysis/` with the old bootstrap — regenerate from the grouped copy instead.

@@ -137,8 +137,8 @@ PROFILE_CONFIGS="profile_mnist" sbatch bench/profile_serial.sbatch
 
 Results land in `{output_root}/<config>/<run_id>.json`, resolved as `$SV3_PROFILE_ROOT` >
 `profile.output_dir` in the config > `profile_results_v3`; existing files are skipped, so the
-sweep is resumable. `analysis/profile_helpers.py` flattens them into one table (reading
-`$SV3_PROFILE_ROOT`, else v3 once it has results, else v2) and the `analysis/profile_*.ipynb`
+sweep is resumable. `analysis/lib/profile_helpers.py` flattens them into one table (reading
+`$SV3_PROFILE_ROOT`, else v3 once it has results, else v2) and the `analysis/notebooks/profiling/profile_*.ipynb`
 notebooks produce the tables and figures.
 
 **`profile_results_v2` is pessimistic for Sven and is kept only as the "before" table.** It
@@ -152,11 +152,17 @@ v2-vs-v3 comparison.
 
 ## Analysis
 
-Notebooks and helpers are in `analysis/`; shared style and loaders are `analysis/style.py`,
-`analysis/analysis_helpers.py` and `analysis/scan_analysis.py`. `./make_plots.sh` re-executes
-every notebook in place (figures under `analysis/plots_v2/`); pass notebook names to run a
-subset, or `ONLY_SCANS=1` for the headline set. It needs a compute node — a cold scan load
-from Lustre is ~20 s.
+The notebooks are grouped under `analysis/notebooks/` (`headline/`, `spectra/`,
+`mlp_studies/`, `large_models/`, `profiling/`, `legacy/`) and the helper modules they import
+are in `analysis/lib/`; `analysis/README.md` maps the directory and
+`analysis/notebooks/README.md` indexes the notebooks. Shared style and loaders are
+`analysis/lib/style.py`, `analysis/lib/analysis_helpers.py` and
+`analysis/lib/scan_analysis.py`. Every notebook's first cell chdir's to `analysis/` and puts
+`analysis/lib/` on `sys.path`, so the analysis paths (`../experiment_results`, `plots_v2/`,
+`tables/`) mean the same thing wherever it is opened from. `./make_plots.sh` re-executes
+every notebook in place (figures under `analysis/plots_v2/`); pass notebook names (no group,
+no suffix) or a group directory to run a subset, or `ONLY_SCANS=1` for the headline set. It
+needs a compute node — a cold scan load from Lustre is ~20 s.
 
 Conventions the analysis is held to (`analysis/ANALYSIS_FIXES.md`,
 `campaign/ANALYSIS_CONTRACTS.md`): selection on validation only, **test metrics are outcomes

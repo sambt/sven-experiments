@@ -1,4 +1,4 @@
-"""CPU tests for `analysis/reviewer_figs.py` -- the WP4a reviewer studies.
+"""CPU tests for `analysis/lib/reviewer_figs.py` -- the WP4a reviewer studies.
 
 Everything runs against SYNTHETIC scans written into a tmp root and read through
 ``$SV3_RESULTS_ROOT``; no test reads ``experiment_results/``, so none of them can be made
@@ -38,7 +38,8 @@ import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / 'analysis'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis' / 'lib'))   # the notebooks' own sys.path.insert(0, '.')
+sys.path.insert(0, str(REPO / 'analysis'))
 
 import reviewer_figs as rf        # noqa: E402
 import style                      # noqa: E402

@@ -1,4 +1,4 @@
-"""CPU tests for ``analysis/ckpt_tools.py`` (C-L4).
+"""CPU tests for ``analysis/lib/ckpt_tools.py`` (C-L4).
 
 The acceptance tests of plan section 3.2:
 
@@ -37,7 +37,7 @@ import torch.nn as nn
 from omegaconf import OmegaConf
 
 REPO = Path(__file__).resolve().parents[1]
-for path in (str(REPO), str(REPO / "analysis")):
+for path in (str(REPO), str(REPO / "analysis"), str(REPO / "analysis" / "lib")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
