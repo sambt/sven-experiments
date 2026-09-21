@@ -265,3 +265,36 @@ schema-2 analysis notebooks.
   `numbers_v2*.tex` differing only in their `% generated:` line (1,352 macros unchanged). `iclr_manuscript` HEAD is still
   af438c0 with nothing committed; it now carries 51 timestamp-only working-tree modifications from that rebuild, which
   can be discarded with a checkout there if a no-op Overleaf sync is unwanted.
+* 09-21 ~19:30 EDT — **THE PAPER'S FIGURES ARE NOW EDITABLE FROM NOTEBOOKS** (user request: "rework the paper assets
+  analysis folder so that I can make the plots and edit them in notebooks ... for example, the plot that goes into fig 1
+  of the paper I want to have all the baselines on it and change some things about legend placement, axis labels, aspect
+  ratios ... Easier to do myself than describe to you"). Commits **f5066ee** (the conversion), **7b3f487** (kwarg-collision
+  fix) and **f99b552** (generator into tools/).
+  **Shape.** Each of the 45 figures is a `FIGURE_SPECS` entry in its `paper_assets` module: `draw(ctx, opts) ->
+  (fig, meta)` which writes nothing (`meta` carries `provenance` + `axes` + whatever `build()` needs downstream), plus a
+  `defaults` dict of its own knobs; `build()` is the ONLY save path. New `analysis/paper_assets/figspec.py` (registry,
+  override store, generic cosmetics, draw/save split) and `notebook.py` (the `pf` API); each module also exposes
+  `context(root, reload)` returning its cached data object. Contract: `campaign/FIGURE_API_CONTRACT.md`.
+  **Loop.** `analysis/notebooks/paper/fig_{main,reviewer,large,spectra}.ipynb` (generated from the live registry by
+  `tools/build_fig_notebooks.py`): `pf.make(name, **opts)` -> draws, writes nothing; `f.ax(i)` / `f.flat` to edit;
+  `f.show(zoom=)` magnifies the screen copy only; `f.save()` writes the PDF + PNG twin + provenance exactly as the CLI
+  does; `pf.pin(name, **opts)` persists to `analysis/paper_assets/figure_overrides.yaml`, which **`python -m
+  paper_assets` reads too**, so a notebook tweak survives the next rebuild. Options resolve defaults < pinned < call;
+  the generic cosmetics (figsize, aspect, xlabel/ylabel/title, xlim/ylim, xscale/yscale, legend, suptitle, grid,
+  tick_labelsize, rc) work on every figure, each as one value / a list by panel / a dict keyed by panel index.
+  **Nothing about the paper moved**: with the override file empty a full `python -m paper_assets` reproduces all 45
+  figures + 45 provenance sidecars byte-identically (`tools/cmp_figures.py`, which scrubs `/CreationDate`:
+  identical=90 changed=0) and all 61 generated .tex assets line-identically (55 tables + 6 numbers files, 1,352 macros).
+  Fig. 1 keeps its front-of-the-field default; `fig_main.ipynb` has a ready cell drawing it with all 15 baselines
+  (`methods='all', panel_legend=False, figure_legend_methods=True, figure_legend_ncol=6, aspect=0.9, extra_h=0.85`) and
+  the `pf.pin` line beside it, commented — pinning it is the author's call.
+  **Bugs found and fixed on the way**: (1) `savefig` reads `pdf.fonttype`/`savefig.bbox`/the font list when it WRITES,
+  after `draw_figure`'s rc_context restored the caller's params, so a notebook `f.save()` would have written a different
+  PDF from the CLI's — each figure now carries its draw-time rcParams and `save()`/`show()` re-enter them (proof:
+  `pf.rebuild('headline_curves')` from a kernel with the notebook's 16 pt style produced a byte-identical PDF, and the
+  kernel's style was left untouched); (2) `legend(..., ncol=opts['x_ncol'], **opts['x_kw'])` raised on a pinned `ncol`
+  at 6 sites — `figspec.merge_kw` + a test that refuses the pattern; (3) spectra's `--dry-run` listed 13 figures under
+  their function names (`fig_online_utr.pdf`), none of which the build writes; (4) the override cache keyed on mtime
+  alone missed a same-tick hand edit.
+  Verified: full CPU suite **1600 passed / 34 skipped**; the four notebooks execute with **0 error cells and 46 figures
+  rendered**, writing nothing (the `save`/`pin` lines ship commented, enforced by a test).
