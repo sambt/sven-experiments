@@ -257,3 +257,11 @@ schema-2 analysis notebooks.
   scripts and `campaign/{analysis,paper,stage0,stage1}_reports/` keep the paths they were written with (they are the
   record of what was done); the gitignored `agent_lab/` notebook builders also still target the old locations, so
   re-running one would write a notebook to `analysis/` with the old bootstrap — regenerate from the grouped copy instead.
+  Committed as **813a180** (38 renames + the bootstrap/anchor/sys.path edits + the two READMEs + 4 layout tests).
+  Runtime proof: `critbatch_analysis`, `profile_overview`, `gpt2_analysis` and `comparisons` re-executed through
+  `./make_plots.sh <name>` with 0 error cells and 41 fresh figures (each resolved `../experiment_results*` and wrote
+  `plots_v2/<name>/`, which only works from `analysis/`); `python -m paper_assets` rebuilt all 106 assets with **0 real
+  content changes** — 55/55 tables byte-identical, the 45 PDFs byte-identical after scrubbing `/CreationDate`, the 6
+  `numbers_v2*.tex` differing only in their `% generated:` line (1,352 macros unchanged). `iclr_manuscript` HEAD is still
+  af438c0 with nothing committed; it now carries 51 timestamp-only working-tree modifications from that rebuild, which
+  can be discarded with a checkout there if a no-op Overleaf sync is unwanted.
