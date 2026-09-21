@@ -37,11 +37,16 @@ Two facts about the large scans that shape the API:
    headline tables are the confirmation seeds (base+100..104), so a time-axis panel and the
    table beside it describe the same configuration on different initialisations:
    :func:`seed_note` puts the seed set on the figure so the two are not matched up.
-3. **Fig 5 has two things to say about itself**, and both are computed rather than written
-   down: its objective and its ONE configuration (:func:`paramfrac_config`, which is not the
-   headline-selected one -- :func:`headline_sven_config`), and where its divergences sit
-   (:func:`divergence_lrs`).  EXPERIMENTS.md section 3.3 flags the set point; the figure is
-   not readable without it.
+3. **Fig 5 holds TWO Sven configurations**, and which one a reader looks at decides what
+   the figure means, so the split is computed rather than written down
+   (:func:`paramfrac_groups`): the configuration the matching headline scan SELECTED
+   (:func:`headline_sven_config`, ``k=128, lr=0.5, rtol=1e-3``, run 2026-09-20) is the main
+   result, and the legacy set point the scan's config still carries (``k=64, lr=1``, the
+   pre-Gram ``SET POINT, STILL TENTATIVE`` of EXPERIMENTS.md section 3.3) is the comparison
+   beside it.  Within each configuration nothing but ``param_fraction`` moves
+   (:func:`paramfrac_config`'s ``varies``), and where the divergences sit
+   (:func:`divergence_lrs`) is what the legacy panel is read against: its single ``lr`` is
+   the top of the headline grid, the cell all 5 of that scan's Sven divergences sit in.
 """
 from __future__ import annotations
 
@@ -57,7 +62,8 @@ import style
 
 #: Fig 5 (R1 Q2): the 3-seed parameter-fraction scan.  The 1-seed
 #: ``cifar10_resnet_paramFrac_scan_labelReg`` was CUT from the campaign
-#: (ANALYSIS_PLAN 1.2) and is not in the fresh results root.
+#: (ANALYSIS_PLAN 1.2) and is not in the fresh results root.  It holds TWO Sven
+#: configurations -- see :func:`paramfrac_groups`.
 FIG5_SCAN = 'rebuttal_fig5_cifar_paramfrac_scan'
 
 #: The GPT-2 comparison: 29 runs, ONE model seed, one epoch of 13,125 steps, B = 16 and
@@ -719,6 +725,15 @@ MASK_NOTE = ('masks are resampled every step (elementwise Bernoulli), so $f$ is 
 FIXED_CONFIG_NOTE = ('one fixed Sven configuration for every fraction (not re-tuned per '
                      '$f$); see EXPERIMENTS.md section 3.3')
 
+#: The headline scan whose Sven selection Fig 5's set point is supposed to follow: the
+#: figure fixes ONE ``(k, lr, rtol)`` at every fraction, and the only defensible choice of
+#: that point is the one the matching headline scan selected.  Same objective (label
+#: regression), same model, same BatchNorm policy.
+FIG5_HEADLINE_SCAN = 'cifar10_resnet_scan_labelRegression'
+
+#: What makes a Fig-5 configuration, i.e. what :func:`paramfrac_groups` splits the scan on.
+FIG5_CONFIG_KEYS = ('k', 'lr', 'rtol')
+
 #: Loss keys as a caption spells them -- the Fig-5 scan is label regression and sits in a
 #: notebook that also reports cross-entropy, so its objective has to be on the figure.
 LOSS_TITLES = {'label_regression': 'label regression (one-hot MSE)',
@@ -789,6 +804,63 @@ def headline_sven_config(scan, payload=None):
     out = {k: hp.get(k) for k in ('k', 'lr', 'rtol', 'kappa')}
     out['hparams'] = hp
     out['label'] = hl.config_label(sel)
+    return out
+
+
+def paramfrac_groups(df=None, results_root=None, scan=FIG5_SCAN,
+                     headline_scan=FIG5_HEADLINE_SCAN, payload=None,
+                     keys=FIG5_CONFIG_KEYS):
+    """Fig 5 split by Sven CONFIGURATION, the SELECTED one first.
+
+    The scan holds two configurations, and which one a reader looks at decides what the
+    figure means:
+
+    * the configuration ``headline_scan`` selected (``k``, ``lr``, ``rtol`` from
+      ``bench/best_configs.json``) -- the main result, added 2026-09-20;
+    * the legacy set point the scan's config still carries (the pre-Gram
+      ``SET POINT, STILL TENTATIVE``, never re-derived from the BatchNorm-fixed headline
+      scan before the first launch) -- kept as the comparison, because its 15 runs are a
+      real measurement of masking at a learning rate that is also the divergence-prone top
+      of the headline grid.
+
+    Splitting is what keeps :func:`paramfrac_config`'s ``varies`` assertion meaningful: on
+    the whole frame ``k`` and ``lr`` now vary *between* configurations while still being
+    fixed *within* each one, which is exactly the property the figure claims.
+
+    Returns a list of dicts, selected first, each with ``df`` (the subframe), ``table``
+    (:func:`paramfrac_table` of it), ``cfg`` (:func:`paramfrac_config` of it), ``key``
+    (the ``keys`` tuple), ``is_selected``, ``role`` (``'selected'`` /
+    ``'not selected'``), ``role_label`` for a legend, and ``diff`` -- the per-key
+    comparison against the selection, empty for the selected configuration.  The
+    selection itself is on every entry as ``headline`` (:func:`headline_sven_config`).
+    """
+    if df is None:
+        df = ah.add_derived(style.load_results(scan, results_root=results_root))
+    hsven = headline_sven_config(headline_scan, payload)
+
+    def _num(value):
+        return pd.to_numeric(value, errors='coerce')
+
+    keys = [k for k in keys if k in df.columns]
+    assert keys, f'{scan}: none of {FIG5_CONFIG_KEYS} is a column of these records'
+    out = []
+    for key, sub in df.groupby(list(keys), dropna=False):
+        key = key if isinstance(key, tuple) else (key,)
+        cfg = paramfrac_config(sub)
+        diff = [f'{k}: {_num(cfg.get(k)):g} vs selected {_num(hsven[k]):g}'
+                for k in keys
+                if hsven.get(k) is not None
+                and not np.isclose(_num(cfg.get(k)), _num(hsven[k]))]
+        is_sel = not diff and all(hsven.get(k) is not None for k in keys)
+        out.append({
+            'key': key, 'df': sub, 'cfg': cfg, 'table': paramfrac_table(sub, scan=scan),
+            'is_selected': is_sel, 'diff': diff, 'headline': hsven,
+            'headline_scan': headline_scan,
+            'role': 'selected' if is_sel else 'not selected',
+            'role_label': (f"selected ({cfg['label']})" if is_sel
+                           else f"not selected ({cfg['label']})"),
+        })
+    out.sort(key=lambda e: (not e['is_selected'], e['key']))
     return out
 
 
@@ -905,7 +977,8 @@ def paramfrac_view(tbl, spec='.4g'):
 
 
 def plot_paramfrac_quality(axes, tbl, keys=(('val', 'test'), ('val_acc', 'test_acc')),
-                           annotate_counts=True):
+                           annotate_counts=True, ls='-', marker='o', label_suffix='',
+                           hollow_label=True):
     """Fig 5, quality half: loss and accuracy vs the ACTUAL parameter fraction.
 
     Error bars are the seed band (:func:`style.clipped_yerr`).  A fraction where some
@@ -914,6 +987,12 @@ def plot_paramfrac_quality(axes, tbl, keys=(('val', 'test'), ('val_acc', 'test_a
     seeds of 3, which EXPERIMENTS.md section 3.3 requires any seed band on this figure to
     show, and an ordinary error bar cannot -- a 2-seed spread is drawn exactly like a
     3-seed one.  The counts are also returned for the table below the figure.
+
+    ``ls`` / ``marker`` / ``label_suffix`` exist so the SAME axes can carry the scan's two
+    Sven configurations (:func:`paramfrac_groups`) without a second pair of colours: val
+    and test keep ``C0`` / ``C1``, and the configuration is the line style.  Call the
+    second one with ``hollow_label=False`` / ``annotate_counts=False`` so the
+    "some seeds diverged" entry and the seed counts are not written twice.
     """
     x = pd.to_numeric(tbl['actual'], errors='coerce').to_numpy(dtype=float)
     fin = pd.to_numeric(tbl['finished'], errors='coerce').to_numpy(dtype=float)
@@ -926,13 +1005,14 @@ def plot_paramfrac_quality(axes, tbl, keys=(('val', 'test'), ('val_acc', 'test_a
             lo = pd.to_numeric(tbl[f'{key}_min'], errors='coerce').to_numpy(dtype=float)
             if not np.isfinite(v).any():
                 continue
-            ax.errorbar(x, v, yerr=style.clipped_yerr(v, s, lo), marker='o',
-                        color=f'C{i}', capsize=3, label=curve_label(key))
+            ax.errorbar(x, v, yerr=style.clipped_yerr(v, s, lo), marker=marker, ls=ls,
+                        color=f'C{i}', capsize=3, label=curve_label(key) + label_suffix)
             # the reduced-n points, drawn hollow on top of their own marker
             if short.any():
-                ax.plot(x[short], v[short], 'o', ms=9, mfc='none', mew=1.6,
+                ax.plot(x[short], v[short], marker, ms=9, mfc='none', mew=1.6,
                         color=f'C{i}', zorder=4,
-                        label=('open marker: some seeds diverged' if i == 0 else None))
+                        label=('open marker: some seeds diverged'
+                               if i == 0 and hollow_label else None))
             if annotate_counts and i == 0:
                 for xi, vi, f, a in zip(x[short], v[short], fin[short], att[short]):
                     if np.isfinite(vi):
@@ -956,7 +1036,8 @@ PROFILE_V2_STEP_NOTE = ('profile v2 called torch.cuda.empty_cache() every step, 
 
 
 def plot_paramfrac_cost(axes, tbl, profiles=None, profile_step_times=False,
-                        profile_note=PROFILE_V2_STEP_NOTE):
+                        profile_note=PROFILE_V2_STEP_NOTE, ls='-', marker='o',
+                        record_label='records (scan runs)'):
     """Fig 5, cost half: peak memory and time per step vs the actual fraction.
 
     The RECORDS are the measurement of record (the campaign code, ``empty_cache`` off).
@@ -986,8 +1067,8 @@ def plot_paramfrac_cost(axes, tbl, profiles=None, profile_step_times=False,
         v = pd.to_numeric(tbl[col], errors='coerce').to_numpy(dtype=float)
         s = pd.to_numeric(tbl[f'{col}_std'], errors='coerce').to_numpy(dtype=float)
         ax.errorbar(x, v, yerr=style.clipped_yerr(v, s, v - np.nan_to_num(s)),
-                    marker='o', color=style.method_color('Sven'), capsize=3,
-                    label='records (scan runs)')
+                    marker=marker, ls=ls, color=style.method_color('Sven'), capsize=3,
+                    label=record_label)
         ax.set_xscale('log')
         ax.set_xlabel('Actual parameter fraction $f$')
         ax.set_ylabel(ylabel)

@@ -765,12 +765,18 @@ def freshness_report(scans=None, kinds=('', 'confirm', 'timing'), payload=None,
     * ``provisional`` -- a live claim in any pass, or a post-selection record in the
       tuning grid.
 
-    At the time of writing this fires on ``cifar10_resnet_ce_scan``: plan decision 5's
-    ``rtol`` extension (``mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]``,
-    45 runs) is landing, and decision 5 says ``tools/select_best.py`` must be re-run
-    afterwards -- so Sven's selected CIFAR-CE configuration, its rank and its efficiency
-    row can all still move.  Note that a scan's ``n_missing`` in the selection file is NOT
-    this signal: on both CIFAR scans that number is the 100 parked JD + HIG runs.
+    It last fired on ``cifar10_resnet_ce_scan`` while plan decision 5's ``rtol`` extension
+    (``mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]``, 45 runs) was
+    landing, and that is exactly what it is for: the extension moved Sven's pick there
+    from ``k=128 lr=0.1 rtol=0.01`` to ``k=128 lr=0.5 rtol=0.3``.  The scan was re-selected
+    on 2026-09-20 (``selection_provenance``) and its timing / diag / confirm passes were
+    re-run, so the report is CLEAN as of 2026-09-21 and every table here describes the
+    selection of record.  Two things this does NOT flag, both expected: a scan's
+    ``n_missing`` in the selection file (on both CIFAR scans that is the 100 parked JD +
+    HIG runs), and ``n_after_selection`` on ``_confirm`` / ``_timing`` / ``_diag`` (5 each
+    on CIFAR-CE -- the re-run passes of the new pick, which are necessarily newer than the
+    selection they were generated from; ``selection_input`` marks the only pass where a
+    post-selection record would matter).
     """
     payload = payload or load_selection()
     scans = HEADLINE_SCANS if scans is None else scans

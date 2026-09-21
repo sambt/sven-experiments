@@ -5,5 +5,5 @@
 | mnist_scan_labelRegression | MNIST (label reg.) | Sven | Sven | 14 | 0.05328 | 3 | 0.05363 | 3 | 0.9672 | 4 | 5 | 5 | True |
 | mnist_scan_ce | MNIST (CE) | Sven | Sven | 14 | 0.1134 | 4 | 0.1128 | 4 | 0.9664 | 5 | 5 | 5 | True |
 | cifar10_resnet_scan_labelRegression | CIFAR-10 (label reg.) | Sven | Sven | 11 | 0.4838 | 9 | 0.4938 | 9 | 0.6942 | 9 | 5 | 5 | True |
-| cifar10_resnet_ce_scan | CIFAR-10 (CE) | Sven | Sven | 11 | 1.424 | 9 | 1.412 | 9 | 0.5298 | 11 | 5 | 5 | True |
+| cifar10_resnet_ce_scan | CIFAR-10 (CE) | Sven | Sven | 11 | 1.355 | 9 | 1.339 | 8 | 0.5821 | 10 | 5 | 5 | True |
 | exp_nanogpt_speedrun | nanoGPT (tiny-shakespeare) | Sven | Sven | 5 | 1.715 | 2 | 1.977 | 3 |  |  | 5 | 5 | True |

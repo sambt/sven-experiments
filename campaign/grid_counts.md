@@ -84,6 +84,28 @@ submit them — `grid_inventory.md` 5.1: the old `submit_fresh_suite.sh` emitted
 `mode=svd` and `mode=standard`, silently dropping 400 JD/HIG runs that
 `best_configs.json` nonetheless reports best configs for.
 
+### Off-grid extension items (not in the total, and deliberately so)
+
+Two work lists run points their config's grid does **not** enumerate, so their runs are on
+disk but appear in no row above. That is the whole point of doing them as plan items rather
+than config edits: the configs — and therefore this file, every golden count and
+`tools/reconcile.py`'s expected grid — keep describing the campaign exactly as it ran, and
+the runs already measured are neither re-hashed nor superseded.
+
+| list (`plan_campaign.yaml`) | scan | override | runs | why |
+|---|---|---|---|---|
+| `p2_cifar_ce_rtol` | `cifar10_resnet_ce_scan` | `mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]` | 45 | Sven's `rtol` sat on the 1e-2 high edge (ANALYSIS_PLAN §7.5). It moved the pick: `k=128 lr=0.1 rtol=0.01` (val 1.40281) → `k=128 lr=0.5 rtol=0.3` (1.35515) |
+| `p2_cifar_fig5_selected` | `rebuttal_fig5_cifar_paramfrac_scan` | `mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]` | 15 | the figure's set point was the legacy `k=64, lr=1`; re-run at the selection of record for `cifar10_resnet_scan_labelRegression` |
+
+Consequences, in both cases deliberate: `tools/reconcile.py <scan>` counts these records as
+`n_off_grid_records` and its best-config table ignores them, and so does
+`tools/select_best.py` unless the extension is named as a second `--groups` (the union of
+the two groups is then the expected grid — and naming one scan on that command line
+overwrites the other six, so read the `p2_cifar_ce_rtol` note before running it).
+`tests/test_tools_launch.OFF_GRID_ITEMS` carries the exemption from the plan-coverage check
+and asserts that each item really is off-grid and really is the size its approved cost was
+computed from.
+
 ### Phase-5 companions (not in the total)
 
 Seven scans — `toy_1d_scan`, `polynomial_scan`, `mnist_scan_ce`,

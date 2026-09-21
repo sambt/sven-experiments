@@ -8,5 +8,5 @@
 | Polynomial, param fraction | param_fraction | k=32, lr=0.1, rtol=0.001, param_fraction=0.5 | n/a (different target) | 5/5 | k=32, lr=0.1, rtol=0.001, param_fraction=1 | 0.1557 | 5/5 | -- | 18->20 | True | ew,droplast,target,fixedval,grid,failures |
 | MNIST (CE), param fraction | param_fraction | k=64, lr=0.5, rtol=0.1, param_fraction=1 | 0.12 | 5/5 | k=64, lr=0.1, rtol=0.1, param_fraction=1 | 0.1323 | 5/5 | +10.2% | 19->20 | True | ew,droplast,split,grid,failures |
 | MNIST (label reg.), param fraction | param_fraction | k=64, lr=0.5, rtol=0.0001, param_fraction=1 | 0.05102 | 5/5 | k=64, lr=0.5, rtol=0.0001, param_fraction=1 | 0.0522 | 5/5 | +2.3% | 19->20 | True | ew,droplast,split,grid,failures |
-| CIFAR-10 (label reg.), Fig-5 masks | param_fraction | k=64, lr=1, rtol=0.001, param_fraction=1 | 0.4182 | 3/3 | k=64, lr=1, rtol=0.001, param_fraction=1 | 0.6681 | 3/3 | +59.8% | 5->5 | True | ew,droplast,split,bn,failures |
+| CIFAR-10 (label reg.), Fig-5 masks | param_fraction | k=64, lr=1, rtol=0.001, param_fraction=1 | 0.4182 | 3/3 | k=128, lr=0.5, rtol=0.001, param_fraction=1 | 0.4706 | 3/3 | +12.5% | 5->10 | False | ew,droplast,split,bn,grid,failures |
 | MNIST (label reg.), kappa | kappa | k=64, lr=0.5, rtol=0.0001 | 0.05102 | 5/5 | k=32, lr=0.75, rtol=0.0001, kappa=3 | 0.05146 | 5/5 | +0.9% | 3->42 | False | ew,droplast,split,grid,failures |

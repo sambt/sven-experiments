@@ -178,6 +178,46 @@ is `full` with more than one group and is **not** used by any campaign scan.
 Chunked capture only ever helped because it gave `empty_cache` less to churn: with it off,
 `full` (186.5 ms) beats `cf0.5` (192.0) and `cf0.25` (205.0).
 
+#### The step-time / memory profile: v2 (before) → v3 (of record)
+
+The numbers of record are **`profile_results_v3`** (2026-09-20, job 47396284, deploy snapshot
+`118156ae_203a4e61`, one exclusive A100-SXM4-80GB, torch 2.9.1+cu128, 720/720 configurations).
+`profile_results_v2` (2026-09-17, job 46868711, 720/720) is kept only as the **"before"**: it
+was measured with the per-step `empty_cache()` above and without `expandable_segments`, so its
+Sven step times are upper bounds and must never be mixed into a v3 table except as this
+comparison. v3 records the settings in every file (`env.alloc_conf`, `env.sven_empty_cache`,
+`env.bn_mode`, `provenance.git_sha`); v2 recorded none of them, which is why it could not be
+told apart from a correct pass by reading the records. Set points, `study=methods`:
+
+| arch | Sven variant | step ms v2 → v3 | ×    | peak MB v2 → v3 | ×    |
+|---|---|---|---|---|---|
+| cifar_resnet18 | Gram, full `J`   | 842.0 → **188.0**  | 0.22 | 22978 → 22976 | 1.00 |
+| cifar_resnet18 | Gram, chunked    | 470.2 → **207.9**  | 0.44 | 6923 → 6921   | 1.00 |
+| cifar_resnet18 | classic rand-SVD | 1126.2 → **1040.7**| 0.92 | 23033 → 23030 | 1.00 |
+| nanogpt        | Gram, hooks      | 83.2 → **59.5**    | 0.72 | 615 → 614     | 1.00 |
+| nanogpt        | Gram, full `J`   | 257.4 → **229.2**  | 0.89 | 2893 → 2892   | 1.00 |
+| mnist          | Gram, full `J`   | 19.4 → **14.3**    | 0.74 | 49 → 48       | 0.99 |
+| mnist          | classic rand-SVD | 15.5 → **10.1**    | 0.65 | 48 → 48       | 0.99 |
+| toy_1d / polynomial | all four    | within ±2%         | ~1   | unchanged     | 1.00 |
+
+Two things to read out of it. **The fix buys step time and costs no memory** — every `mem ×` is
+1.00, as it must be: `empty_cache` changes *when* the caching allocator hands blocks back, not
+how many are live at once. And **it changes the capture ranking on CIFAR**: under v3 `full`
+(188.0 ms) beats `chunked` (207.9), the same order the GPU probe found, whereas v2 had
+`chunked` ahead by 1.8×. The Gram cost statement above is unaffected; the profile is a cost
+measurement, not a selection input, and the campaign's own timing pass puts the selected
+CIFAR-CE Sven step at 177.6 ms with 22.96 GB peak, consistent with the v3 profile.
+
+**The baselines are the control**, since only Sven ever called `empty_cache`: median `v3/v2`
+step time is 0.993 (toy-1D), 1.010 (polynomial), 0.969 (MNIST), 0.999 (nanoGPT), 1.008
+(CIFAR). 5 of 63 baseline set points moved by more than 10%, each accounted for in
+`analysis/profile_overview.ipynb`: two L-BFGS entries whose strong-Wolfe line search switches
+regime mid-measurement (p90/p10 up to 9.1), one whose polynomial run diverged in one pass, and
+Muon on MNIST (×0.85) and CIFAR (×1.20) — real, and allowed, because
+`PYTORCH_CUDA_ALLOC_CONF` is a process-wide setting and the second fix is not Sven-only. Eight
+of the 720 configurations changed `status` between the passes; none is a cost result (same
+notebook).
+
 Measured NPROC per GPU (processes sharing one device without losing throughput),
 `campaign/stage0_reports/gpu.probe.md`:
 
@@ -347,15 +387,35 @@ and enters the `run_id` via `result_id_fields: [mlp_width, n_data]`.
 
 | scan | grid | runs |
 |---|---|---|
-| `rebuttal_fig5_cifar_paramfrac_scan` | pf ∈ {.05,.1,.25,.5,1} at **k = 64, lr = 1.0, rtol = 1e-3**, κ = 2, `gram_capture: full`, `bn_mode: batch`, 3 seeds (4000–4002), 20 epochs | **15 / 15** recorded `ok`; **2 of the 15 are diverged under `is_diverged`** (pf 0.05 and pf 0.1, both at the scan's single lr = 1.0: final val 244 and 19.8 against `val[0]` ≈ 2.0 and 1.3) |
+The scan holds **two Sven configurations**, 15 runs each, both on disk under their own
+`run_id`s. The **selected** one is the result; the legacy set point is the comparison.
 
-Masks are resampled every step and `actual_param_fraction` is recorded per run. The two
+| configuration | grid | runs |
+|---|---|---|
+| **selected** (of record) — `p2_cifar_fig5_selected`, 09-21 | pf ∈ {.05,.1,.25,.5,1} at **k = 128, lr = 0.5, rtol = 1e-3**, κ = 2, `gram_capture: full`, `bn_mode: batch`, 3 seeds (4000–4002), 20 epochs | **15 / 15** recorded `ok`, **0 diverged** under `is_diverged` |
+| legacy set point — `p1_cifar_fig5`, 09-19 | the same pf grid at **k = 64, lr = 1.0, rtol = 1e-3**, otherwise identical | **15 / 15** recorded `ok`; **2 of the 15 are diverged under `is_diverged`** (pf 0.05 and pf 0.1, both at that configuration's single lr = 1.0: final val 244 and 19.8 against `val[0]` ≈ 2.0 and 1.3) |
+
+Masks are resampled every step and `actual_param_fraction` is recorded per run. The legacy
 blow-ups are finite, so they carry `status: ok` and are dropped only by the wider analysis rule
-— a Fig-5 point at pf ≤ 0.1 therefore rests on 2 surviving seeds of 3, which any seed band on
-that figure must show as `finished / attempted`.
-**Caveat, open:** this set point is the *pre-Gram classic* best and is still flagged
-`SET POINT, STILL TENTATIVE` in the config. It was **not** re-derived from the BN-fixed
-headline scan before launch, whose Sven optimum is k = 128, lr = 0.5, rtol = 1e-3. See §9.
+— a legacy Fig-5 point at pf ≤ 0.1 therefore rests on 2 surviving seeds of 3, which any seed
+band on that figure must show as `finished / attempted`. At the selected configuration every
+point rests on 3 of 3.
+
+**Caveat, now closed.** The legacy set point is the *pre-Gram classic* best, still flagged
+`SET POINT, STILL TENTATIVE` in the config, and was **not** re-derived from the BN-fixed
+headline scan (`cifar10_resnet_scan_labelRegression`, Sven optimum k = 128, lr = 0.5,
+rtol = 1e-3) before the first launch. Its single lr = 1.0 is also the cell where *all five* of
+that headline scan's Sven divergences sit, so the legacy figure could not separate "masking at
+fraction `f` hurts" from "lr = 1 is unstable here". The whole figure was therefore re-run at
+the selected configuration, and **it separates the two**: the divergences are gone, and the
+low-`f` collapse survives (seed-mean final val / test accuracy at pf 1 → 0.05:
+**0.471 → 0.503 → 0.876 → 2.40 → 4.94** and **69.1% → 68.8% → 67.8% → 25.6% → 19.2%**, against
+chance 10%). Cost is unchanged by the re-point, as the Gram statement of §1.5 requires:
+187.5 ms/step and 22.96 GB at pf = 1, and masking makes the *full-Jacobian capture no cheaper*
+— the slowest point is pf = 0.5 at 453.2 ms (×2.42) and memory falls only to ×0.51 at
+pf = 0.05 while its step is ×1.71. `analysis/cifar_analysis.ipynb` §6 draws both
+configurations, reading which is selected out of `bench/best_configs.json` rather than having
+it typed in; see also §9 item 1.
 
 ### 3.4 κ (residual-exponent) ablation (P3, R1)
 
@@ -510,22 +570,33 @@ Sven's selected configuration per headline scan, with the flagged grid edges:
 | `mnist_scan_labelRegression` | k = 64, lr = 0.5, rtol = 1e-3 | 0.052150 | `k:EDGE-HIGH` |
 | `mnist_scan_ce` | k = 32, lr = 0.5, rtol = 3e-1 | 0.114936 | `rtol:EDGE-HIGH` |
 | `cifar10_resnet_scan_labelRegression` | k = 128, lr = 0.5, rtol = 1e-3 | 0.480345 | `k:EDGE-HIGH` |
-| `cifar10_resnet_ce_scan` | k = 128, lr = 0.1, rtol = 1e-2 | 1.40281 | `k:EDGE-HIGH`, `rtol:EDGE-HIGH` |
+| `cifar10_resnet_ce_scan` | k = 128, lr = 0.5, **rtol = 0.3** | 1.35515 | `k:EDGE-HIGH`, `rtol:EDGE-HIGH` |
 | `exp_nanogpt_speedrun` | k = 64, lr = 0.1, rtol = 1e-3 | 1.72363 | interior |
 
 `k:EDGE-HIGH` always means `k = B`, a **method boundary rather than a grid edge**, and is not
 extended. Two open edges remain:
 
 * `toy_1d_scan`'s Sven `lr` at 0.01, the new bottom point after the extension round — accepted.
-* `cifar10_resnet_ce_scan`'s Sven `rtol` at 1e-2, while MNIST-CE prefers 0.1–0.3. **Being
-  extended now** by the `p2_cifar_ce_rtol` plan item (committed as `f0f89b2`): `rtol ∈
-  {0.03, 0.1, 0.3}` restricted to `k = 128` and `lr ∈ {0.05, 0.1, 0.5}` = **45 runs, ~20
-  GPU-h**, against 150 runs / ~70 GPU-h for the full `2 k × 5 lr × 3 rtol` version. It is
-  **off-grid by design** — those `rtol` values are deliberately *not* added to the config's
-  `rtol` list, so run counts, `campaign/grid_counts.md` and the frozen goldens in
-  `tests/golden/` do not move. If it changes the selected CIFAR-CE Sven configuration, then
-  `tools/select_best.py`, `tools/gen_phase5_plan.py` and the three passes must be re-run **for
-  CIFAR-CE Sven only**.
+* `cifar10_resnet_ce_scan`'s Sven `rtol`, which was at 1e-2 while MNIST-CE prefers 0.1–0.3.
+  **Extended, and it moved the pick** — `p2_cifar_ce_rtol` (committed as `f0f89b2`,
+  snapshot `f0f89b24_203a4e61`): `rtol ∈ {0.03, 0.1, 0.3}` restricted to `k = 128` and
+  `lr ∈ {0.05, 0.1, 0.5}` = **45 runs, ~20 GPU-h**, against 150 runs / ~70 GPU-h for the full
+  `2 k × 5 lr × 3 rtol` version. It reconciles clean (45/45 `ok`, 0 diverged) and re-selection
+  over the union of both override groups moved Sven from **k = 128, lr = 0.1, rtol = 1e-2
+  (1.40281)** to **k = 128, lr = 0.5, rtol = 0.3 (1.35515)**, 5/5 seeds and 0 diverged either
+  way — 3.4% of validation loss, and the rank is 10th of 11 on the tuning seeds either way
+  (RMSprop 1.33404 above, PolyakSGD 1.78242 below). `rtol` is **still on the high edge**: 0.3
+  is the top of the extended set. The extension is **off-grid by design** — those `rtol` values
+  are deliberately *not* added to the config's `rtol` list, so run counts,
+  `campaign/grid_counts.md` and the frozen goldens in `tests/golden/` do not move; the
+  consequence is that `tools/select_best.py` only sees them when the extension is named as a
+  second `--groups` (read the `p2_cifar_ce_rtol` note in `campaign/plan_campaign.yaml` first —
+  the obvious command overwrites the other six scans' selections). Because the pick moved,
+  `bench/best_configs.json` was re-spliced for that one scan (`selection_provenance` records
+  which scan was selected when), `campaign/plan_phase5.yaml` regenerated, and the **timing,
+  diag and confirm passes re-run for CIFAR-CE Sven only** (5 runs each, beside the old pick's,
+  which keep their own `run_id`s; `analysis/headline.selected_runs` matches on hyperparameter
+  values, so the old pick's runs are never mixed in).
 
 Headline numbers come from the **confirmation** seeds, with the tuning-seed numbers shown
 beside them, so that the selection optimism is visible rather than absorbed.
@@ -636,12 +707,12 @@ on 2026-09-20; the wide totals reproduce `tools/select_best.py`'s own
 | `polynomial_paramfrac_scan` | 15 | **20** / 100 | **Sven** 20/100 (15) |
 | `mnist_paramfrac_labelreg_scan` | 14 | **24** / 100 | **Sven** 24/100 (14) |
 | `mnist_paramfrac_ce_scan` | 9 | **12** / 100 | **Sven** 12/100 (9) |
-| `rebuttal_fig5_cifar_paramfrac_scan` | 0 | **2** / 15 | **Sven** 2/15 (0) |
+| `rebuttal_fig5_cifar_paramfrac_scan` | 0 | **2** / 15 | **Sven** 2/15 (0) — the **on-grid** legacy set point only; the 15 off-grid runs at the selected configuration add **0** (§3.3) |
 
-(`cifar10_resnet_ce_scan` is shown on its **740 on-grid** runs, so the row does not move while
-the off-grid `rtol` extension lands. 7 of those 45 extra Sven runs had finished at 19:21 EDT
-and none of them is diverged under either definition, so both counts are unchanged so far;
-re-derive this row from the records once the extension completes.)
+(`cifar10_resnet_ce_scan` is shown on its **740 on-grid** runs, so the row does not move with
+the off-grid `rtol` extension. That extension is now complete — all **45** of its Sven runs are
+`ok` and **none** is diverged under either definition — so both counts stand as written over
+the scan's 785 records.)
 
 The 21 phase-5 companions add 20 recorded / 21 wide divergences of their own — §4.
 
@@ -673,7 +744,7 @@ Four things worth naming:
    | `cifar10_resnet_scan_labelRegression` | **5 / 90** | all at lr 1.0, rtol 1e-4 |
    | `polynomial_scan` | **4 / 720** | lr 1.0; rtol 1e-5 (3), 1e-3 (1) |
    | `polynomial_microbatch_scan` | **2 / 120** | lr 1.0 |
-   | `rebuttal_fig5_cifar_paramfrac_scan` | **2 / 15** | lr 1.0, pf 0.05 and 0.1 — §3.3 |
+   | `rebuttal_fig5_cifar_paramfrac_scan` | **2 / 15** | lr 1.0, pf 0.05 and 0.1 — §3.3; **0 / 15** at the re-pointed lr 0.5 |
    | `mnist_scan_labelRegression`, `mnist_microbatch_labelreg_scan`, `rebuttal_overparam_mnist_scan` | **1 each** | the same k = 64, lr 1.0, rtol 1e-4 point |
    | `mnist_scan_ce`, `cifar10_resnet_ce_scan`, `exp_nanogpt_speedrun`, `toy_1d_microbatch_scan`, `mnist_microbatch_ce_scan` | **0** | the only scans where Sven has 0 under *both* definitions |
 
@@ -737,14 +808,21 @@ contamination before quoting MLP step times at all.
 
 Flagged, not fixed — each is in a file this document does not own.
 
-1. **The Fig-5 set point was never re-derived.** `experiments/configs/rebuttal_fig5_cifar_paramfrac_scan.yaml`
-   still carries the `SET POINT, STILL TENTATIVE — MUST BE RE-POINTED BEFORE LAUNCH` marker
-   and the pre-Gram classic values k = 64 / lr = 1.0 / rtol = 1e-3, yet the scan ran (15/15) on
-   exactly those values; the BN-fixed headline optimum is k = 128 / lr = 0.5 / rtol = 1e-3.
+1. **The Fig-5 set point was never re-derived — RESOLVED 2026-09-21, by measurement.**
+   `experiments/configs/rebuttal_fig5_cifar_paramfrac_scan.yaml` still carries the
+   `SET POINT, STILL TENTATIVE — MUST BE RE-POINTED BEFORE LAUNCH` marker and the pre-Gram
+   classic values k = 64 / lr = 1.0 / rtol = 1e-3, and the first pass ran (15/15) on exactly
+   those values; the BN-fixed headline optimum is k = 128 / lr = 0.5 / rtol = 1e-3.
    `campaign/grid_counts.md` "Open items" 2 predicted this ("a P1 launch today would spend
-   ~5.5 GPU-h on the tentative values and produce a wrong headline figure") and the item was
-   never closed. `tests/test_configs.py::test_fig5_setpoint_is_flagged_tentative_exactly_while_it_is_tentative`
-   keeps marker and values coupled, so the test is *passing* for the wrong reason.
+   ~5.5 GPU-h on the tentative values and produce a wrong headline figure"). It was closed the
+   expensive but honest way: the figure was re-run in full at the selection of record
+   (`p2_cifar_fig5_selected`, 15 runs, off-grid by design like the CIFAR-CE `rtol` extension),
+   both sets of runs are kept, and §3.3 reports the selected configuration as the result with
+   the legacy set point beside it. The *config* is deliberately left as it was — it is what
+   `campaign/grid_counts.md`, every golden count and `tools/reconcile.py`'s expected grid
+   describe, and `tests/test_configs.py::test_fig5_setpoint_is_flagged_tentative_exactly_while_it_is_tentative`
+   keeps marker and values coupled, so that test still passes for the right reason as long as
+   both stay put.
 2. **Paper cost text (not editable from here).** The `O(k N |D|)` / "a factor of k over SGD"
    claim appears at `iclr_manuscript/iclr2026_conference.tex` lines **90, 290, 387, 846** and
    as `O(kdp)` at `iclr_manuscript/WorkingNotes/main.tex:253`. Under the Gram backend that
@@ -758,13 +836,17 @@ Flagged, not fixed — each is in a file this document does not own.
    | scan | tuning seeds (`bench/best_configs.json`) | **confirmation seeds** (the headline, §5) |
    |---|---|---|
    | `cifar10_resnet_scan_labelRegression` | **9th of 11**, 0.480345 (MuonW 0.345640 … SGD 0.739038) | **9th of 11**, 0.483824 (MuonW 0.335705 … SGD 0.736101) |
-   | `cifar10_resnet_ce_scan` | **10th of 11**, 1.402812 (SGDm 1.187253 ahead of it) | **9th of 11**, 1.423851 — SGDm falls to 1.431115, 0.5% behind |
+   | `cifar10_resnet_ce_scan` (re-selected 09-20) | **10th of 11**, 1.355150 (RMSprop 1.334040 ahead of it) | **9th of 11**, 1.355225 — SGDm falls to 1.431115, 5.6% behind |
 
    Both are seed-mean final validation loss over the 5 non-diverged seeds, 11 methods each.
    §5 makes the confirmation seeds the headline, so the number to publish for CIFAR-CE is
-   **9th of 11**, on a 0.5% margin over SGDm that no seed band supports as a real ordering;
-   the tuning-seed 10th is the figure the pre-analysis notes quote. Either way the paper
-   sentence does not survive.
+   **9th of 11**; the tuning-seed 10th is the figure the pre-analysis notes quote. The `rtol`
+   extension (§5) improved every CIFAR-CE Sven number without changing this conclusion: on the
+   confirmation seeds val 1.423851 → **1.355225**, test loss 1.411509 → **1.339077**, test
+   accuracy 53.0% → **58.2%** (11th of 11 → 10th of 11) and train-in-eval 0.8186 → **0.1586**,
+   at an unchanged cost (177.3 → 177.6 ms/step, 22.96 GB either way — as §1.5's Gram statement
+   requires, since `rtol` and `lr` do not enter the step cost). It is still an optimisation
+   failure against 73–78% for the baselines, and the paper sentence does not survive.
 4. **`campaign/CAMPAIGN_STATUS.md`'s 09-19 22:11 headline table is pre-extension.** It quotes
    toy Sven 4.8e-07 and polynomial Sven 0.118; after the extension round the selected values
    are 2.873e-07 and 0.10948. The status file is a living log and says so, but the numbers

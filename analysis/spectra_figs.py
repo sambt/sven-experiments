@@ -221,6 +221,47 @@ def _one(rows, column):
     return vals[0]
 
 
+#: What makes one Sven configuration of a diag pass (and what a re-run changes).
+DIAG_CONFIG_KEYS = ('k', 'lr', 'rtol')
+
+#: Record columns that date a run, best first: used only to break a tie between two
+#: configurations in one pass when the selection matches neither.
+_WHEN_COLUMNS = ('end_time', 'collected_at', 'start_time')
+
+
+def _config_keys(rows):
+    """``{(k, lr, rtol)}`` over ``rows`` -- the configurations this pass holds."""
+    cols = [c for c in DIAG_CONFIG_KEYS if c in rows.columns]
+    if not cols:
+        return set()
+    return set(map(tuple, rows[cols].astype(object).to_numpy()))
+
+
+def _n_configs(rows):
+    return len(_config_keys(rows))
+
+
+def _newest_config(rows):
+    """The rows of the configuration whose runs finished LAST.
+
+    Deterministic without a timestamp too: falls back to the largest group, then to the
+    highest ``(k, lr, rtol)``, so a pass with no dates still yields one configuration
+    rather than an averaged pair.
+    """
+    cols = [c for c in DIAG_CONFIG_KEYS if c in rows.columns]
+    when = next((c for c in _WHEN_COLUMNS if c in rows.columns), None)
+    best, best_key = None, None
+    for key, sub in rows.groupby(cols, dropna=False):
+        key = key if isinstance(key, tuple) else (key,)
+        stamp = ''
+        if when is not None:
+            stamp = str(pd.to_datetime(sub[when], errors='coerce', utc=True).max())
+        rank = (stamp, len(sub), tuple(str(v) for v in key))
+        if best_key is None or rank > best_key:
+            best, best_key = sub, rank
+    return best.sort_values('model_seed')
+
+
 def sven_diag(scan, payload=None, results_root=None, verbose=True):
     """:class:`SvenDiag` for one headline scan, from its ``_diag`` pass.
 
@@ -229,20 +270,38 @@ def sven_diag(scan, payload=None, results_root=None, verbose=True):
     as of the selection the pass was launched from.  This cross-checks them against
     the selection of record and reports a mismatch instead of silently plotting a
     superseded configuration.
+
+    A re-selection re-runs the pass, and the OLD pick's runs KEEP their run_ids and stay
+    on disk (CIFAR-CE, 2026-09-20: ``k=128 lr=0.1 rtol=0.01`` superseded by
+    ``k=128 lr=0.5 rtol=0.3``), so a diag directory can hold two Sven configurations.
+    The selected one is taken first; only if the pass has no run at the selected
+    configuration do all of its Sven rows stay in play, which is the case the
+    ``selection_matches`` / ``selection_note`` report exists for.
     """
     name = headline.dir_name(scan, 'diag')
     df = headline.load(scan, 'diag', results_root=results_root)
     rows = df[df['optimizer'] == SVEN_OPTIMIZER].sort_values('model_seed')
     if not len(rows):
         raise FileNotFoundError(f'{name} has no Sven runs')
-    k, rtol, lr = int(_one(rows, 'k')), float(_one(rows, 'rtol')), float(_one(rows, 'lr'))
-    B = int(_one(rows, 'batch_size'))
-    ref = rows.iloc[0]
-    matches, note = True, ''
     try:
         sel = headline.selection_methods(scan, payload).get(SVEN_OPTIMIZER)
     except KeyError:
         sel = None
+    n_sven = len(rows)
+    if sel is not None:
+        picked, _report = headline.selected_runs(rows, sel)
+        if len(picked):
+            rows = picked.sort_values('model_seed')
+    if _n_configs(rows) > 1:
+        # No run at the selected configuration and more than one on disk: take the pass
+        # that ran LAST, which is the one the launcher was pointed at most recently, and
+        # let `selection_note` below say the spectra are not the selection's.
+        rows = _newest_config(rows)
+    n_other = n_sven - len(rows)
+    k, rtol, lr = int(_one(rows, 'k')), float(_one(rows, 'rtol')), float(_one(rows, 'lr'))
+    B = int(_one(rows, 'batch_size'))
+    ref = rows.iloc[0]
+    matches, note = True, ''
     if sel is not None:
         want = {'k': k, 'rtol': rtol, 'lr': lr}
         have = {key: sel.get('hparams', {}).get(key) for key in want}
@@ -263,6 +322,14 @@ def sven_diag(scan, payload=None, results_root=None, verbose=True):
         print(f'{name}: Sven k={k} rtol={rtol:g} lr={lr:g} B={B} | '
               f'{len(rows)} seed(s) {out.seeds} | {out.n_epochs} epochs, {out.n_steps} steps'
               + ('' if matches else '  ** superseded selection **'))
+        if n_other:
+            why = ('no selection file entry names a Sven configuration for this scan, so '
+                   'these are the runs that finished LAST' if sel is None else
+                   'this is the selection of record' if matches else
+                   'this is NOT the selection of record -- see the note below')
+            print(f'  ({n_other} Sven run(s) of another configuration are also in this '
+                  f'pass and are left out; these spectra are k={k}, rtol={rtol:g}, '
+                  f'lr={lr:g}: {why})')
         if note:
             print('  ' + note)
     return out

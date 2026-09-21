@@ -1,6 +1,9 @@
-"""`analysis/profile_helpers.py`: which results root is read, and where the cache goes.
+"""`analysis/profile_helpers.py`: which results root is read, where the cache goes, and what
+the v2-vs-v3 comparison is allowed to claim.
 
-Two things this pins, both found by review of the 2026-09-20 re-profile work package:
+The first two were found by review of the 2026-09-20 re-profile work package; the third came
+with the finished v3 pass (job 47396284), whose numbers only mean something next to v2's if
+the difference between the two passes can be read off the records:
 
 1. **The completeness gate.** `results_root()` used to prefer `profile_results_v3` the
    moment it held ONE json.  The re-profile job writes 720 files over up to 6 h, so any
@@ -13,6 +16,12 @@ Two things this pins, both found by review of the 2026-09-20 re-profile work pac
    `<root>/_profile_cache.pkl`, inside a results root that ANALYSIS_CONTRACTS.md declares
    read-only, and `compare_profiles(old=ROOT_V2, ...)` therefore rewrote
    `profile_results_v2/` on every call.  It now lives outside every results root.
+3. **What the comparison may claim.** `PROVENANCE_COLS` must reach the frame as recorded and
+   never as a default -- v2 wrote down none of them, and a `False` invented for it would make
+   the frozen before-table claim it was measured correctly.  `sven_change_table` must pair the
+   step-time change with the memory change (the fix should move one and not the other), and
+   `baseline_control` must carry, for any baseline that moved, the two things that say it was
+   not the machine: the per-step series' steadiness and the run's status.
 
 Everything here is synthetic (a tmp dir per test) and needs neither torch, a GPU nor the
 real profile results.  `$SV3_PROFILE_CACHE_DIR` is redirected into the tmp dir throughout,
@@ -204,3 +213,169 @@ def test_compare_profiles_writes_nothing_into_either_root(tmp_path, monkeypatch)
     assert len(cmp) == 720 and (cmp.step_ms_ratio == 1.0).all()
     for r, names in snap.items():
         assert sorted(p.name for p in r.iterdir()) == names
+
+
+# ---------------------------------------------------------------------------
+# provenance: the two settings v2 got wrong, read off the records
+# ---------------------------------------------------------------------------
+def _provenanced(run_id, **env):
+    """A record written the way `experiments/optimizer_profile.py` writes one now."""
+    r = _record(run_id)
+    r['env'] = {'gpu': 'NVIDIA A100-SXM4-80GB', 'gpu_total_bytes': 85_118_156_800,
+                'torch': '2.9.1+cu128', 'host': 'h1', 'slurm_job_id': '1',
+                'alloc_conf': 'expandable_segments:True', 'sven_empty_cache': False,
+                'bn_mode': 'frozen', **env}
+    r['provenance'] = {'git_sha': 'a' * 40, 'git_dirty': True, 'sven_git_sha': 'b' * 40,
+                       'host': 'h1', 'slurm_job_id': '1', 'torch_version': '2.9.1+cu128'}
+    return r
+
+
+def test_the_four_settings_a_cost_claim_needs_are_columns(tmp_path):
+    """`empty_cache` False and the allocator have to be READABLE from the frame: the whole
+    reason v3 exists is that v2's numbers could not be told apart from a correct pass by
+    looking at the records (`empty_cache` was not in them)."""
+    root = tmp_path / 'v3' / 'profile_toy_1d'
+    root.mkdir(parents=True)
+    (root / 'a.json').write_text(json.dumps(_provenanced('a')))
+    df = ph.load_profiles(root.parent, use_cache=False)
+    row = df.iloc[0]
+    # False, and not None / 'False' / missing: the notebook prints this as the proof
+    assert row.empty_cache is not None and bool(row.empty_cache) is False
+    assert row.alloc_conf == 'expandable_segments:True'
+    assert row.git_sha == 'a' * 40 and row.sven_git_sha == 'b' * 40
+    assert row.gpu == 'NVIDIA A100-SXM4-80GB' and row.bn_mode == 'frozen'
+    assert row.slurm_job_id == '1' and row.torch == '2.9.1+cu128'
+    for c in ph.PROVENANCE_COLS:
+        assert c in row.index
+
+
+def test_a_record_without_provenance_reports_none_not_a_default(tmp_path):
+    """v2's records carry no `alloc_conf` / `sven_empty_cache`.  Defaulting either to
+    False would have made the frozen before-table claim it was measured correctly."""
+    root = tmp_path / 'v2' / 'profile_toy_1d'
+    root.mkdir(parents=True)
+    (root / 'a.json').write_text(json.dumps(_record('a')))       # no env, no provenance
+    row = ph.load_profiles(root.parent, use_cache=False).iloc[0]
+    assert row.empty_cache is None and row.alloc_conf is None
+    assert row.git_sha is None and row.gpu is None
+
+
+def test_provenance_report_counts_one_row_per_distinct_pass(tmp_path):
+    root = tmp_path / 'r' / 'profile_toy_1d'
+    root.mkdir(parents=True)
+    for i in range(3):                                   # one pass, three configurations
+        (root / f'a{i}.json').write_text(json.dumps(_provenanced(f'a{i}')))
+    (root / 'b.json').write_text(json.dumps(_provenanced('b', bn_mode='batch')))
+    rep = ph.provenance_report(ph.load_profiles(root.parent, use_cache=False))
+    assert list(rep.columns) == list(ph.PROVENANCE_COLS) + ['n']
+    assert rep.n.tolist() == [3, 1]                      # biggest group first
+    assert set(rep.bn_mode) == {'frozen', 'batch'}
+    assert (rep.empty_cache == False).all()              # noqa: E712  (not a truth test)
+
+
+def test_provenance_report_says_not_recorded_rather_than_blank(tmp_path):
+    """A blank cell reads as 'False' to a hurried reader; v2 recorded nothing at all."""
+    root = tmp_path / 'r' / 'profile_toy_1d'
+    root.mkdir(parents=True)
+    (root / 'a.json').write_text(json.dumps(_record('a')))
+    rep = ph.provenance_report(ph.load_profiles(root.parent, use_cache=False))
+    assert len(rep) == 1 and rep.n.iloc[0] == 1
+    assert rep.empty_cache.iloc[0] == ph.NOT_RECORDED
+    assert rep.alloc_conf.iloc[0] == ph.NOT_RECORDED
+    assert rep.git_sha.iloc[0] == ph.NOT_RECORDED
+
+
+def test_provenance_report_of_an_empty_frame_keeps_its_columns():
+    import pandas as pd
+    rep = ph.provenance_report(pd.DataFrame())
+    assert list(rep.columns) == list(ph.PROVENANCE_COLS) + ['n'] and rep.empty
+
+
+# ---------------------------------------------------------------------------
+# the two tables the v2-vs-v3 cell shows: Sven's change, and the baseline control
+# ---------------------------------------------------------------------------
+def _cmp_record(run_id, method, arch='toy_1d', step=10.0, peak=1e6, p10=None, p90=None,
+                status='ok'):
+    p10 = step if p10 is None else p10
+    p90 = step if p90 is None else p90
+    return {'run_id': run_id, 'arch': arch, 'config_name': f'profile_{arch}',
+            'study': 'methods', 'method': method, 'status': status, 'n_params': 10,
+            'params': {'batch_size': 8},
+            'time': {'step_ms': {'cycle_mean': step, 'steady_mean': step, 'median': step,
+                                 'mean': step, 'p10': p10, 'p90': p90, 'n': 50}},
+            'raw': {'step_ms': [step] * 50},
+            'memory': {'peak_alloc_bytes_max': peak}}
+
+
+def _two_roots(tmp_path, rows):
+    """``rows`` = [(run_id, method, arch, step_v2, step_v3, peak_v2, peak_v3, kw2, kw3)]."""
+    old, new = tmp_path / 'v2', tmp_path / 'v3'
+    for root, i in ((old, 0), (new, 1)):
+        for rid, method, arch, steps, peaks, kws in rows:
+            d = root / f'profile_{arch}'
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f'{rid}.json').write_text(json.dumps(
+                _cmp_record(rid, method, arch, steps[i], peaks[i], **kws[i])))
+    return old, new
+
+
+def test_sven_change_table_pairs_step_time_with_memory(tmp_path, monkeypatch):
+    """The re-profile's claim is a PAIR: step time falls, memory does not move (the fix
+    changes when the allocator hands blocks back, not how many are live).  One table."""
+    rows = [('a', 'gram_full', 'cifar_resnet18', (845.0, 190.0), (2.3e10, 2.3e10), ({}, {})),
+            ('b', 'gram_hooks', 'mnist', (10.4, 10.3), (2.1e7, 2.1e7), ({}, {})),
+            ('c', 'Adam', 'mnist', (4.0, 4.0), (1e7, 1e7), ({}, {}))]
+    old, new = _two_roots(tmp_path, rows)
+    cmp = ph.compare_profiles(old=old, new=new)
+    tbl = ph.sven_change_table(cmp)
+    assert len(tbl) == 2                                  # the baseline is not in it
+    assert tbl.arch.tolist() == ['mnist', 'cifar_resnet18']          # ARCH_ORDER
+    cif = tbl[tbl.arch == 'cifar_resnet18'].iloc[0]
+    assert cif['step v3/v2'] == 0.225 and cif['mem v3/v2'] == 1.0
+    assert cif['step ms v2'] == 845.0 and cif['step ms v3'] == 190.0
+
+
+def test_baseline_control_flags_the_architecture_whose_baselines_moved(tmp_path):
+    rows = [('a', 'Adam', 'mnist', (4.0, 4.02), (1e7, 1e7), ({}, {})),
+            ('b', 'SGD', 'mnist', (3.9, 3.88), (1e7, 1e7), ({}, {})),
+            ('c', 'Adam', 'toy_1d', (4.0, 4.0), (1e7, 1e7), ({}, {})),
+            ('d', 'LBFGS3', 'toy_1d', (112.7, 15.0), (1e7, 1e7), ({}, {})),
+            ('e', 'gram_full', 'toy_1d', (15.0, 8.0), (1e7, 1e7), ({}, {}))]
+    old, new = _two_roots(tmp_path, rows)
+    ctl = ph.baseline_control(ph.compare_profiles(old=old, new=new), tol=0.10)
+    assert ctl.arch.tolist() == ['toy_1d', 'mnist']
+    mn, toy = ctl[ctl.arch == 'mnist'].iloc[0], ctl[ctl.arch == 'toy_1d'].iloc[0]
+    assert mn['n baselines'] == 2 and bool(mn['within 10%']) is True  # Sven excluded
+    assert bool(toy['within 10%']) is False and toy['worst'] == ph.label('LBFGS3')
+    assert toy['worst v3/v2'] == round(15.0 / 112.7, 3)
+
+
+def test_baseline_control_carries_the_steadiness_and_status_of_the_worst_entry(tmp_path):
+    """Why a baseline moved: an L-BFGS series that switched regime mid-measurement is
+    bimodal (v2 toy LBFGS3: 15 steps at 14 ms then 35 at 126 ms, p90/p10 = 9.1), and a
+    `nonfinite` entry diverged -- neither says the machine changed."""
+    rows = [('a', 'Adam', 'mnist', (4.0, 4.0), (1e7, 1e7), ({}, {})),
+            ('b', 'LBFGS1', 'mnist', (13.0, 19.0), (1e7, 1e7),
+             ({'p10': 12.0, 'p90': 14.0}, {'p10': 9.5, 'p90': 127.0,
+                                           'status': 'nonfinite'}))]
+    old, new = _two_roots(tmp_path, rows)
+    ctl = ph.baseline_control(ph.compare_profiles(old=old, new=new)).iloc[0]
+    assert ctl['worst'] == ph.label('LBFGS1')
+    assert ctl['steady v2'] == round(14.0 / 12.0, 2)
+    assert ctl['steady v3'] == round(127.0 / 9.5, 2)      # the bimodal one
+    assert (ctl['status v2'], ctl['status v3']) == ('ok', 'nonfinite')
+
+
+def test_baseline_control_skips_a_configuration_that_failed_in_either_root(tmp_path):
+    """An `oom` / `error` has no step time, so it cannot be a control point."""
+    rows = [('a', 'Adam', 'mnist', (4.0, 4.0), (1e7, 1e7), ({}, {})),
+            ('b', 'HIG', 'mnist', (70.0, 70.0), (1e7, 1e7), ({}, {'status': 'oom'}))]
+    old, new = _two_roots(tmp_path, rows)
+    ctl = ph.baseline_control(ph.compare_profiles(old=old, new=new)).iloc[0]
+    assert ctl['n baselines'] == 1 and bool(ctl['within 10%']) is True
+
+
+def test_both_tables_survive_an_empty_comparison():
+    import pandas as pd
+    for f in (ph.sven_change_table, ph.baseline_control):
+        assert f(pd.DataFrame()).empty

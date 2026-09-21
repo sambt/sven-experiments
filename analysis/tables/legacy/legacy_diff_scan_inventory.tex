@@ -4,10 +4,10 @@ scan & title & where & n\_records\_leg & n\_records\_fresh & compared as & dispo
 \midrule
 cifar10\_resnet\_ce\_kappaScan & cifar10\_resnet\_ce\_kappaScan & legacy only & 2 & 0 & -- & CUT: 1 seed at a tentative set point; replaced on MNIST only (mnist\_kappaScan\_labelRegression). NO fresh CIFAR kappa scan. \\
 cifar10\_resnet\_ce\_paramFrac\_scan & cifar10\_resnet\_ce\_paramFrac\_scan & legacy only & 6 & 0 & -- & CUT: superseded by rebuttal\_fig5\_cifar\_paramfrac\_scan (label regression only), so the cross-entropy parameter-fraction curve has NO fresh counterpart. \\
-cifar10\_resnet\_ce\_scan & CIFAR-10 (CE) & both & 290 & 775 & headline &  \\
-cifar10\_resnet\_ce\_scan\_confirm & cifar10\_resnet\_ce\_scan\_confirm & fresh only & 0 & 55 & -- & confirm pass of cifar10\_resnet\_ce\_scan \\
-cifar10\_resnet\_ce\_scan\_diag & cifar10\_resnet\_ce\_scan\_diag & fresh only & 0 & 55 & -- & diag pass of cifar10\_resnet\_ce\_scan \\
-cifar10\_resnet\_ce\_scan\_timing & cifar10\_resnet\_ce\_scan\_timing & fresh only & 0 & 55 & -- & timing pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_ce\_scan & CIFAR-10 (CE) & both & 290 & 785 & headline &  \\
+cifar10\_resnet\_ce\_scan\_confirm & cifar10\_resnet\_ce\_scan\_confirm & fresh only & 0 & 60 & -- & confirm pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_ce\_scan\_diag & cifar10\_resnet\_ce\_scan\_diag & fresh only & 0 & 60 & -- & diag pass of cifar10\_resnet\_ce\_scan \\
+cifar10\_resnet\_ce\_scan\_timing & cifar10\_resnet\_ce\_scan\_timing & fresh only & 0 & 60 & -- & timing pass of cifar10\_resnet\_ce\_scan \\
 cifar10\_resnet\_kappaScan\_labelReg & cifar10\_resnet\_kappaScan\_labelReg & legacy only & 5 & 0 & -- & CUT: 1 seed at a tentative set point. The kappa story now runs on MNIST at 5 seeds with a matched-effective-step grid (mnist\_kappaScan\_labelRegression); there is NO fresh CIFAR kappa scan. \\
 cifar10\_resnet\_paramFrac\_scan\_labelReg & cifar10\_resnet\_paramFrac\_scan\_labelReg & legacy only & 5 & 0 & -- & CUT: superseded by rebuttal\_fig5\_cifar\_paramfrac\_scan at 3 seeds, which exists in both roots and IS diffed here (the Sven-only table). The legacy Fig-5 numbers come from that 1-seed scan, not from this one. \\
 cifar10\_resnet\_scan\_labelRegression & CIFAR-10 (label reg.) & both & 290 & 600 & headline &  \\
@@ -42,7 +42,7 @@ polynomial\_scan\_confirm & polynomial\_scan\_confirm & fresh only & 0 & 225 & -
 polynomial\_scan\_diag & polynomial\_scan\_diag & fresh only & 0 & 75 & -- & diag pass of polynomial\_scan \\
 polynomial\_scan\_timing & polynomial\_scan\_timing & both & 65 & 75 & excluded &  \\
 rebuttal\_batchsize\_polynomial\_scan & Polynomial, batch-size sweep & both & 2496 & 3060 & grouped &  \\
-rebuttal\_fig5\_cifar\_paramfrac\_scan & CIFAR-10 (label reg.), Fig-5 masks & both & 15 & 15 & sven\_only &  \\
+rebuttal\_fig5\_cifar\_paramfrac\_scan & CIFAR-10 (label reg.), Fig-5 masks & both & 15 & 30 & sven\_only &  \\
 rebuttal\_overparam\_mnist\_scan & MNIST (label reg.), P/N sweep & both & 2477 & 3600 & grouped &  \\
 rebuttal\_overparam\_polynomial\_scan & Polynomial, P/N sweep & both & 2160 & 4320 & grouped &  \\
 rebuttal\_overparam\_toy\_1d\_scan & Toy 1D, P/N sweep & both & 2160 & 3240 & grouped &  \\

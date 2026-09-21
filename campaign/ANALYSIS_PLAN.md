@@ -139,6 +139,11 @@ Acceptance: figures regenerate from `make_plots.sh`; tool has tests; nothing rea
    5-18 s. BatchNorm was ON (`bn_mode: batch`: batch statistics in training, one running-stat update per step, eval
    with running stats) for every optimizer. The legacy "Sven ~ Adam on CIFAR" came from evaluating Sven with
    validation-batch statistics.
+   **SUPERSEDED for cross-entropy (2026-09-21), by decision 5 below:** the `rtol` extension moved the CIFAR-CE Sven
+   pick to k=128 / lr=0.5 / rtol=0.3 and the passes were re-run, so the CE facts to state are now **test acc 58.2%**
+   vs 73-78%, val 1.3552, test loss 1.3391, train_eval **0.159** (still an optimisation failure, but far less extreme
+   than the 0.82 above), 63.1 s/epoch. The label-regression facts and the BatchNorm paragraph are unchanged.
+   EXPERIMENTS.md §5 and §9.3 carry the numbers of record.
 4. **Re-profile: YES.** Re-run the optimizer step-time / memory profile (`bench/profile_serial.sbatch`, all
    `experiments/configs/profile_*.yaml`, ~2 h on one exclusive A100-80GB node) on the campaign code, because the
    09-17 profile was measured with the per-step `torch.cuda.empty_cache()` that made full-capture Sven up to 4.5x

@@ -161,6 +161,7 @@ def _row(r: dict) -> dict:
     t, mem = r.get('time') or {}, r.get('memory') or {}
     raw = r.get('raw') or {}
     st = t.get('step_ms') or {}
+    env, prov = r.get('env') or {}, r.get('provenance') or {}
     g = lambda d, k: (d.get(k) if d else None)
     out = {
         'run_id': r['run_id'], 'arch': r.get('arch'), 'config_name': r.get('config_name'), 'study': r['study'],
@@ -183,7 +184,16 @@ def _row(r: dict) -> dict:
         'analytic_jac_mb': (meta.get('analytic_jacobian_bytes') or np.nan) / MB,
         'analytic_gram_mb': (meta.get('analytic_gram_bytes') or np.nan) / MB,
         'oom_peak_mb': (r.get('peak_alloc_bytes_at_failure') or np.nan) / MB,
-        'gpu': (r.get('env') or {}).get('gpu'), 'gpu_total_mb': ((r.get('env') or {}).get('gpu_total_bytes') or np.nan) / MB,
+        'gpu': env.get('gpu'), 'gpu_total_mb': (env.get('gpu_total_bytes') or np.nan) / MB,
+        # PROVENANCE, one column per field a cost claim has to be able to name (below).
+        # `None` where the pass did not record it -- v2 recorded none of these but the
+        # GPU, which is itself the finding, so nothing here may default to a value.
+        'alloc_conf': env.get('alloc_conf'), 'empty_cache': env.get('sven_empty_cache'),
+        'bn_mode': env.get('bn_mode'), 'git_sha': prov.get('git_sha'),
+        'git_dirty': prov.get('git_dirty'), 'sven_git_sha': prov.get('sven_git_sha'),
+        'torch': env.get('torch') or prov.get('torch_version'),
+        'host': env.get('host') or prov.get('host'),
+        'slurm_job_id': env.get('slurm_job_id') or prov.get('slurm_job_id'),
         '_path': r.get('_path'),
     }
     out['overhead_mb'] = out['peak_mb'] - out['model_mb']
@@ -191,10 +201,22 @@ def _row(r: dict) -> dict:
     return out
 
 
+#: The provenance a step-time / memory claim has to be able to name: which code measured
+#: it, on which GPU, under which allocator, and with Sven's per-step ``empty_cache`` on or
+#: off.  :func:`provenance_report` groups a frame by exactly these.  ``profile_results_v2``
+#: carries none of them except ``gpu`` (its ``env`` block is gpu / torch / cuda / host /
+#: slurm_job_id only), so they read as ``None`` there -- the absence is the reason v2 could
+#: not be told apart from a correct pass by reading the records, only by reading the code.
+PROVENANCE_COLS = ('gpu', 'alloc_conf', 'empty_cache', 'bn_mode', 'git_sha', 'sven_git_sha',
+                   'torch', 'host', 'slurm_job_id')
+#: What :func:`provenance_report` prints for a field the pass never recorded.
+NOT_RECORDED = '(not recorded)'
+
 #: Bump when :func:`_row` changes what it derives from the same JSON files -- the file
 #: listing alone cannot see a change of summary statistic (C-T2 moved ``step_ms`` from
-#: ``steady_mean`` to the cycle mean, and every cached frame would have stayed stale).
-_CACHE_VERSION = 2
+#: ``steady_mean`` to the cycle mean, and every cached frame would have stayed stale;
+#: version 3 added :data:`PROVENANCE_COLS`).
+_CACHE_VERSION = 3
 
 
 def has_profiles(root) -> bool:
@@ -319,8 +341,41 @@ def load_profiles(root=None, configs=None, use_cache=True) -> pd.DataFrame:
     return df
 
 
+def provenance_report(df: pd.DataFrame, cols=PROVENANCE_COLS) -> pd.DataFrame:
+    """One row per distinct :data:`PROVENANCE_COLS` combination in ``df``, with its count.
+
+    What it is for: a cost claim in the paper ("Sven's CIFAR step is 190 ms") is only worth
+    the provenance of the pass behind it, and the two settings v2 got wrong are exactly
+    two of these columns.  A one-row report means every configuration in the frame was
+    measured by the same code on the same GPU under the same allocator -- which is what
+    makes a v2-vs-v3 ratio a measurement of the fix rather than of the machine.
+
+    ``bn_mode`` legitimately differs by architecture (the Gram family's default is
+    ``frozen``; CIFAR's scan config sets ``bn_mode: batch``, which the profile inherits),
+    so a v3 pass reports TWO rows and their counts say how the 720 split.  A field the
+    pass did not record reads :data:`NOT_RECORDED` rather than blank -- "v2 never wrote
+    this down" and "v2 wrote down False" must not look the same in a table.  v2's norm
+    policy is therefore NOT readable from this report: it lives in the per-record
+    ``meta.freeze_norm_stats`` (``False`` for all 33 of its CIFAR Gram records, i.e. batch
+    statistics, the same policy v3's ``bn_mode: batch`` gives CIFAR).
+    """
+    cols = list(cols)
+    if df.empty:
+        return pd.DataFrame(columns=cols + ['n'])
+    cols = [c for c in cols if c in df.columns]
+    if not cols:
+        return pd.DataFrame(columns=['n'])
+    keys = [df[c].astype(object).where(df[c].notna(), NOT_RECORDED).rename(c) for c in cols]
+    out = df.groupby(keys, dropna=False).size().reset_index(name='n')
+    out.columns = cols + ['n']
+    return out.sort_values('n', ascending=False).reset_index(drop=True)
+
+
 #: Columns :func:`compare_profiles` reports side by side, with the suffix each root gets.
-COMPARE_VALUES = ('step_ms', 'capture_ms', 'solve_ms', 'peak_mb', 'rel_time')
+#: ``steadiness`` (p90 / p10 of the per-step series) is carried so that a value which
+#: moved between the roots can be read together with whether either measurement was a
+#: single-regime one at all -- :func:`baseline_control` needs exactly that.
+COMPARE_VALUES = ('step_ms', 'capture_ms', 'solve_ms', 'peak_mb', 'rel_time', 'steadiness')
 
 
 def compare_profiles(old=None, new=None, values=COMPARE_VALUES, use_cache=True):
@@ -383,6 +438,91 @@ def compare_table(cmp: pd.DataFrame, study='methods', value='step_ms', n=None):
     })
     out = out.reindex(out['v3/v2'].sub(1).abs().sort_values(ascending=False).index)
     return (out if n is None else out.head(n)).reset_index(drop=True)
+
+
+def sven_change_table(cmp: pd.DataFrame, study='methods') -> pd.DataFrame:
+    """The headline of the re-profile: per architecture and Sven variant, step time AND
+    peak memory v2 -> v3 with both ratios, in :data:`ARCH_ORDER`.
+
+    One table rather than two :func:`compare_table` calls, because the claim being made is
+    a pair: the ``empty_cache`` fix buys step time and must NOT have moved memory (it
+    changes when the allocator returns blocks, not how many are live).
+    """
+    if cmp.empty:
+        return cmp
+    d = cmp[cmp.study == study] if study else cmp
+    d = d[d.method.map(is_sven)].copy()
+    d['Method'] = d.method.map(label)
+    out = pd.DataFrame({
+        'arch': d.arch, 'Method': d.Method,
+        'step ms v2': d.step_ms_old.round(1), 'step ms v3': d.step_ms_new.round(1),
+        'step v3/v2': d.step_ms_ratio.round(3),
+        'peak MB v2': d.peak_mb_old.round(0), 'peak MB v3': d.peak_mb_new.round(0),
+        'mem v3/v2': d.peak_mb_ratio.round(3),
+        'status v2': d.status_old, 'status v3': d.status_new,
+    })
+    order = {a: i for i, a in enumerate(ARCH_ORDER)}
+    out = out.reindex(out.arch.map(lambda a: order.get(a, len(order)))
+                      .sort_values(kind='stable').index)
+    return out.reset_index(drop=True)
+
+
+def baseline_control(cmp: pd.DataFrame, value='step_ms', study='methods', tol=0.10):
+    """The control on the re-profile: by how much did the BASELINES move, per architecture?
+
+    Only Sven called ``empty_cache``, so the FIRST fix cannot move a baseline at all and a
+    baseline ratio far from 1 is not a result.  Three things can produce one, and the table
+    is built to tell them apart:
+
+    * the two passes did not measure the same machine -- different GPU model, a co-tenant,
+      or host-CPU load on the cheap MLP steps (``campaign/stage0_reports/gpu.probe.md``
+      measured the same MNIST-Adam step at 1.13 ms on a quiet node and 4.58 ms on a busy
+      one).  Read the two ``[calib]`` lines in each profile job's log against each other;
+    * the measurement was never single-regime.  ``steady v2`` / ``steady v3`` are the
+      p90 / p10 of the worst entry's per-step series in each root: L-BFGS's strong-Wolfe
+      line search costs one function evaluation or a dozen depending on where it is on the
+      loss surface, and its series can switch regime mid-measurement (toy LBFGS 3-it. in
+      v2: 15 steps at 14 ms, then 35 at 126 ms, steadiness 9.1).  A ratio whose ``steady``
+      is far from 1 says the *optimizer's own* cost is bimodal, not that the pass changed;
+    * the SECOND fix, ``expandable_segments``, is NOT Sven-only -- it is an allocator
+      setting the whole process runs under, so an allocation-heavy baseline may legitimately
+      move a little.  Only the first fix is Sven-specific.
+
+    Only configurations whose status is in :data:`TIMED` in BOTH roots are counted (an
+    ``oom``/``error`` has no step time to compare), and ``within`` is the per-architecture
+    verdict at ``tol``.  Returns one row per architecture in :data:`ARCH_ORDER`.
+    """
+    if cmp.empty:
+        return cmp
+    d = cmp[cmp.study == study] if study else cmp
+    d = d[~d.method.map(is_sven)
+          & d.status_old.isin(TIMED) & d.status_new.isin(TIMED)]
+    r = d[f'{value}_ratio']
+    d = d[np.isfinite(r)]
+    rows = []
+    for arch, g in d.groupby('arch'):
+        rr = g[f'{value}_ratio']
+        worst = g.loc[rr.sub(1).abs().idxmax()]
+        row = {'arch': arch, 'n baselines': len(g),
+               'median v3/v2': round(float(rr.median()), 3),
+               'min': round(float(rr.min()), 3), 'max': round(float(rr.max()), 3),
+               'worst': label(worst.method),
+               'worst v3/v2': round(float(worst[f'{value}_ratio']), 3)}
+        for suf, tag in (('_old', 'v2'), ('_new', 'v3')):
+            if f'steadiness{suf}' in g.columns:
+                row[f'steady {tag}'] = round(float(worst[f'steadiness{suf}']), 2)
+            # a `nonfinite` entry was still measured, but its optimizer diverged: its step
+            # cost says nothing about the machine, so the status travels with the row
+            row[f'status {tag}'] = worst[f'status{suf}']
+        row[f'within {tol:.0%}'] = bool(rr.sub(1).abs().max() <= tol)
+        rows.append(row)
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    order = {a: i for i, a in enumerate(ARCH_ORDER)}
+    out = out.reindex(out.arch.map(lambda a: order.get(a, len(order)))
+                      .sort_values(kind='stable').index)
+    return out.reset_index(drop=True)
 
 
 def add_relative(df: pd.DataFrame) -> pd.DataFrame:

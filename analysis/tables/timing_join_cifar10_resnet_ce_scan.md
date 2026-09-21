@@ -1,6 +1,6 @@
 | method | display | n_timing | n_joined | max_rel_dev | median_rel_dev | bit_reproduced | n_diverged_only_in_timing | n_diverged_only_in_scan | max_rel_dev_raw | worst_run_raw |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Sven | Sven | 5 | 5 | 0.01793 | 0.01141 | False | 0 | 0 | 0.01793 | svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4000_lseed4000_gram_bnbatch |
+| Sven | Sven | 5 | 5 | 0.03215 | 0.01997 | False | 0 | 0 | 0.03215 | svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4000_lseed4000_gram_bnbatch |
 | Adam | Adam | 5 | 5 | 0.09787 | 0.05606 | False | 0 | 0 | 0.09787 | std_bs128_lr0.001_optimAdam_mseed4001_lseed4000 |
 | AdamW | AdamW | 5 | 5 | 0.1241 | 0.07331 | False | 0 | 0 | 0.1241 | std_bs128_lr0.01_optimAdamW_wd0.01_mseed4003_lseed4000 |
 | LBFGS | Stochastic L-BFGS | 5 | 5 | 0.1572 | 0.0861 | False | 0 | 0 | 0.1572 | std_bs128_lr2.0_optimLBFGS_mi2_hs5_lsstrong_wolfe_mseed4000_lseed4000 |

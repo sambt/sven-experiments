@@ -195,6 +195,95 @@ def test_paramfrac_config_reports_a_knob_that_was_re_tuned(paramfrac_frame):
     assert 'lr' in lf.paramfrac_config(df)['varies']
 
 
+#: A selection payload for the label-regression headline scan: Sven at k = 16, lr = 0.5.
+HEAD_SCAN = 'wp4b_headline_fixture'
+HEAD_PAYLOAD = {'schema': 2, 'scans': {HEAD_SCAN: {'methods': {'SVD': {
+    'method': 'SVD', 'overrides': 'mode=svd k_values=[16] lrs=[0.5] rtol=[0.001]',
+    'hparams': {'k': 16, 'lr': 0.5, 'rtol': 1e-3, 'kappa': 2}}}}}}
+
+
+@pytest.fixture
+def two_config_frame(paramfrac_frame):
+    """The real shape of Fig 5 after the re-run: the same fractions and seeds measured at
+    TWO Sven configurations -- the legacy set point (k = 8, lr = 0.1, the fixture's) and
+    the one :data:`HEAD_PAYLOAD` selects (k = 16, lr = 0.5), which reaches half the loss.
+    """
+    sel = paramfrac_frame.copy()
+    sel['k'] = 16
+    sel['lr'] = 0.5
+    sel['run_id'] = sel['run_id'] + '_k16_lr0.5'
+    for i in sel.index:                        # the selected config is twice as good
+        cur = dict(sel.at[i, 'losses'])
+        cur['val'] = [v / 2 for v in cur['val']]
+        cur['test'] = [v / 2 for v in cur['test']]
+        sel.at[i, 'losses'] = cur
+    return ah.add_derived(pd.concat([paramfrac_frame, sel], ignore_index=True))
+
+
+def test_paramfrac_groups_puts_the_selected_configuration_first(two_config_frame):
+    """The figure's main result is the configuration the headline scan SELECTED, and which
+    one that is has to be computed from `bench/best_configs.json` rather than written into
+    the notebook -- so the figure re-points itself if the selection moves again."""
+    groups = lf.paramfrac_groups(two_config_frame, headline_scan=HEAD_SCAN,
+                                 payload=HEAD_PAYLOAD)
+    assert len(groups) == 2
+    first, second = groups
+    assert first['is_selected'] and not second['is_selected']
+    assert first['cfg']['label'] == 'k=16, lr=0.5, rtol=0.001'
+    assert first['diff'] == []
+    # ... and the one that is NOT selected says exactly how it differs
+    assert second['diff'] == ['k: 8 vs selected 16', 'lr: 0.1 vs selected 0.5']
+    assert second['role'] == 'not selected'
+    assert first['headline']['label'] == 'k=16, lr=0.5, rtol=0.001'
+
+
+def test_paramfrac_groups_keeps_each_configuration_internally_fixed(two_config_frame):
+    """Splitting is what keeps `paramfrac_config`'s assertion meaningful: on the whole
+    frame `k` and `lr` vary, and the notebook's `assert not varies` would fire on a scan
+    that is in fact two clean configurations."""
+    assert set(lf.paramfrac_config(two_config_frame)['varies']) == {'k', 'lr'}
+    for g in lf.paramfrac_groups(two_config_frame, headline_scan=HEAD_SCAN,
+                                 payload=HEAD_PAYLOAD):
+        assert g['cfg']['varies'] == []
+        assert g['cfg']['fractions'] == [0.1, 0.5, 1.0]
+        assert g['cfg']['n_runs'] == 9
+
+
+def test_paramfrac_groups_table_is_the_group_not_the_whole_scan(two_config_frame):
+    """Each group's table must be built from ITS OWN runs: a mean over both
+    configurations would be a number that describes no configuration at all."""
+    groups = lf.paramfrac_groups(two_config_frame, headline_scan=HEAD_SCAN,
+                                 payload=HEAD_PAYLOAD)
+    sel, legacy = (g['table'].set_index('param_fraction') for g in groups)
+    assert legacy.loc[0.5, 'val'] == pytest.approx(2.0)        # 1, 2, 3
+    assert sel.loc[0.5, 'val'] == pytest.approx(1.0)           # halved
+    assert (legacy.loc[0.5, 'finished'], legacy.loc[0.5, 'attempted']) == (3, 3)
+    # the diverged seed at f = 0.1 is diverged in both copies and counted in both
+    assert legacy.loc[0.1, 'n_diverged'] == 1 and sel.loc[0.1, 'n_diverged'] == 1
+
+
+def test_paramfrac_quality_can_overlay_two_configurations(two_config_frame):
+    """Both configurations on one pair of axes: val / test keep their colours and the
+    configuration is the LINE STYLE, so the figure needs no second colour cycle -- and the
+    'some seeds diverged' entry is not written twice."""
+    groups = lf.paramfrac_groups(two_config_frame, headline_scan=HEAD_SCAN,
+                                 payload=HEAD_PAYLOAD)
+    _fig, axes = plt.subplots(1, 2)
+    lf.plot_paramfrac_quality(axes, groups[0]['table'], label_suffix=' (selected)')
+    lf.plot_paramfrac_quality(axes, groups[1]['table'], ls='--', marker='s',
+                              label_suffix=' (legacy set point)', hollow_label=False,
+                              annotate_counts=False)
+    labels = [t.get_text() for t in axes[0].get_legend().get_texts()]
+    assert sum(lab == 'open marker: some seeds diverged' for lab in labels) == 1
+    assert 'Validation loss (selected)' in labels
+    assert 'Validation loss (legacy set point)' in labels
+    # the two configurations are told apart by the line style of their errorbar, not by
+    # a colour: ErrorbarContainer.lines[0] is the data line
+    styles = {c.lines[0].get_linestyle() for c in axes[0].containers}
+    assert styles == {'-', '--'}
+    plt.close('all')
+
+
 def test_paramfrac_quality_marks_the_points_with_a_diverged_seed(paramfrac_frame):
     """EXPERIMENTS.md 3.3: a Fig-5 point at pf <= 0.1 rests on 2 surviving seeds of 3, and
     any seed band on that figure has to show `finished / attempted`.  An ordinary error

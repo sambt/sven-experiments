@@ -4,7 +4,7 @@
 | SGD | lr=0.001 | 1.342 ± 0.02067 | 5/5 | 4/6 | lr=3 | 1.118 ± 0.05159 | 2/6 | 1.085 ± 0.07979 | 1.107 | 0.686 | 5/5 | 2/6 | -2 | 3/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
 | Adam | lr=0.01 | 1.215 ± 0.02367 | 5/5 | 2/6 | lr=0.001 | 1.214 ± 0.0432 | 3/6 | 1.266 ± 0.05763 | 1.304 | 0.746 | 5/5 | 3/6 | +1 | 7/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
 | RMSprop | lr=0.1 | 1.204 ± 0.08262 | 5/5 | 1/6 | lr=0.001 | 1.334 ± 0.0587 | 4/6 | 1.318 ± 0.04899 | 1.366 | 0.742 | 5/5 | 4/6 | +3 | 8/11 | confirm | 4->9 | ew,droplast,split,bn,grid |
-| Sven | k=128, lr=0.1, rtol=0.01 | 1.415 ± 0.0201 | 5/5 | 5/6 | k=128, lr=0.1, rtol=0.01 | 1.403 ± 0.0207 | 5/6 | 1.424 ± 0.0126 | 1.412 | 0.53 | 5/5 | 5/6 | = | 9/11 | confirm | 18->39 | ew,droplast,split,bn,grid,failures |
+| Sven | k=128, lr=0.1, rtol=0.01 | 1.415 ± 0.0201 | 5/5 | 5/6 | k=128, lr=0.5, rtol=0.3 | 1.355 ± 0.01765 | 5/6 | 1.355 ± 0.01601 | 1.339 | 0.582 | 5/5 | 5/6 | = | 9/11 | confirm | 18->39 | ew,droplast,split,bn,grid,failures |
 | Polyak SGD | (no swept hyperparameter) | 1.73 ± 0.03078 | 5/5 | 6/6 | f_star=0, max_lr=1, eps=1e-08 | 1.782 ± 0.04273 | 6/6 | 1.766 ± 0.04122 | 1.779 | 0.632 | 5/5 | 6/6 | = | 11/11 | confirm | 1->1 | ew,droplast,split,bn |
 | MuonW | -- | -- | -- | -- | lr=0.01, weight_decay=0.1 | 0.6888 ± 0.02447 | -- | 0.7054 ± 0.02526 | 0.7073 | 0.768 | 5/5 | -- | -- | 1/11 | confirm | 0->9 | ew,droplast,split,bn,muon,newbase |
 | AdamW | -- | -- | -- | -- | lr=0.01, weight_decay=0.01 | 1.093 ± 0.06778 | -- | 1.101 ± 0.04974 | 1.108 | 0.735 | 5/5 | -- | -- | 4/11 | confirm | 0->9 | ew,droplast,split,bn,adamw_wd,newbase |

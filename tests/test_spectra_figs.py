@@ -295,6 +295,36 @@ def test_a_superseded_selection_is_reported_not_silently_plotted(root):
     assert 're-run' in d.selection_note.lower()
 
 
+def test_a_re_run_diag_pass_takes_the_selected_configuration_of_two(root):
+    """A diag directory can hold TWO Sven configurations, and then it must plot the
+    selected one.
+
+    Real case: the CIFAR-CE `rtol` extension moved Sven's pick from
+    `k=128 lr=0.1 rtol=0.01` to `k=128 lr=0.5 rtol=0.3`, the pass was re-run, and the
+    old pick's five runs keep their own run_ids on disk.  Before the fix `_one` raised
+    `expected one rtol in the diag pass, got [0.01, 0.3]` and the notebook died; taking
+    both would have averaged two configurations into one spectrum, which is worse.
+    """
+    superseded = [record('SVD', s, rtol=0.01, lr=0.1) for s in SEEDS]
+    write_pass(root, f'{SCAN}_diag', superseded,
+               diag={r['run_id']: diag_arrays_npz(s)
+                     for r, s in zip(superseded, SEEDS)})
+    headline.clear_cache()
+    d = sf.sven_diag(SCAN, payload=payload(), verbose=False)
+    assert (d.k, d.rtol, d.lr) == (K, RTOL, LR)          # the SELECTED one
+    assert len(d.rows) == len(SEEDS)                      # not 6
+    assert set(pd.to_numeric(d.rows['rtol'])) == {RTOL}
+    assert d.selection_matches and not d.selection_note
+    # ... and if the selection names a configuration NEITHER copy ran, one configuration
+    # is still what gets plotted -- averaging two into one spectrum is the failure this
+    # guards -- and the report fires
+    d2 = sf.sven_diag(SCAN, payload=payload(k=8, rtol=0.3), verbose=False)
+    assert len(d2.rows) == len(SEEDS)
+    assert sf._n_configs(d2.rows) == 1
+    assert d2.selection_matches is False
+    assert 'selection of record' in d2.selection_note
+
+
 def test_diag_arrays_reproduce_the_optimizers_own_nonzero_count(root):
     """``min(k, rtol-rank)`` recomputed from the saved spectrum equals the
     optimizer's per-step ``num_nonzero_svs``: two independent paths to the number
