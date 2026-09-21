@@ -334,13 +334,23 @@ OFF_GRID_ITEMS = {
         "user 2026-09-20). 45 runs of three NEW rtol values around the selected lr; the "
         "scan's own rtol grid stays [1e-4, 1e-3, 1e-2] so that nothing already measured is "
         "re-hashed or re-run.",
+    ("rebuttal_fig5_cifar_paramfrac_scan",
+     "mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]"):
+        "p2_cifar_fig5_selected: Fig-5 re-run at the SELECTED Sven configuration of "
+        "cifar10_resnet_scan_labelRegression (k=128, lr=0.5, rtol=1e-3) instead of the "
+        "legacy set point the config still carries (k=64, lr=1.0). 15 runs; the config's "
+        "own k_values/lrs stay [64]/[1.0] so the 15 runs already on disk keep their "
+        "run_ids and stay available as the comparison configuration.",
 }
 
 #: How many runs each off-grid item must expand to -- the cost the user approved (~20 GPU-h
-#: at ~0.45 h a run), pinned so that a widened override cannot quietly triple the bill.
+#: at ~0.45 h a run for the rtol extension, ~13 GPU-h at ~0.85 h a run for Fig-5), pinned
+#: so that a widened override cannot quietly triple the bill.
 OFF_GRID_RUN_COUNTS = {
     ("cifar10_resnet_ce_scan",
      "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"): 45,
+    ("rebuttal_fig5_cifar_paramfrac_scan",
+     "mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]"): 15,
 }
 
 
