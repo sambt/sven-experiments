@@ -317,6 +317,138 @@ def test_clip_outliers_only_bites_on_a_blow_up():
 
 
 # ---------------------------------------------------------------------------
+# The figure registry (campaign/FIGURE_API_CONTRACT.md)
+# ---------------------------------------------------------------------------
+#: the seven figures this module owns, in the order build() writes them
+MAIN_FIGURES = ('headline_curves', 'headline_curves_all', 'cost_memory', 'k_sweeps',
+                'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm')
+
+
+def test_figure_specs_cover_the_group_in_build_order():
+    from paper_assets import main as M
+    assert tuple(M.FIGURE_SPECS) == MAIN_FIGURES
+    assert set(M._FIGURE_INFO) <= set(M.FIGURE_SPECS)
+    for name, spec in M.FIGURE_SPECS.items():
+        assert callable(spec.draw), name
+        assert spec.doc.strip(), name
+
+
+def test_two_specs_may_share_one_builder():
+    """``all_methods`` and the scan list used to be function arguments; they are knobs
+    now, which is what lets one builder serve two figures."""
+    from paper_assets import main as M
+    S = M.FIGURE_SPECS
+    assert S['headline_curves'].draw is S['headline_curves_all'].draw
+    assert S['allseed_curves'].draw is S['allseed_curves_ce_lm'].draw
+    assert S['headline_curves'].defaults['methods'] == 'top'
+    assert S['headline_curves_all'].defaults['methods'] == 'all'
+    assert (S['allseed_curves'].defaults['scans']
+            != S['allseed_curves_ce_lm'].defaults['scans'])
+
+
+def test_no_knob_shadows_a_generic_cosmetic():
+    from paper_assets import figspec as F
+    from paper_assets import main as M
+    F.check_defaults(M.FIGURE_SPECS)                 # raises on a collision
+    for name, spec in M.FIGURE_SPECS.items():
+        assert not set(spec.defaults) & set(F.COMMON_KEYS), name
+
+
+def test_defaults_are_yaml_representable_and_round_trip():
+    """A knob whose value is a python object could not be pinned from a notebook."""
+    import yaml
+    from paper_assets import figspec as F
+    from paper_assets import main as M
+    for name, spec in M.FIGURE_SPECS.items():
+        text = yaml.safe_dump(spec.defaults, sort_keys=True)
+        assert yaml.safe_load(text) == spec.defaults, name
+        # ... and with an empty override file the effective options ARE the defaults,
+        # which is what keeps the committed figures byte-identical
+        assert F.figure_opts(name, spec.defaults) == spec.defaults, name
+
+
+def test_every_knob_the_user_asked_for_is_on_figure_one():
+    """F1 is the figure the user edits: all the baselines, the legend, the labels and
+    the aspect ratio must be reachable without touching the builder."""
+    from paper_assets import main as M
+    d = M.FIGURE_SPECS['headline_curves'].defaults
+    for knob in ('methods', 'top_n', 'scans', 'versus', 'aspect', 'fraction', 'extra_h',
+                 'panel_legend', 'panel_legend_kw', 'figure_legend_kw',
+                 'figure_legend_ncol', 'xlabel_columns', 'ylabel_columns',
+                 'panel_titles', 'lw', 'sven_lw'):
+        assert knob in d, knob
+    assert {'loc', 'fontsize', 'ncol'} <= set(d['panel_legend_kw']) | {'ncol'}
+    assert 'loc' in d['figure_legend_kw']
+
+
+def test_in_columns_picks_the_labelled_panels():
+    from paper_assets import main as M
+    assert [M._in_columns(j, 3, 'middle') for j in range(3)] == [False, True, False]
+    assert [M._in_columns(j, 3, 'first') for j in range(3)] == [True, False, False]
+    assert [M._in_columns(j, 3, 'last') for j in range(3)] == [False, False, True]
+    assert all(M._in_columns(j, 3, 'all') for j in range(3))
+    assert not any(M._in_columns(j, 3, 'none') for j in range(3))
+    assert [M._in_columns(j, 3, [0, 2]) for j in range(3)] == [True, False, True]
+
+
+class _FakeCtx:
+    """Just enough of :class:`main.Ctx` to exercise the method resolver."""
+
+    def __init__(self, order, runs):
+        self._order, self._have = list(order), list(runs)
+
+    def order(self, scan):
+        return list(self._order)
+
+    def runs(self, scan):
+        return dict.fromkeys(self._have)
+
+
+def test_resolve_methods_handles_top_all_and_an_explicit_list():
+    from paper_assets import main as M
+    import headline as hl
+    _FakeCtx.main_panel_methods = M.Ctx.main_panel_methods
+    field = ['HIG', 'MuonW', 'Muon', 'SOAP', 'AdamW', 'Adam', hl.SVEN_LABEL, 'SGD']
+    ctx = _FakeCtx(field, field)
+    top = M._resolve_methods(ctx, 'polynomial_scan', 'top', 5)
+    # five best plus Sven, which is appended when it is not already in the five
+    assert top == field[:5] + [hl.SVEN_LABEL]
+    assert M._resolve_methods(ctx, 'polynomial_scan', 'top', 2) == field[:2] + [
+        hl.SVEN_LABEL]
+    assert M._resolve_methods(ctx, 'polynomial_scan', 'all', 5) == field
+    assert M._resolve_methods(ctx, 'polynomial_scan', ['Adam', 'SGD'], 5) == ['Adam',
+                                                                              'SGD']
+    # a method with no confirmation runs is dropped, not an error
+    thin = _FakeCtx(field, ['Adam'])
+    assert M._resolve_methods(thin, 'polynomial_scan', 'all', 5) == ['Adam']
+    with pytest.raises(ValueError):
+        M._resolve_methods(ctx, 'polynomial_scan', 'front', 5)
+
+
+def test_clip_outliers_knobs_move_the_limit():
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from paper_assets import main as M
+    fig, ax = plt.subplots()
+    ax.set_yscale('log')
+    for _ in range(5):
+        ax.plot([0, 1, 2], [1.0, 0.5, 0.2])
+    ax.plot([0, 1, 2], [6e9, 1e4, 0.9])
+    assert M._clip_outliers(ax, factor=20.0) is True
+    assert ax.get_ylim()[1] == pytest.approx(20.0)
+    # a headroom nothing can reach disables the truncation entirely
+    fig2, ax2 = plt.subplots()
+    ax2.set_yscale('log')
+    for _ in range(5):
+        ax2.plot([0, 1, 2], [1.0, 0.5, 0.2])
+    ax2.plot([0, 1, 2], [6e9, 1e4, 0.9])
+    assert M._clip_outliers(ax2, headroom=1e12) is False
+    plt.close(fig)
+    plt.close(fig2)
+
+
+# ---------------------------------------------------------------------------
 # Integration: only where the campaign's data is actually present
 # ---------------------------------------------------------------------------
 requires_results = pytest.mark.skipif(
@@ -373,3 +505,147 @@ def test_generated_tables_are_compile_safe():
             # a WORD, not a substring: "nanoGPT" contains "nan"
             assert not re.search(r'\b(nan|NaN|NAN|inf|Inf|None)\b', line), \
                 f'{f.name}:{i} NaN leaked -> {line!r}'
+
+
+# ---------------------------------------------------------------------------
+# Integration: the draw / save split on the real frames
+# ---------------------------------------------------------------------------
+#: the analysis layer's default root is RELATIVE to analysis/ (every notebook runs there),
+#: so a test started from the repository root has to name it absolutely
+RESULTS_ROOT = C.results_root()
+
+
+@pytest.fixture(scope='module')
+def real_ctx():
+    from paper_assets import main as M
+    return M.context(root=RESULTS_ROOT)
+
+
+@pytest.fixture
+def no_writes(monkeypatch):
+    """Make any save attempt inside a draw function a loud failure."""
+    import matplotlib
+    matplotlib.use('Agg')
+    monkeypatch.setattr(C, 'save_fig',
+                        lambda *a, **k: pytest.fail('draw() wrote a figure'))
+    monkeypatch.setattr(C, 'write_provenance',
+                        lambda *a, **k: pytest.fail('draw() wrote a sidecar'))
+    return None
+
+
+@requires_results
+@pytest.mark.parametrize('name', MAIN_FIGURES)
+def test_every_figure_draws_without_writing_and_returns_axes_and_provenance(
+        name, real_ctx, no_writes):
+    import matplotlib.pyplot as plt
+    from paper_assets import figspec as F
+    fig, meta, opts = F.draw_figure(name, ctx=real_ctx)
+    assert meta['axes'] is not None
+    assert meta['axes'].shape[0] >= 1 and meta['axes'].shape[1] >= 1
+    rec = meta['provenance']
+    for key in ('functions', 'scan_dirs', 'selection_sha256_16', 'note'):
+        assert key in rec, (name, key)
+    assert rec['functions']
+    assert opts == F.figure_opts(name, F.spec_for(name).defaults)
+    plt.close(fig)
+
+
+@requires_results
+def test_the_extras_build_needs_downstream_survive_the_split(real_ctx, no_writes):
+    """``per_scan`` feeds figure_info['headline_curves'] and then the G1 macros; the
+    frame and the two info dicts feed the rest."""
+    import matplotlib.pyplot as plt
+    from paper_assets import figspec as F
+    from paper_assets import main as M
+    fig, meta, _ = F.draw_figure('headline_curves', ctx=real_ctx)
+    assert set(meta['per_scan']) == set(M.HEADLINE_MAIN)
+    assert all(v for v in meta['per_scan'].values())
+    assert M._FIGURE_INFO['headline_curves'](meta) == {
+        s: list(v) for s, v in meta['per_scan'].items()}
+    plt.close(fig)
+
+    fig, meta, _ = F.draw_figure('cost_memory', ctx=real_ctx)
+    assert not meta['frame'].empty
+    assert set(M._FIGURE_INFO['cost_memory'](meta)[0]) >= {'scan', 'P', 'method',
+                                                           'ms_per_step', 'mem'}
+    plt.close(fig)
+
+    for name in ('k_sweeps', 'hparam_landscape'):
+        fig, meta, _ = F.draw_figure(name, ctx=real_ctx)
+        assert set(meta['info']) == set(M.SWEEP_SCANS)
+        assert all('selected' in v for v in meta['info'].values())
+        plt.close(fig)
+    # the k saturation macro num<Scan>SvenKSaturate is read off this one
+    fig, meta, _ = F.draw_figure('hparam_landscape', ctx=real_ctx)
+    assert any('k_within_5pct' in v for v in meta['info'].values())
+    plt.close(fig)
+
+
+@requires_results
+def test_the_methods_knob_visibly_changes_figure_one(real_ctx, no_writes):
+    """The user's ask: put ALL the baselines on Fig. 1 from the notebook."""
+    import matplotlib.pyplot as plt
+    from paper_assets import figspec as F
+    from paper_assets import main as M
+    scan = M.HEADLINE_MAIN[0]
+    default, all_of, two = (F.draw_figure('headline_curves', ctx=real_ctx, **kw)[1]
+                            for kw in ({}, {'methods': 'all'}, {'top_n': 2}))
+    assert len(default['per_scan'][scan]) <= M.MAIN_PANEL_TOP_N + 1
+    assert len(all_of['per_scan'][scan]) > len(default['per_scan'][scan])
+    assert len(two['per_scan'][scan]) < len(default['per_scan'][scan])
+    # every drawn method is on the axes, and the per-panel key names exactly them
+    n_lines = len([ln for ln in default['axes'][0][0].get_lines() if ln.get_label()
+                   and not ln.get_label().startswith('_')])
+    assert n_lines >= 0                               # plot_curves labels its own lines
+    assert len(default['axes'][0][0].get_legend().get_texts()) == len(
+        default['per_scan'][scan])
+    for meta in (default, all_of, two):
+        plt.close(meta['axes'][0][0].figure)
+
+
+@requires_results
+def test_the_legend_and_geometry_knobs_reach_figure_one(real_ctx, no_writes):
+    import matplotlib.pyplot as plt
+    from paper_assets import figspec as F
+    fig, meta, _ = F.draw_figure('headline_curves', ctx=real_ctx, panel_legend=False,
+                                 aspect=1.2, panel_titles=False,
+                                 xlabel_columns='all')
+    assert meta['axes'][0][0].get_legend() is None
+    assert meta['axes'][0][0].get_title() == ''
+    assert all(ax.get_xlabel() for ax in meta['axes'][1])
+    w, h = fig.get_size_inches()
+    assert h == pytest.approx(2 * 0.32 * C.LINEWIDTH_IN * 1.2 + 0.38)
+    plt.close(fig)
+    # ... and the generic cosmetics of figspec.apply_opts still work on top
+    fig, meta, _ = F.draw_figure('headline_curves', ctx=real_ctx,
+                                 ylabel='Val. loss', legend={'loc': 'upper right'})
+    assert meta['axes'][0][0].get_ylabel() == 'Val. loss'
+    assert meta['axes'][0][0].get_legend()._loc == 1
+    plt.close(fig)
+
+
+@requires_results
+def test_dry_run_names_the_seven_figures_it_would_write():
+    from paper_assets import main as M
+    report = M.build(root=RESULTS_ROOT, dry_run=True)
+    assert report['would_write']['figures'] == list(MAIN_FIGURES)
+    assert 'headline_confirm' in report['would_write']['tables']
+
+
+def test_context_is_cached_per_root(monkeypatch):
+    """``context()`` must be cheap to call twice: a notebook that draws six figures
+    reads the three frames once."""
+    from paper_assets import main as M
+    made = []
+
+    def _ctx(root=None):
+        made.append(root)
+        return ('CTX', root, len(made))
+
+    monkeypatch.setattr(M, '_CONTEXT', {})
+    monkeypatch.setattr(M, 'Ctx', _ctx)
+    first = M.context()
+    assert M.context() is first and made == [None]
+    assert M.context(root='/elsewhere') == ('CTX', '/elsewhere', 2)
+    assert M.context() is first                       # a second root does not evict
+    assert M.context(reload=True) is not first

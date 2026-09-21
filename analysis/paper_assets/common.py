@@ -544,7 +544,11 @@ def set_paper_style(fraction=0.32):
     page.  Sven is black and colours come from :data:`style.METHOD_COLORS` regardless.
     """
     import matplotlib
-    matplotlib.use('Agg', force=False)
+    # Agg so a headless build cannot fail on a missing display -- but NOT when the caller
+    # is a notebook (``paper_assets.notebook`` sets this), where switching the backend
+    # would send every inline figure nowhere.
+    if os.environ.get('PAPER_ASSETS_KEEP_BACKEND') != '1':
+        matplotlib.use('Agg', force=False)
     import matplotlib.pyplot as plt
     base = _FONT_FOR_FRACTION.get(round(float(fraction), 2), 7.0)
     plt.rcParams.update({

@@ -22,6 +22,14 @@ Nothing here computes a number: every value comes from :mod:`headline`,
 :mod:`headline_figs` or :mod:`scan_analysis` and is only formatted.  Run it with::
 
     cd analysis && ../.venv/bin/python -m paper_assets.main
+
+Every figure above is declared in :data:`FIGURE_SPECS` and split into a *draw* half
+(``_headline_curves(ctx, opts) -> (fig, meta)``, which writes nothing) and a *save* half
+(:func:`build`, through :func:`common.save_fig`), so the same builder can be driven from
+``analysis/notebooks/paper/`` -- see ``campaign/FIGURE_API_CONTRACT.md`` and
+:mod:`paper_assets.notebook`.  Each figure's own knobs (which methods, which scans, the
+geometry, the legends, the line weights) are in its ``defaults``; the generic cosmetics
+(``xlabel``, ``ylim``, ``legend``, ...) come free from :func:`figspec.apply_opts`.
 """
 from __future__ import annotations
 
@@ -37,6 +45,7 @@ import scan_analysis as sa
 import style
 
 from . import common as C
+from . import figspec
 
 GROUP = 'main'
 
@@ -160,8 +169,9 @@ def _short_xlabel(ax, versus):
     return ax.get_xlabel()
 
 
-def _clip_outliers(ax, note_xy=(0.97, 0.95)):
-    """Truncate a panel's y axis at 5x the median pre-training loss, and SAY SO.
+def _clip_outliers(ax, note_xy=(0.97, 0.95), factor=20.0, headroom=50.0,
+                   note_fontsize=4.4):
+    """Truncate a panel's y axis at ``factor`` x the median pre-training loss, and SAY SO.
 
     On the all-methods figures one diverging method (SOAP on MNIST label regression
     spikes to 6e9 in the training loss) compresses thirteen other curves into the bottom
@@ -178,16 +188,49 @@ def _clip_outliers(ax, note_xy=(0.97, 0.95)):
     if not firsts:
         return False
     # 20x the median pre-training loss, and only when the panel currently spans more
-    # than another 1.7 decades above that -- i.e. only for a genuine blow-up (SOAP's
-    # 6e9 training spike), never to trim an ordinary first-epoch transient.
-    top = 20.0 * float(np.median(firsts))
+    # than another 1.7 decades above that (``headroom``) -- i.e. only for a genuine
+    # blow-up (SOAP's 6e9 training spike), never to trim a first-epoch transient.
+    top = float(factor) * float(np.median(firsts))
     lo, hi = ax.get_ylim()
-    if not (np.isfinite(top) and top > 0 and hi > 50 * top):
+    if not (np.isfinite(top) and top > 0 and hi > float(headroom) * top):
         return False
     ax.set_ylim(lo, top)
     ax.text(*note_xy, 'axis truncated', transform=ax.transAxes, ha='right', va='top',
-            fontsize=4.4, color='0.35')
+            fontsize=note_fontsize, color='0.35')
     return True
+
+
+def _in_columns(j, ncol, where):
+    """Does panel column ``j`` of ``ncol`` carry a label?
+
+    ``where`` is the value of an ``xlabel_columns`` / ``ylabel_columns`` knob:
+    ``'all'``, ``'none'``, ``'first'``, ``'middle'``, ``'last'``, or an explicit list of
+    column indices.
+    """
+    if isinstance(where, (list, tuple)):
+        return j in {int(v) for v in where}
+    return {'all': True, 'none': False, 'first': j == 0,
+            'middle': j == ncol // 2, 'last': j == ncol - 1}[str(where)]
+
+
+def _resolve_methods(ctx, scan, methods, top_n=MAIN_PANEL_TOP_N):
+    """Which methods a panel draws: ``'top'``, ``'all'``, or an explicit list.
+
+    ``'top'`` is the front of the field plus Sven (the main-text panels of F1),
+    ``'all'`` is every method with a selected configuration, best first.  Whatever comes
+    out, a method with no confirmation runs on this scan is dropped -- asking for one is
+    not an error, there is simply nothing to draw.
+    """
+    if isinstance(methods, str):
+        if methods == 'top':
+            wanted = ctx.main_panel_methods(scan, top_n=top_n)
+        elif methods == 'all':
+            wanted = ctx.order(scan)
+        else:
+            raise ValueError(f"methods must be 'top', 'all' or a list, not {methods!r}")
+    else:
+        wanted = list(methods)
+    return [m for m in wanted if m in ctx.runs(scan)]
 
 
 # ---------------------------------------------------------------------------
@@ -268,10 +311,10 @@ class Ctx:
         """Methods best-first on confirmation validation loss."""
         return hf.method_ranking(scan, table=self.conf(scan))
 
-    def main_panel_methods(self, scan):
+    def main_panel_methods(self, scan, top_n=MAIN_PANEL_TOP_N):
         """The front of the field plus Sven -- what a main-text panel draws."""
         order = [m for m in self.order(scan) if m in self.runs(scan)]
-        top = order[:MAIN_PANEL_TOP_N]
+        top = order[:int(top_n)]
         if hl.SVEN_LABEL in order and hl.SVEN_LABEL not in top:
             top.append(hl.SVEN_LABEL)
         return top
@@ -295,6 +338,24 @@ class Ctx:
 
     def is_provisional(self, *scans):
         return bool(self.provisional.intersection(scans))
+
+
+#: one :class:`Ctx` per results root, so a notebook that draws six figures reads the
+#: three frames once (``Ctx`` itself memoises per scan, but only within one instance)
+_CONTEXT: dict = {}
+
+
+def context(root=None, reload=False):
+    """The :class:`Ctx` this module's builders take, cached per results root.
+
+    Cheap to call twice, which is what lets :func:`build` and a notebook share one set of
+    loaded frames.  ``reload=True`` throws the cached one away (after a re-run moved a
+    pass on disk).
+    """
+    key = '' if root is None else str(root)
+    if reload or key not in _CONTEXT:
+        _CONTEXT[key] = Ctx(root=root)
+    return _CONTEXT[key]
 
 
 # ---------------------------------------------------------------------------
@@ -396,54 +457,58 @@ def _panel(ctx, ax, scan, versus, methods, title=None, lw=1.1, sven_lw=2.0,
     return drawn
 
 
-def _headline_curves(ctx, name, all_methods=False):
-    """F1: 2 rows (vs epoch, vs standalone training time) x the three headline tasks."""
+def _headline_curves(ctx, opts):
+    """F1: one row per x axis (vs epoch, vs standalone train time) x the headline tasks.
+
+    Draws only; :func:`build` saves.  ``opts['methods']`` is what makes this the same
+    builder for the main-text figure (the front of the field plus Sven) and for
+    ``headline_curves_all`` (every method that has a selected configuration).
+    """
     import matplotlib.pyplot as plt
 
-    C.set_paper_style(0.32)
-    scans = HEADLINE_MAIN
-    nrow, ncol = 2, len(scans)
-    legend_h = 0.62 if all_methods else 0.38
-    fig, axes = plt.subplots(nrow, ncol, figsize=C.figsize(ncol, nrow, 0.32, aspect=0.86,
-                                                           extra_h=legend_h),
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
+    # epoch on top, standalone synchronised training time below (F1's two axes in
+    # PAPER_CONTRACTS.md); see _ALLSEED_COLS for why the top axis is epochs
+    rows = list(opts['versus'])
+    nrow, ncol = len(rows), len(scans)
+    fig, axes = plt.subplots(nrow, ncol,
+                             figsize=C.figsize(ncol, nrow, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
                              squeeze=False)
     used, per_scan = [], {}
     for j, scan in enumerate(scans):
-        methods = (ctx.order(scan) if all_methods else ctx.main_panel_methods(ctx_scan := scan))
-        methods = [m for m in methods if m in ctx.runs(scan)]
+        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'])
         per_scan[scan] = methods
-        # epoch on top, standalone synchronised training time below (F1's two axes in
-        # PAPER_CONTRACTS.md); see _ALLSEED_COLS for why the top axis is epochs
-        for i, versus in enumerate(('epoch', 'time')):
+        for i, versus in enumerate(rows):
             # the x label goes on the MIDDLE column only: "Synchronised training time
             # (s), standalone" is wider than a 1.76 in panel and three of them collide
             _panel(ctx, axes[i][j], scan, versus, methods,
-                   title=_short_title(scan) if i == 0 else None,
-                   lw=0.9 if all_methods else 1.1,
-                   sven_lw=1.9, show_ylabel=(j == 0),
-                   show_xlabel=(j == ncol // 2))
+                   title=(_short_title(scan) if (i == 0 and opts['panel_titles'])
+                          else None),
+                   lw=opts['lw'], sven_lw=opts['sven_lw'],
+                   show_ylabel=_in_columns(j, ncol, opts['ylabel_columns']),
+                   show_xlabel=_in_columns(j, ncol, opts['xlabel_columns']))
         used.extend(methods)
-        if not all_methods:
+        if opts['panel_legend']:
             # A PER-PANEL legend.  With a single shared legend the reader cannot tell
             # which of the nine named methods are the five drawn in a given panel -- and
             # the fields differ between panels -- so each panel names its own curves.
             h, lab = C.method_handles(methods)
-            leg = axes[0][j].legend(h, lab, loc='lower left', fontsize=4.3,
-                                    handlelength=1.0, handletextpad=0.4,
-                                    borderpad=0.25, labelspacing=0.18,
-                                    borderaxespad=0.3, framealpha=0.82,
-                                    fancybox=False, edgecolor='0.8')
-            leg.get_frame().set_linewidth(0.3)
+            leg = axes[0][j].legend(h, lab, **opts['panel_legend_kw'])
+            leg.get_frame().set_linewidth(opts['panel_legend_frame_lw'])
     order = [m for m in hl.method_order(dict.fromkeys(used)) if m in set(used)]
-    if all_methods:
+    if opts['figure_legend_methods']:
         handles, labels = C.method_handles(order)
     else:
         handles, labels = [], []
     handles.append(plt.Rectangle((0, 0), 1, 1, fc='0.45', alpha=0.25, lw=0))
     labels.append(style.seed_spread_label())
-    fig.legend(handles, labels, loc='outside lower center',
-               ncol=min(6, max(3, (len(labels) + 1) // 2)), fontsize=6.0,
-               handlelength=1.2, columnspacing=0.8)
+    leg_ncol = opts['figure_legend_ncol']
+    if leg_ncol is None:                       # as many rows as columns, 3 to 6 wide
+        leg_ncol = min(6, max(3, (len(labels) + 1) // 2))
+    fig.legend(handles, labels, ncol=leg_ncol, **opts['figure_legend_kw'])
     rec = C.provenance(
         functions=['headline_figs.plot_curves', 'headline_figs.confirm_runs',
                    'headline_figs.standalone_epoch_times',
@@ -453,7 +518,7 @@ def _headline_curves(ctx, name, all_methods=False):
               'training time; confirmation seeds, mean +/- 1 std'),
         methods_drawn={s: v for s, v in per_scan.items()},
         provisional=sorted(ctx.provisional.intersection(scans)))
-    return C.save_fig(fig, name, GROUP, rec), per_scan
+    return fig, {'axes': axes, 'provenance': rec, 'per_scan': per_scan}
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +551,7 @@ def _cluster_params(scans, ctx, decades=0.5):
     return [[s for _P, s in group] for group in out]
 
 
-def _cost_memory(ctx, name='cost_memory'):
+def _cost_memory(ctx, opts):
     """F3: step time (left) and peak memory (right) vs the parameter count.
 
     Both come from ``headline.efficiency_table``, i.e. from the standalone ``_timing``
@@ -497,11 +562,15 @@ def _cost_memory(ctx, name='cost_memory'):
     """
     import matplotlib.pyplot as plt
 
-    C.set_paper_style(0.49)
-    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, 0.49, aspect=0.80,
-                                                     extra_h=0.34), squeeze=False)
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
+    methods = list(opts['methods'])
+    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, opts['fraction'],
+                                                     aspect=opts['aspect'],
+                                                     extra_h=opts['extra_h']),
+                             squeeze=False)
     rows, capture = [], {}
-    for scan in F3_SCANS:
+    for scan in scans:
         eff = ctx.eff(scan)
         P = _scalar(ctx, scan, 'n_params')
         timing = hl.load(scan, 'timing', results_root=ctx.root)
@@ -509,7 +578,7 @@ def _cost_memory(ctx, name='cost_memory'):
         modes = sorted({str(v) for v in sven.get('gram_capture', pd.Series()).dropna()})
         capture[scan] = modes
         for _, r in eff.iterrows():
-            if r['method'] not in F3_METHODS:
+            if r['method'] not in methods:
                 continue
             rows.append({'scan': scan, 'P': P, 'method': r['method'],
                          'ms_per_step': r['ms_per_step'],
@@ -521,7 +590,7 @@ def _cost_memory(ctx, name='cost_memory'):
     # this axis as macros, so the two must come from the same place.  The two MLP scans
     # sit 0.06 of a decade apart, so they share one tick.
     groups = {}
-    for scan in F3_SCANS:
+    for scan in scans:
         P = _scalar(ctx, scan, 'n_params')
         if not C.finite(P):
             continue
@@ -530,9 +599,9 @@ def _cost_memory(ctx, name='cost_memory'):
     for family, ps in groups.items():
         label = family
         if family == 'MLP':
-            tasks = [s for s in F3_SCANS if ARCH_NAME.get(s) == 'MLP']
+            tasks = [s for s in scans if ARCH_NAME.get(s) == 'MLP']
             # one tick per decade-cluster of MLPs: 1D+poly together, MNIST on its own
-            for cluster in _cluster_params(tasks, ctx):
+            for cluster in _cluster_params(tasks, ctx, opts['cluster_decades']):
                 names = ', '.join(F3_SHORT.get(s, s) for s in cluster)
                 arch.append((float(np.mean([_scalar(ctx, s, 'n_params')
                                             for s in cluster])),
@@ -542,28 +611,31 @@ def _cost_memory(ctx, name='cost_memory'):
     arch.sort()
     for ax, col, label in ((axes[0][0], 'ms_per_step', 'Time per optimizer step (ms)'),
                            (axes[0][1], 'mem', 'Peak GPU memory (MB)')):
-        for m in F3_METHODS:
+        for m in methods:
             sub = frame[frame['method'] == m].dropna(subset=['P', col]).sort_values('P')
             if not len(sub):
                 continue
             is_sven = m == hl.SVEN_LABEL
             ax.plot(sub['P'], sub[col], marker='o' if is_sven else 's',
-                    ms=3.4 if is_sven else 2.6, color=style.method_color(m),
-                    lw=1.8 if is_sven else 1.0, zorder=5 if is_sven else 2)
+                    ms=opts['sven_ms'] if is_sven else opts['ms'],
+                    color=style.method_color(m),
+                    lw=opts['sven_lw'] if is_sven else opts['lw'],
+                    zorder=5 if is_sven else 2)
         # C3: the parity is a property of the CAPTURE, not of the algebra -- the ResNet's
         # dense `full` capture is the one point that is not at parity.  Stated once per
         # panel rather than per marker: the two MLP scans are 0.06 of a decade apart and
         # per-point labels overprint each other and the neighbouring curves.
         modes = {}
-        for scan in F3_SCANS:
+        for scan in scans:
             for mode in capture.get(scan, ()):
                 family = ARCH_NAME.get(scan, scan)
                 if family not in modes.setdefault(mode, []):
                     modes[mode].append(family)
-        if modes:
+        if modes and opts['capture_note']:
             note = '; '.join(f'{m}: ' + ', '.join(v) for m, v in modes.items())
             ax.text(0.98, 0.02, f'Sven capture -- {note}', transform=ax.transAxes,
-                    ha='right', va='bottom', fontsize=4.8, color='0.2',
+                    ha='right', va='bottom', fontsize=opts['capture_note_fontsize'],
+                    color='0.2',
                     bbox=dict(facecolor='white', alpha=0.85, lw=0, pad=0.8))
         ax.set_xscale('log')
         ax.set_yscale('log')
@@ -572,28 +644,28 @@ def _cost_memory(ctx, name='cost_memory'):
         ax.grid(which='both', ls=':', alpha=0.3)
         top = ax.secondary_xaxis('top')
         top.set_xticks([p for p, _ in arch])
-        top.set_xticklabels([t for _, t in arch], fontsize=4.4)
+        top.set_xticklabels([t for _, t in arch], fontsize=opts['arch_tick_fontsize'])
         top.tick_params(length=1.6, pad=1.0)
     handles, labels = C.method_handles(
-        [m for m in F3_METHODS if m in set(frame['method'])])
-    fig.legend(handles, labels, loc='outside lower center', ncol=6, fontsize=6.2,
-               handlelength=1.2, columnspacing=0.8)
+        [m for m in methods if m in set(frame['method'])])
+    fig.legend(handles, labels, **opts['figure_legend_kw'])
     rec = C.provenance(
         functions=['headline.efficiency_table', 'headline.run_efficiency'],
-        scans=[hl.dir_name(s, 'timing') for s in F3_SCANS],
+        scans=[hl.dir_name(s, 'timing') for s in scans],
         note=('step time and peak memory of each method\'s SELECTED configuration, '
               'measured in the standalone timing pass (one run per GPU); the label under '
               'a Sven point is its Gram capture mode, which is what sets the memory'),
-        architectures={s: _scalar(ctx, s, 'n_params') for s in F3_SCANS},
+        architectures={s: _scalar(ctx, s, 'n_params') for s in scans},
         gram_capture=capture,
-        provisional=sorted(ctx.provisional.intersection(F3_SCANS)))
-    return C.save_fig(fig, name, GROUP, rec), frame
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return fig, {'axes': axes, 'provenance': rec, 'frame': frame}
 
 
 # ---------------------------------------------------------------------------
 # F12 -- Sven's hyperparameter sweeps, at the SELECTED setting of the other knobs
 # ---------------------------------------------------------------------------
-def _sweep_curves(ctx, ax, scan, axis='k', which='val'):
+def _sweep_curves(ctx, ax, scan, axis='k', which='val', cmap=_SWEEP_CMAP,
+                  cmap_range=(0.05, 0.9), lw=1.0, selected_lw=1.9, band_alpha=0.15):
     """Validation curves across one Sven axis with the other two pinned at the selection.
 
     This is ``scan_analysis.plot_k_sweep``'s quantity (same ``sven_rows`` /
@@ -606,7 +678,8 @@ def _sweep_curves(ctx, ax, scan, axis='k', which='val'):
     obj = ctx.scan_obj(scan)
     chosen, _sel = hf.selected_sven(scan, payload=ctx.payload)
     values = {'k': obj.ks, 'rtol': obj.rtols}[axis]
-    colors = plt.get_cmap(_SWEEP_CMAP)(np.linspace(0.05, 0.9, max(len(values), 1)))
+    colors = plt.get_cmap(cmap)(np.linspace(cmap_range[0], cmap_range[1],
+                                            max(len(values), 1)))
     drawn = []
     for i, v in enumerate(values):
         cfg = {a: chosen.get(a) for a in sa.SVEN_CONFIG}
@@ -618,11 +691,11 @@ def _sweep_curves(ctx, ax, scan, axis='k', which='val'):
         x = sa.epoch_axis(rows, mean, which)
         n = min(len(x), len(mean))
         sel = np.isclose(float(v), float(chosen.get(axis, np.nan)))
-        ax.plot(x[:n], mean[:n], color=colors[i], lw=1.9 if sel else 1.0,
+        ax.plot(x[:n], mean[:n], color=colors[i], lw=selected_lw if sel else lw,
                 zorder=5 if sel else 2)
         if len(rows) > 1:
             ax.fill_between(x[:n], lower[:n], upper[:n], color=colors[i],
-                            alpha=0.15, lw=0)
+                            alpha=band_alpha, lw=0)
         drawn.append(float(v))
     ax.set_yscale('log')
     ax.set_xlabel('Epoch')
@@ -632,31 +705,39 @@ def _sweep_curves(ctx, ax, scan, axis='k', which='val'):
     return drawn, chosen, values, colors
 
 
-def _k_sweeps(ctx, name='k_sweeps'):
+def _k_sweeps(ctx, opts):
     """F12: the ``k`` sweep at each scan's selected ``(lr, rtol)``."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    C.set_paper_style(0.32)
-    scans = SWEEP_SCANS
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
     fig, axes = plt.subplots(1, len(scans),
-                             figsize=C.figsize(len(scans), 1, 0.245, aspect=1.05,
-                                               extra_h=0.42), squeeze=False)
+                             figsize=C.figsize(len(scans), 1, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
+                             squeeze=False)
     info = {}
     for j, scan in enumerate(scans):
-        drawn, chosen, values, colors = _sweep_curves(ctx, axes[0][j], scan, 'k')
+        drawn, chosen, values, colors = _sweep_curves(
+            ctx, axes[0][j], scan, opts['axis'], which=opts['which'],
+            cmap=opts['cmap'], cmap_range=opts['cmap_range'], lw=opts['lw'],
+            selected_lw=opts['selected_lw'], band_alpha=opts['band_alpha'])
         info[scan] = {'k_drawn': drawn, 'selected': {k: (None if v is None else float(v))
                                                      for k, v in chosen.items()}}
-        axes[0][j].text(0.03, 0.03,
-                        rf'$\eta={chosen["lr"]:g}$, rtol$={chosen["rtol"]:g}$',
-                        transform=axes[0][j].transAxes, fontsize=5.4, va='bottom')
+        if opts['selected_note']:
+            axes[0][j].text(*opts['selected_note_xy'],
+                            rf'$\eta={chosen["lr"]:g}$, rtol$={chosen["rtol"]:g}$',
+                            transform=axes[0][j].transAxes,
+                            fontsize=opts['selected_note_fontsize'], va='bottom')
         if j:
             axes[0][j].set_ylabel('')
         ks = [int(v) for v in values]
-        handles = [Line2D([], [], color=colors[i], lw=1.4) for i in range(len(ks))]
-        axes[0][j].legend(handles, [f'$k$={v}' for v in ks], fontsize=4.8, ncol=2,
-                          loc='upper right', handlelength=1.0, labelspacing=0.15,
-                          columnspacing=0.6, **_LEGEND_FRAME)
+        handles = [Line2D([], [], color=colors[i], lw=opts['legend_handle_lw'])
+                   for i in range(len(ks))]
+        if opts['panel_legend']:
+            axes[0][j].legend(handles, [f'$k$={v}' for v in ks],
+                              **opts['panel_legend_kw'])
     rec = C.provenance(
         functions=['headline_figs.selected_sven', 'scan_analysis.Scan.sven_rows',
                    'scan_analysis.seed_band', 'scan_analysis.epoch_axis'],
@@ -665,10 +746,10 @@ def _k_sweeps(ctx, name='k_sweeps'):
               'configuration of each scan (the thick curve is the selected k); the old '
               'figure swept k at one conservative rtol'),
         selected=info)
-    return C.save_fig(fig, name, GROUP, rec), info
+    return fig, {'axes': axes, 'provenance': rec, 'info': info}
 
 
-def _hparam_landscape(ctx, name='hparam_landscape'):
+def _hparam_landscape(ctx, opts):
     """Sven's final-loss landscape: vs ``k`` (one line per ``rtol``) and vs ``rtol``
     (one line per ``k``), both at the selected learning rate, with the selected point
     ringed and ineligible configurations left out of the line but marked.
@@ -679,11 +760,14 @@ def _hparam_landscape(ctx, name='hparam_landscape'):
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    C.set_paper_style(0.32)
-    scans = SWEEP_SCANS
-    fig, axes = plt.subplots(2, len(scans),
-                             figsize=C.figsize(len(scans), 2, 0.245, aspect=1.0,
-                                               extra_h=0.30), squeeze=False)
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
+    rows = [tuple(r) for r in opts['rows']]
+    fig, axes = plt.subplots(len(rows), len(scans),
+                             figsize=C.figsize(len(scans), len(rows), opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
+                             squeeze=False)
     info = {}
     for j, scan in enumerate(scans):
         obj = ctx.scan_obj(scan)
@@ -691,31 +775,39 @@ def _hparam_landscape(ctx, name='hparam_landscape'):
         cfg = obj.configs(obj.sven[obj.sven['lr'] == chosen['lr']], sa.SVEN_CONFIG)
         cfg = cfg[cfg['eligible']]
         saturate = {}
-        for i, (x_axis, line_axis) in enumerate((('k', 'rtol'), ('rtol', 'k'))):
+        for i, (x_axis, line_axis) in enumerate(rows):
             ax = axes[i][j]
             lines = sorted(cfg[line_axis].dropna().unique())
-            colors = plt.get_cmap(_SWEEP_CMAP)(np.linspace(0.05, 0.9, max(len(lines), 1)))
+            colors = plt.get_cmap(opts['cmap'])(
+                np.linspace(opts['cmap_range'][0], opts['cmap_range'][1],
+                            max(len(lines), 1)))
             for t, v in enumerate(lines):
                 sub = cfg[np.isclose(cfg[line_axis].astype(float), float(v))]
                 sub = sub.sort_values(x_axis)
                 if not len(sub):
                     continue
                 sel = np.isclose(float(v), float(chosen.get(line_axis, np.nan)))
-                ax.plot(sub[x_axis].astype(float), sub['score'], marker='o', ms=2.4,
-                        color=colors[t], lw=1.8 if sel else 0.9, zorder=5 if sel else 2)
+                ax.plot(sub[x_axis].astype(float), sub['score'], marker='o',
+                        ms=opts['ms'], color=colors[t],
+                        lw=opts['selected_lw'] if sel else opts['lw'],
+                        zorder=5 if sel else 2)
                 if sel and x_axis == 'k':
                     # the saturation point the paper may quote: the smallest k within
-                    # 5% of the best score on the SELECTED rtol line
+                    # 5% (``saturation_factor``) of the best score on the SELECTED
+                    # rtol line.  This feeds num<Scan>SvenKSaturate, so changing the
+                    # knob changes a number the prose quotes.
                     best = float(sub['score'].min())
-                    hit = sub[sub['score'] <= 1.05 * best]
+                    hit = sub[sub['score'] <= opts['saturation_factor'] * best]
                     if len(hit):
                         saturate['k_within_5pct'] = float(hit.iloc[0][x_axis])
                         saturate['best_score_on_selected_rtol'] = best
-            ax.plot([float(chosen[x_axis])],
-                    [float(cfg[np.isclose(cfg['k'].astype(float), float(chosen['k']))
-                               & np.isclose(cfg['rtol'].astype(float),
-                                            float(chosen['rtol']))]['score'].iloc[0])],
-                    marker='*', ms=7, mfc='none', mec='k', mew=0.9, zorder=8)
+            if opts['mark_selected']:
+                at = cfg[np.isclose(cfg['k'].astype(float), float(chosen['k']))
+                         & np.isclose(cfg['rtol'].astype(float),
+                                      float(chosen['rtol']))]
+                ax.plot([float(chosen[x_axis])], [float(at['score'].iloc[0])],
+                        marker='*', ms=opts['star_ms'], mfc='none', mec='k',
+                        mew=opts['star_mew'], zorder=8)
             ax.set_xscale('log')
             ax.set_yscale('log')
             ax.set_xlabel({'k': 'Rank cap $k$', 'rtol': 'Relative tolerance'}[x_axis])
@@ -724,14 +816,14 @@ def _hparam_landscape(ctx, name='hparam_landscape'):
             ax.grid(which='both', ls=':', alpha=0.3)
             if i == 0:
                 ax.set_title(_short_title(scan), pad=2.0)
-            handles = [Line2D([], [], color=colors[t], lw=1.2)
+            handles = [Line2D([], [], color=colors[t], lw=opts['legend_handle_lw'])
                        for t in range(len(lines))]
             labels = [(f'$k$={int(v)}' if line_axis == 'k' else f'{v:g}')
                       for v in lines]
-            ax.legend(handles, labels, fontsize=4.4, ncol=2, loc='best',
-                      handlelength=0.9, labelspacing=0.12, columnspacing=0.5,
-                      title=('rtol' if line_axis == 'rtol' else None),
-                      title_fontsize=4.4, **_LEGEND_FRAME)
+            if opts['panel_legend']:
+                ax.legend(handles, labels,
+                          title=('rtol' if line_axis == 'rtol' else None),
+                          **opts['panel_legend_kw'])
         info[scan] = {'selected': {k: (None if v is None else float(v))
                                    for k, v in chosen.items()},
                       'n_eligible_at_selected_lr': int(len(cfg)), **saturate}
@@ -742,7 +834,7 @@ def _hparam_landscape(ctx, name='hparam_landscape'):
               'at fixed k (bottom), both at the selected learning rate; the star is the '
               'selected configuration and ineligible configurations are dropped'),
         landscape=info)
-    return C.save_fig(fig, name, GROUP, rec), info
+    return fig, {'axes': axes, 'provenance': rec, 'info': info}
 
 
 # ---------------------------------------------------------------------------
@@ -757,37 +849,44 @@ def _hparam_landscape(ctx, name='hparam_landscape'):
 _ALLSEED_COLS = (('val', 'epoch'), ('val', 'time'), ('train', 'epoch'))
 
 
-def _allseed_curves(ctx, scans, name):
+def _allseed_curves(ctx, opts):
     """Every method's selected configuration, confirmation seeds, on three axes.
 
-    One row per scan, one column per axis.  This is the figure that retires every
-    single-seed curve in the current manuscript (X15): the line is the seed mean and the
-    band is +/- 1 std over the confirmation seeds.
+    One row per scan, one column per ``(which, versus)`` pair.  This is the figure that
+    retires every single-seed curve in the current manuscript (X15): the line is the seed
+    mean and the band is +/- 1 std over the confirmation seeds.
     """
     import matplotlib.pyplot as plt
 
-    C.set_paper_style(0.32)
-    nrow, ncol = len(scans), len(_ALLSEED_COLS)
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
+    columns = [tuple(c) for c in opts['columns']]
+    nrow, ncol = len(scans), len(columns)
     fig, axes = plt.subplots(nrow, ncol,
-                             figsize=C.figsize(ncol, nrow, 0.32, aspect=0.82,
-                                               extra_h=0.70), squeeze=False)
+                             figsize=C.figsize(ncol, nrow, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
+                             squeeze=False)
     used, clipped = [], []
     for i, scan in enumerate(scans):
-        methods = [m for m in ctx.order(scan) if m in ctx.runs(scan)]
+        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'])
         used.extend(methods)
-        for j, (which, versus) in enumerate(_ALLSEED_COLS):
+        for j, (which, versus) in enumerate(columns):
             ax = axes[i][j]
             hf.plot_curves(scan, ax, which=which, versus=versus, methods=methods,
                            runs=ctx.runs(scan),
                            times=ctx.times(scan) if versus == 'time' else None,
-                           lw=0.85, sven_lw=1.8, quiet=True,
+                           lw=opts['lw'], sven_lw=opts['sven_lw'], quiet=True,
                            payload=ctx.payload, results_root=ctx.root)
             leg = ax.get_legend()
             if leg is not None:
                 leg.remove()
             ax.grid(which='both', ls=':', alpha=0.3)
             _short_xlabel(ax, versus)
-            if _clip_outliers(ax):
+            if opts['clip_outliers'] and _clip_outliers(
+                    ax, note_xy=opts['clip_note_xy'], factor=opts['clip_factor'],
+                    headroom=opts['clip_headroom'],
+                    note_fontsize=opts['clip_note_fontsize']):
                 clipped.append((scan, which, versus))
             if j == 0:
                 ax.set_ylabel(f'{_short_title(scan)}\n' + ax.get_ylabel())
@@ -797,8 +896,7 @@ def _allseed_curves(ctx, scans, name):
     handles, labels = C.method_handles(order)
     handles.append(plt.Rectangle((0, 0), 1, 1, fc='0.45', alpha=0.25, lw=0))
     labels.append(style.seed_spread_label())
-    fig.legend(handles, labels, loc='outside lower center', ncol=5, fontsize=6.0,
-               handlelength=1.2, columnspacing=0.8)
+    fig.legend(handles, labels, **opts['figure_legend_kw'])
     rec = C.provenance(
         functions=['headline_figs.plot_curves', 'headline_figs.confirm_runs',
                    'headline_figs.standalone_epoch_times', 'scan_analysis.seed_band'],
@@ -808,7 +906,223 @@ def _allseed_curves(ctx, scans, name):
               'training time, and training loss vs epoch'),
         axis_truncated=[list(c) for c in clipped],
         provisional=sorted(ctx.provisional.intersection(scans)))
-    return C.save_fig(fig, name, GROUP, rec), order
+    return fig, {'axes': axes, 'provenance': rec, 'order': order}
+
+
+# ---------------------------------------------------------------------------
+# The figure registry -- what `build()` writes and what a notebook can change
+# ---------------------------------------------------------------------------
+#: the per-panel key of F1's main-text version.  Kept out of the rcParams defaults
+#: because at 4.3 pt it is smaller than anything else on the page and is a deliberate
+#: choice, not a style.
+_F1_PANEL_LEGEND = dict(loc='lower left', fontsize=4.3, handlelength=1.0,
+                        handletextpad=0.4, borderpad=0.25, labelspacing=0.18,
+                        borderaxespad=0.3, framealpha=0.82, fancybox=False,
+                        edgecolor='0.8')
+
+#: the figure-level legend strip every curve figure in this group carries
+_LEGEND_STRIP = dict(loc='outside lower center', fontsize=6.0, handlelength=1.2,
+                     columnspacing=0.8)
+
+
+def _headline_defaults(**over):
+    """F1's knobs.  ``headline_curves`` and ``headline_curves_all`` are the SAME builder
+    with a different ``methods`` / weight / legend set, so the two differ only by
+    ``over``."""
+    out = dict(
+        # -- content ----------------------------------------------------------
+        scans=list(HEADLINE_MAIN),      # one column per scan, left to right
+        methods='top',                  # 'top' (front of the field + Sven), 'all', or
+                                        # an explicit list of method names
+        top_n=MAIN_PANEL_TOP_N,         # how many the 'top' field holds, Sven aside
+        versus=['epoch', 'time'],       # one panel row per x axis
+        # -- geometry ---------------------------------------------------------
+        fraction=0.32,                  # panel width as a fraction of \linewidth
+        aspect=0.86,                    # panel height / panel width
+        extra_h=0.38,                   # inches added for the legend strip
+        font_fraction=0.32,             # which panel width the type is sized for
+        # -- labels -----------------------------------------------------------
+        panel_titles=True,              # the task name over the top row
+        xlabel_columns='middle',        # 'all' / 'none' / 'first' / 'middle' / 'last'
+        ylabel_columns='first',         # or an explicit list of column indices
+        # -- lines ------------------------------------------------------------
+        lw=1.1,
+        sven_lw=1.9,
+        # -- legends ----------------------------------------------------------
+        panel_legend=True,              # each panel names its own curves
+        panel_legend_kw=dict(_F1_PANEL_LEGEND),
+        panel_legend_frame_lw=0.3,
+        figure_legend_methods=False,    # does the strip repeat the method key?
+        figure_legend_ncol=None,        # None = as many rows as columns, 3..6 wide
+        figure_legend_kw=dict(_LEGEND_STRIP),
+    )
+    out.update(over)
+    return out
+
+
+def _allseed_defaults(scans):
+    """F13's knobs.  One spec per scan group, everything else shared."""
+    return dict(
+        scans=list(scans),              # one panel row per scan
+        columns=[list(c) for c in _ALLSEED_COLS],   # [which, versus] per column
+        methods='all',                  # 'all' / 'top' / an explicit list
+        top_n=MAIN_PANEL_TOP_N,         # only consulted when methods == 'top'
+        fraction=0.32,
+        aspect=0.82,
+        extra_h=0.70,
+        lw=0.85,
+        sven_lw=1.8,
+        # the announced y-axis truncation (see _clip_outliers): the limit is
+        # clip_factor x the median pre-training loss, applied only when the panel
+        # spans another clip_headroom above that
+        clip_outliers=True,
+        clip_factor=20.0,
+        clip_headroom=50.0,
+        clip_note_xy=[0.97, 0.95],
+        clip_note_fontsize=4.4,
+        figure_legend_kw=dict(_LEGEND_STRIP, ncol=5),
+        font_fraction=0.32,
+    )
+
+
+FIGURE_SPECS = figspec.check_defaults({
+    'headline_curves': figspec.FigureSpec(
+        draw=_headline_curves,
+        doc=('F1: validation loss vs epoch (top) and vs standalone synchronised train '
+             'time (bottom) for the three headline tasks, confirmation seeds, +/- 1 std. '
+             "Set methods='all' to put the whole field on it; the legend strip, the "
+             'per-panel key, the aspect ratio and the axis labels are all knobs.'),
+        defaults=_headline_defaults(),
+    ),
+    'headline_curves_all': figspec.FigureSpec(
+        draw=_headline_curves,
+        doc=('F1, appendix version: the same panels with EVERY method that has a '
+             'selected configuration, one shared method key instead of a per-panel one.'),
+        defaults=_headline_defaults(methods='all', lw=0.9, extra_h=0.62,
+                                    panel_legend=False, figure_legend_methods=True),
+    ),
+    'cost_memory': figspec.FigureSpec(
+        draw=_cost_memory,
+        doc=('F3: step time (left) and peak GPU memory (right) against the parameter '
+             'count over five architectures, from the standalone timing pass.'),
+        defaults=dict(
+            scans=list(F3_SCANS),           # smallest parameter count first
+            methods=list(F3_METHODS),       # the curves drawn, Sven emphasised
+            fraction=0.49,
+            aspect=0.80,
+            extra_h=0.34,
+            font_fraction=0.49,
+            ms=2.6,                         # marker size, baselines / Sven
+            sven_ms=3.4,
+            lw=1.0,
+            sven_lw=1.8,
+            capture_note=True,              # the "Sven capture -- ..." box per panel
+            capture_note_fontsize=4.8,
+            arch_tick_fontsize=4.4,         # the architecture names on the top axis
+            cluster_decades=0.5,            # MLPs within this many decades share a tick
+            figure_legend_kw=dict(loc='outside lower center', ncol=6, fontsize=6.2,
+                                  handlelength=1.2, columnspacing=0.8),
+        ),
+    ),
+    'k_sweeps': figspec.FigureSpec(
+        draw=_k_sweeps,
+        doc=("F12 top: Sven's k sweep at each scan's SELECTED (lr, rtol); the thick "
+             'curve is the selected k.'),
+        defaults=dict(
+            scans=list(SWEEP_SCANS),
+            axis='k',                       # which Sven axis is swept ('k' or 'rtol')
+            which='val',                    # 'val' or 'train' loss
+            fraction=0.245,
+            aspect=1.05,
+            extra_h=0.42,
+            font_fraction=0.32,
+            cmap=_SWEEP_CMAP,               # one colour per swept value
+            cmap_range=[0.05, 0.9],
+            lw=1.0,
+            selected_lw=1.9,                # the selected value's own weight
+            band_alpha=0.15,                # the +/- 1 std seed band
+            selected_note=True,             # the "eta=..., rtol=..." corner note
+            selected_note_xy=[0.03, 0.03],
+            selected_note_fontsize=5.4,
+            panel_legend=True,
+            legend_handle_lw=1.4,
+            panel_legend_kw=dict(_LEGEND_FRAME, fontsize=4.8, ncol=2, loc='upper right',
+                                 handlelength=1.0, labelspacing=0.15,
+                                 columnspacing=0.6),
+        ),
+    ),
+    'hparam_landscape': figspec.FigureSpec(
+        draw=_hparam_landscape,
+        doc=("F12 bottom: Sven's final-loss landscape over k at fixed rtol (top row) and "
+             'over rtol at fixed k (bottom row), at the selected lr; the star is the '
+             'selected configuration.'),
+        defaults=dict(
+            scans=list(SWEEP_SCANS),
+            rows=[['k', 'rtol'], ['rtol', 'k']],    # [x axis, one line per] per row
+            fraction=0.245,
+            aspect=1.0,
+            extra_h=0.30,
+            font_fraction=0.32,
+            cmap=_SWEEP_CMAP,
+            cmap_range=[0.05, 0.9],
+            ms=2.4,
+            lw=0.9,
+            selected_lw=1.8,
+            mark_selected=True,             # the ringed star on the selected point
+            star_ms=7,
+            star_mew=0.9,
+            # the smallest k within this factor of the best score on the selected rtol
+            # line is num<Scan>SvenKSaturate -- a number the prose quotes
+            saturation_factor=1.05,
+            panel_legend=True,
+            legend_handle_lw=1.2,
+            panel_legend_kw=dict(_LEGEND_FRAME, fontsize=4.4, ncol=2, loc='best',
+                                 handlelength=0.9, labelspacing=0.12,
+                                 columnspacing=0.5, title_fontsize=4.4),
+        ),
+    ),
+    'allseed_curves': figspec.FigureSpec(
+        draw=_allseed_curves,
+        doc=('F13: every method, confirmation seeds, on three axes (val vs epoch, val vs '
+             'standalone time, train vs epoch) for 1D regression, the polynomial and '
+             'MNIST label regression.'),
+        defaults=_allseed_defaults(ALLSEED_SCANS),
+    ),
+    'allseed_curves_ce_lm': figspec.FigureSpec(
+        draw=_allseed_curves,
+        doc='F13, continued: the same three axes for MNIST-CE and nanoGPT.',
+        defaults=_allseed_defaults(ALLSEED_SCANS_B),
+    ),
+})
+
+#: how :func:`build` turns a builder's ``meta`` into ``figure_info[name]``, the dict
+#: :func:`_macros` reads.  A figure absent here feeds no macro (F1's all-methods twin
+#: draws the same methods as F1, and F13 feeds nothing).
+_FIGURE_INFO = {
+    'headline_curves': lambda meta: {s: list(v)
+                                     for s, v in meta['per_scan'].items()},
+    'cost_memory': lambda meta: meta['frame'].to_dict('records'),
+    'k_sweeps': lambda meta: meta['info'],
+    'hparam_landscape': lambda meta: meta['info'],
+}
+
+
+def _draw_and_save(name, ctx):
+    """Draw one figure and write it -- this module's ONE save path.
+
+    The save happens inside the same ``rc_context`` as the draw on purpose: the builder
+    calls :func:`figspec.paper_style`, and half of what that sets (``pdf.fonttype``, the
+    sans-serif stack, ``savefig.bbox``) is read by ``savefig``, not by the drawing calls.
+    """
+    import matplotlib.pyplot as plt
+
+    spec = FIGURE_SPECS[name]
+    opts = figspec.figure_opts(name, spec.defaults)
+    with plt.rc_context(opts.get('rc') or {}):
+        fig, meta = spec.draw(ctx, opts)
+        figspec.apply_opts(fig, meta.get('axes'), opts)
+        pdf, png = C.save_fig(fig, name, GROUP, meta['provenance'])
+    return pdf, png, meta
 
 
 # ---------------------------------------------------------------------------
@@ -1735,7 +2049,7 @@ def _macros(ctx, figure_info=None):
 def build(root=None, figures=True, tables=True, numbers=True, dry_run=False):
     """Build every asset this module owns.  Returns a report dict."""
     C.banner(GROUP, f'figures={figures} tables={tables} numbers={numbers}')
-    ctx = Ctx(root=root)
+    ctx = context(root=root)
     report = {'figures': [], 'tables': [], 'n_macros': 0,
               'provisional': sorted(ctx.provisional), 'status': '',
               'macros_deferred_to': dict(MACRO_DEFERRED),
@@ -1745,9 +2059,7 @@ def build(root=None, figures=True, tables=True, numbers=True, dry_run=False):
     if dry_run:
         report['status'] = (report['status'] + ' (dry run)').strip()
         report['would_write'] = {
-            'figures': ['headline_curves', 'headline_curves_all', 'cost_memory',
-                        'k_sweeps', 'hparam_landscape', 'allseed_curves',
-                        'allseed_curves_ce_lm'],
+            'figures': list(FIGURE_SPECS),
             'tables': ['headline_confirm', 'headline_confirm_compact',
                        'time_to_target', 'time_to_target_main', 'protocol', 'ranking',
                        'optimism', 'grids', 'reproducibility', 'data_seeds']
@@ -1758,27 +2070,14 @@ def build(root=None, figures=True, tables=True, numbers=True, dry_run=False):
 
     figure_info = {}
     if figures:
-        (pdf, png), per_scan = _headline_curves(ctx, 'headline_curves',
-                                                all_methods=False)
-        report['figures'].append(str(pdf))
-        figure_info['headline_curves'] = {s: list(v) for s, v in per_scan.items()}
-        (pdf, png), per_scan = _headline_curves(ctx, 'headline_curves_all',
-                                                all_methods=True)
-        report['figures'].append(str(pdf))
-        (pdf, png), frame = _cost_memory(ctx)
-        report['figures'].append(str(pdf))
-        figure_info['cost_memory'] = frame.to_dict('records')
-        (pdf, png), info = _k_sweeps(ctx)
-        report['figures'].append(str(pdf))
-        figure_info['k_sweeps'] = info
-        (pdf, png), info = _hparam_landscape(ctx)
-        report['figures'].append(str(pdf))
-        figure_info['hparam_landscape'] = info
-        (pdf, png), order = _allseed_curves(ctx, ALLSEED_SCANS, 'allseed_curves')
-        report['figures'].append(str(pdf))
-        (pdf, png), order = _allseed_curves(ctx, ALLSEED_SCANS_B,
-                                            'allseed_curves_ce_lm')
-        report['figures'].append(str(pdf))
+        # one pass over the registry, in declaration order: the figures come out in the
+        # order they always have, and a figure added to FIGURE_SPECS is built here
+        # without touching build()
+        for name in FIGURE_SPECS:
+            pdf, _png, meta = _draw_and_save(name, ctx)
+            report['figures'].append(str(pdf))
+            if name in _FIGURE_INFO:
+                figure_info[name] = _FIGURE_INFO[name](meta)
 
     if tables:
         report['tables'].append(str(_t1_headline(ctx)))

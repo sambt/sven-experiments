@@ -13,6 +13,12 @@ Three kinds of check, and the split is deliberate:
   root.  What is asserted is what would break the paper: a ``nan`` / ``None`` reaching a
   cell, an unescaped ``_`` or ``%`` (the two ways a generated table silently fails to
   compile), and the ``f/a`` column being present on every results row;
+* **the figure registry on that same stub** -- every :data:`paper_assets.large.FIGURE_SPECS`
+  entry is DRAWN (writing nothing), its ``meta`` is checked for the ``axes`` the notebook
+  hands the user, its ``provenance`` callable is compared with the sidecar the CLI wrote,
+  and a knob is shown to change the picture.  This is the contract in
+  ``campaign/FIGURE_API_CONTRACT.md``, which is what makes the figures editable from
+  ``analysis/notebooks/paper/`` without the builders drifting from the CLI;
 * **the generated artefacts, when they exist** -- the real
   ``iclr_manuscript/numbers_v2_large.tex`` is re-read and validated (letters-only macro
   names, no duplicates, no non-finite body).  Skipped in a fresh clone, which is why the
@@ -21,6 +27,7 @@ Three kinds of check, and the split is deliberate:
 Nothing here touches ``experiment_results/`` or a profile root.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -31,12 +38,14 @@ import pandas as pd
 import pytest
 
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt                # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'analysis' / 'lib'))
 sys.path.insert(0, str(REPO / 'analysis'))
 
 from paper_assets import common as C          # noqa: E402
+from paper_assets import figspec as F         # noqa: E402
 from paper_assets import large                # noqa: E402
 
 MACRO_FILE = C.NUM_DIR / 'numbers_v2_large.tex'
@@ -122,9 +131,11 @@ def paramfrac_frame(acc, ms_per_step=None, peak=None, finished=None):
     out = pd.DataFrame({
         'param_fraction': fracs, 'actual': fracs,
         'val': [1.0] * n, 'val_std': [0.0] * n, 'val_min': [1.0] * n,
-        'test': [1.0] * n, 'test_std': [0.0] * n,
-        'val_acc': acc, 'val_acc_std': [0.0] * n,
-        'test_acc': acc, 'test_acc_std': [0.0] * n,
+        'test': [1.0] * n, 'test_std': [0.0] * n, 'test_min': [1.0] * n,
+        # the seed band is clipped at the lowest seed, so every plotted quantity needs
+        # its `_min` as well as its `_std` (style.clipped_yerr)
+        'val_acc': acc, 'val_acc_std': [0.0] * n, 'val_acc_min': acc,
+        'test_acc': acc, 'test_acc_std': [0.0] * n, 'test_acc_min': acc,
         'peak_mem_mb': peak if peak is not None else [100, 120, 140, 160, 200],
         'peak_mem_mb_std': [0.0] * n,
         'ms_per_step': (ms_per_step if ms_per_step is not None
@@ -231,7 +242,11 @@ def eff_frame(methods=('Sven', 'MuonW')):
 
 def profile_frame():
     """A tiny :func:`profile_helpers.load_profiles` frame: one architecture, the four
-    Sven backends and two baselines, plus a two-point ``k`` sweep."""
+    Sven backends and two baselines, plus a two-point ``k`` sweep.
+
+    The ``batch_size`` and ``chunk_fraction`` sweeps are here so the sweep FIGURES can be
+    drawn on it as well (``profile_batchsize``, ``profile_pareto``); no table reads them.
+    """
     rows = []
     for method, step, capture, solve, mem, family in (
             ('gram_hooks', 10.0, 4.0, 6.0, 20.0, 'sven'),
@@ -254,12 +269,55 @@ def profile_frame():
                      'rel_time': step / 4.0, 'rel_mem': 20 / 19.0, 'steadiness': 1.1,
                      'k': k, 'B': 64, 'width': None, 'n_params': 27562, 'pf': 1.0,
                      'mb': 1, 'mask_mode': 'none', 'chunk_fraction': np.nan,
-                     'n_groups': np.nan, 'error': None})
+                     'n_groups': np.nan, 'error': None, 'k_fraction': k / 64.0})
+    for method, family in (('gram_hooks', 'sven'), ('gram_full', 'sven'),
+                           ('Adam', 'baseline'), ('SGD', 'baseline')):
+        for b, step, mem in ((32, 8.0, 14.0), (64, 10.0, 20.0)):
+            rows.append({'arch': 'mnist', 'study': 'batch_size', 'method': method,
+                         'family': family, 'status': 'ok', 'step_ms': step,
+                         'capture_ms': 4.0, 'solve_ms': 6.0, 'peak_mb': mem,
+                         'rel_time': step / 4.0, 'rel_mem': mem / 19.0,
+                         'steadiness': 1.1, 'k': 64, 'B': b, 'width': None,
+                         'n_params': 27562, 'pf': 1.0, 'mb': 1, 'mask_mode': 'none',
+                         'chunk_fraction': np.nan, 'n_groups': np.nan, 'error': None,
+                         'analytic_jac_mb': mem * 0.8})
+    for frac, step, mem, groups in ((0.25, 150.0, 45.0, 4), (1.0, 15.0, 48.0, 1)):
+        rows.append({'arch': 'mnist', 'study': 'chunk_fraction', 'method': 'gram_chunked',
+                     'family': 'sven', 'status': 'ok', 'step_ms': step,
+                     'capture_ms': step - 8.0, 'solve_ms': 8.0, 'peak_mb': mem,
+                     'rel_time': step / 4.0, 'rel_mem': mem / 19.0, 'steadiness': 1.1,
+                     'k': 64, 'B': 64, 'width': None, 'n_params': 27562, 'pf': 1.0,
+                     'mb': 1, 'mask_mode': 'none', 'chunk_fraction': frac,
+                     'n_groups': groups, 'error': None})
     return pd.DataFrame(rows)
 
 
+def grid_frame():
+    """A synthetic :func:`large_figs.sven_grid` + :func:`large_figs.mark_selected` result:
+    one ``k``, three learning rates x two ``rtol``, with the selection marked."""
+    rows = []
+    for lr in (0.1, 0.5, 1.0):
+        for rtol in (0.001, 0.01):
+            rows.append({'k': 128.0, 'lr': lr, 'rtol': rtol,
+                         'val': 0.4 + 0.1 * lr + rtol, 'val_std': 0.01,
+                         'val_min': 0.39, 'finished': 5, 'attempted': 5,
+                         'n_diverged': 0, 'n_failed': 0, 'n_missing': 0,
+                         'eligible': True,
+                         'selected': (lr == 0.5 and rtol == 0.001)})
+    return pd.DataFrame(rows)
+
+
+def rank_used_frame(k=128.0, n_seeds=3, n_epochs=4):
+    """A synthetic :func:`large_figs.sven_rank_used` result: the rank inverted per epoch."""
+    return pd.DataFrame([
+        {'run_id': f'run-{s}', 'epoch': e, 'rank_used': 100.0 + 2 * e + s, 'k': k}
+        for s in range(n_seeds) for e in range(n_epochs)])
+
+
 class StubInputs:
-    """Just enough of :class:`paper_assets.large.Inputs` to render the tables."""
+    """Just enough of :class:`paper_assets.large.Inputs` to render the tables AND draw
+    every figure -- so both halves are exercised without the 24,000-record results root
+    or a profile directory."""
 
     def __init__(self):
         methods = ('Sven', 'MuonW')
@@ -279,18 +337,31 @@ class StubInputs:
             for m, lr, v in (('Sven', 0.05, 1.818), ('Sven', 0.1, 1.724),
                              ('Sven', 1.0, 4.665), ('MuonW', 0.0001, 1.818),
                              ('MuonW', 0.003, 2.019))])
+        # the seed band of `analysis_helpers.errorbar_seeds` is clipped at the lowest
+        # seed, so the lr figure needs the `_min` column as well as the `_std` one
+        self.nanogpt_lr['final_val_loss_min'] = (self.nanogpt_lr['final_val_loss']
+                                                 - 0.01)
         self.notes = []
         self.provisional = ['stub: nothing is real here']
         self.conf = {s: conf_frame(methods) for s in (*large.CIFAR, large.NANOGPT)}
         self.eff = {s: eff_frame(methods) for s in (*large.CIFAR, large.NANOGPT)}
         self.runs_conf = {s: {m: runs_frame(m) for m in methods}
                           for s in (*large.CIFAR, large.NANOGPT)}
+        # the timing pass re-runs the tuning seeds; here it is the same shape
+        self.runs_time = {s: {m: runs_frame(m) for m in methods}
+                          for s in (*large.CIFAR, large.NANOGPT)}
+        self.gaps = {s: large.lf.generalisation_gaps(conf_frame(methods))
+                     for s in large.CIFAR}
+        self.grid = {s: grid_frame() for s in (*large.CIFAR, large.NANOGPT)}
+        self.rank_used = {s: rank_used_frame() for s in large.CIFAR}
         self.paired_nanogpt = pd.DataFrame([
             {'method': 'MuonW', 'display': 'MuonW', 'mean': -0.095, 'ci_low': -0.11,
              'ci_high': -0.085, 'n': 5, 'sven_better': 5}])
         self.profiles = profile_frame()
         self.profile_archs = ['mnist']
-        self.profile_widths = []
+        self.profile_widths = []            # no width sweep: profile_scaling is skipped
+        self.profile_root = large.ph.ROOT_V3
+        self.fig5_profiles = pd.DataFrame()
         self.profile_compare = pd.DataFrame()
         self.profile_info = {'name': 'profile_results_v3', 'root': '/dev/null',
                              'complete': False, 'n_found': 700, 'n_expected': 720,
@@ -315,7 +386,9 @@ class StubInputs:
              'ms_per_step': 2517.0, 'peak_gpu_mem_mb': 36050.0, 'diverged': False,
              'failed': False, 'status': 'ok', 'n_params': 163109376,
              'steps_per_epoch': 13125, 'batch_size': 16, 'eval_every_steps': 500,
-             'losses': {'eval_step_idx': list(range(500, 13500, 500))}}])
+             'losses': {'eval_step_idx': list(range(500, 13500, 500)),
+                        'val_step': [6.0 - 0.03 * i for i in range(26)],
+                        'test_step': [6.1 - 0.03 * i for i in range(26)]}}])
         self.gpt2_best = pd.DataFrame([
             {'method': 'Sven', 'display': 'Sven', 'lr': 0.1, 'k': 16, 'val': 5.198,
              'test': 5.107, 'val_ppl': 181.0, 'wall_h': 9.25, 'ms_per_step': 2517.0,
@@ -562,6 +635,198 @@ def test_profile_root_falls_back_when_v3_is_empty(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# The figure registry: draw, meta, provenance, knobs (FIGURE_API_CONTRACT.md)
+# ---------------------------------------------------------------------------
+#: every figure this module owns, in build order, under the stem it writes
+FIGURE_NAMES = ('cifar_curves_epoch', 'cifar_curves_time', 'cifar_gap',
+                'cifar_landscape', 'cifar_cost', 'cifar_rank_used', 'fig5_quality',
+                'fig5_cost', 'nanogpt', 'gpt2', 'gpt2_lr', 'profile_methods',
+                'profile_k_sweep', 'profile_batchsize', 'profile_scaling',
+                'profile_phases', 'profile_pareto')
+
+#: the provenance keys :func:`common.provenance` fills in itself, whoever calls it
+_PROVENANCE_OWN = ('generated_at', 'results_root', 'selection_file',
+                   'selection_sha256_16', 'selection_generated_at')
+
+
+@pytest.fixture
+def no_writing(monkeypatch):
+    """Drawing writes NOTHING: make every write path explode if a builder reaches one."""
+    def boom(*a, **kw):
+        raise AssertionError('a draw function wrote a file')
+    monkeypatch.setattr(C, 'save_fig', boom)
+    monkeypatch.setattr(C, 'write_provenance', boom)
+    monkeypatch.setattr(C, 'write_table', boom)
+    return monkeypatch
+
+
+def draw(name, stub, **call):
+    """One figure with its options resolved -- what ``build`` and ``pf.make`` both do."""
+    spec = large.FIGURE_SPECS[name]
+    fig, meta = spec.draw(stub, F.figure_opts(name, spec.defaults, **call))
+    return fig, dict(meta or {}), F.figure_opts(name, spec.defaults, **call)
+
+
+def test_every_figure_is_declared_once_under_its_pdf_stem():
+    """The registry key IS the output stem, so a renamed key would move a paper figure."""
+    assert tuple(large.FIGURE_SPECS) == FIGURE_NAMES
+    F.check_defaults(large.FIGURE_SPECS)            # raises on a generic-name collision
+    for name, spec in large.FIGURE_SPECS.items():
+        assert callable(spec.draw) and spec.doc.strip(), name
+        assert callable(spec.provenance), f'{name}: no provenance callable'
+
+
+def test_defaults_round_trip_through_yaml_and_figure_opts(tmp_path, monkeypatch):
+    """A knob has to be pinnable from a notebook, i.e. writable to the override YAML,
+    and with nothing pinned the resolved options must BE the defaults."""
+    import yaml
+    empty = tmp_path / 'figure_overrides.yaml'
+    empty.write_text('{}\n')
+    monkeypatch.setattr(F, 'OVERRIDES_PATH', empty)
+    monkeypatch.setattr(F, '_CACHE', {'mtime': None, 'data': {}})
+    for name, spec in large.FIGURE_SPECS.items():
+        assert F.figure_opts(name, spec.defaults) == spec.defaults, name
+        assert yaml.safe_load(yaml.safe_dump(spec.defaults)) == spec.defaults, name
+
+
+@pytest.mark.parametrize('name', FIGURE_NAMES)
+def test_every_spec_draws_without_writing(name, stub, no_writing):
+    fig, meta, _opts = draw(name, stub)
+    if fig is None:                  # a no-data skip still has to say what it looked at
+        assert 'axes' in meta, name
+        return
+    flat = F._axes_list(meta['axes'])
+    assert flat, f'{name}: meta carries no axes for the notebook to edit'
+    assert all(hasattr(ax, 'plot') for ax in flat), name
+    assert all(ax.get_figure() is fig for ax in flat), name
+    plt.close(fig)
+
+
+def test_profile_scaling_skips_itself_when_the_root_has_no_width_sweep(stub, no_writing):
+    """``build`` reports a draw that returns no figure as skipped, rather than writing an
+    empty page -- which is the state a profile root with no width sweep is in."""
+    fig, meta, _ = draw('profile_scaling', stub)
+    assert fig is None and meta['archs'] == []
+
+
+def test_meta_carries_the_axes_grid_and_the_methods_drawn(stub, no_writing):
+    fig, meta, _ = draw('cifar_curves_epoch', stub)
+    assert meta['axes'].shape == (len(large.CIFAR), len(large.CIFAR_PANELS))
+    assert set(meta['drawn']) == {f'{s}|{k}' for s in large.CIFAR
+                                 for k, _t in large.CIFAR_PANELS}
+    assert set(meta['seeds']) == set(large.CIFAR)
+    plt.close(fig)
+
+
+def test_a_content_knob_changes_what_is_drawn(stub, no_writing):
+    """``methods`` / ``panels`` are the two a reader of the paper would reach for."""
+    fig, both, _ = draw('cifar_curves_epoch', stub)
+    lines = {len(ax.get_lines()) for ax in both['axes'].ravel()}
+    plt.close(fig)
+    fig, one, opts = draw('cifar_curves_epoch', stub, methods=['Sven'], panels=['val'])
+    assert opts['methods'] == ['Sven']
+    assert one['axes'].shape == (len(large.CIFAR), 1)
+    assert all(set(v) == {'Sven'} for v in one['drawn'].values()), one['drawn']
+    assert {len(ax.get_lines()) for ax in one['axes'].ravel()} != lines
+    plt.close(fig)
+
+
+def test_a_geometry_knob_changes_the_size_on_the_page(stub, no_writing):
+    fig, _meta, _ = draw('cifar_cost', stub)
+    width = fig.get_size_inches()[0]
+    plt.close(fig)
+    fig, _meta, _ = draw('cifar_cost', stub, fraction=0.98)
+    assert fig.get_size_inches()[0] == pytest.approx(2 * width)
+    plt.close(fig)
+
+
+def test_the_legend_knobs_reach_the_shared_legend(stub, no_writing):
+    """The seed-band entry and the type size of the one legend under the panels."""
+    fig, _meta, _ = draw('cifar_curves_epoch', stub)
+    assert large.paired.SEED_SPREAD_LABEL in [t.get_text()
+                                              for t in fig.legends[0].get_texts()]
+    plt.close(fig)
+    fig, _meta, _ = draw('cifar_curves_epoch', stub, legend_band=False,
+                         legend_fontsize=4.0)
+    leg = fig.legends[0]
+    assert large.paired.SEED_SPREAD_LABEL not in [t.get_text() for t in leg.get_texts()]
+    assert leg.get_texts()[0].get_fontsize() == pytest.approx(4.0)
+    plt.close(fig)
+
+
+def test_the_generic_cosmetics_apply_on_top_of_a_builder(stub, no_writing):
+    """``figspec.apply_opts`` is what a notebook uses for an axis label or a limit; it
+    must reach these figures' panels, which is what ``meta['axes']`` is for."""
+    spec = large.FIGURE_SPECS['cifar_rank_used']
+    opts = F.figure_opts('cifar_rank_used', spec.defaults, ylabel='Rank $r$',
+                         ylim=[0.0, 200.0])
+    fig, meta = spec.draw(stub, opts)
+    F.apply_opts(fig, meta['axes'], opts)
+    for ax in F._axes_list(meta['axes']):
+        assert ax.get_ylabel() == 'Rank $r$'
+        assert ax.get_ylim() == (0.0, 200.0)
+    plt.close(fig)
+
+
+def test_the_provenance_callable_composes_what_build_used_to(stub, no_writing):
+    """``axes`` and the ``options`` ``figspec.draw_figure`` adds are drawing state, not
+    provenance: they must not reach the sidecar, and every other ``meta`` key must."""
+    fig, meta, _ = draw('cifar_rank_used', stub)
+    meta['options'] = {'fraction': 0.49}
+    rec = large.FIGURE_SPECS['cifar_rank_used'].provenance(stub, meta)
+    plt.close(fig)
+    assert 'axes' not in rec and 'options' not in rec
+    assert rec['functions'] == ['large_figs.sven_rank_used']
+    assert rec['scan_dirs'] == sorted(large.CIFAR)
+    assert rec['reads'] == []
+    assert rec['provisional'] == sorted(stub.provisional)
+    assert set(rec['rank_used']) == set(large.CIFAR)
+
+
+def test_a_profile_figure_records_the_root_it_read(stub, no_writing):
+    fig, meta, _ = draw('profile_pareto', stub)
+    rec = large.FIGURE_SPECS['profile_pareto'].provenance(stub, meta)
+    plt.close(fig)
+    assert rec['reads'] == [stub.profile_info['root']]
+    assert rec['scan_dirs'] == []
+    assert rec['archs'] == ['mnist']
+
+
+@pytest.mark.parametrize('name', ['cifar_rank_used', 'profile_pareto'])
+def test_the_provenance_callable_reproduces_the_committed_sidecar(name):
+    """The record the CLI wrote when ``build`` composed it inline, rebuilt from the spec:
+    same functions, same scans, same reads, same figure facts.  This is what keeps a save
+    from a notebook and a CLI rebuild writing the SAME sidecar."""
+    path = (C.LAB / 'provenance' / 'figures_iclr' / large.GROUP
+            / f'{name}.pdf.provenance.json')
+    if not path.is_file():
+        pytest.skip('no build in this tree yet')
+    was = json.loads(path.read_text())
+    mine = ('functions', 'scan_dirs', 'reads', 'provisional')
+    facts = {k: v for k, v in was.items()
+             if k not in mine and k not in _PROVENANCE_OWN}
+
+    class Ctx:                      # only what the provenance callable reads
+        provisional = was['provisional']
+        profile_info = {'root': was['reads'][0] if was['reads'] else 'unused'}
+
+    rec = large.FIGURE_SPECS[name].provenance(
+        Ctx(), dict(facts, axes='drawing state', options={'fraction': 0.49}))
+    assert {k: rec[k] for k in mine} == {k: was[k] for k in mine}
+    assert {k: rec[k] for k in facts} == facts
+    assert 'axes' not in rec and 'options' not in rec
+
+
+def test_context_is_cached_per_root_and_reloadable():
+    """``pf.make`` draws six figures from one context; a CLI build re-reads the disk."""
+    first = large.context()
+    assert isinstance(first, large.Inputs)
+    assert large.context() is first
+    assert large.context(reload=True) is not first
+    assert large.context(root='/nowhere').results_root == '/nowhere'
+
+
+# ---------------------------------------------------------------------------
 # The generated artefacts, when a build has run
 # ---------------------------------------------------------------------------
 @pytest.mark.skipif(not MACRO_FILE.is_file(), reason='no build in this tree yet')
@@ -616,7 +881,7 @@ def test_generated_tables_are_compile_safe(name):
     assert len({l.count('&') for l in rows}) == 1, f'{name}: ragged rows'
 
 
-@pytest.mark.parametrize('name', [n for n, _f in large.FIGURES])
+@pytest.mark.parametrize('name', list(large.FIGURE_SPECS))
 def test_generated_figures_exist_as_pdf_and_png(name):
     pdf = C.FIG_DIR / large.GROUP / f'{name}.pdf'
     if not (C.FIG_DIR / large.GROUP).is_dir():

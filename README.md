@@ -164,6 +164,18 @@ every notebook in place (figures under `analysis/plots_v2/`); pass notebook name
 no suffix) or a group directory to run a subset, or `ONLY_SCANS=1` for the headline set. It
 needs a compute node — a cold scan load from Lustre is ~20 s.
 
+**The paper's own figures are editable.** `analysis/paper_assets/` still builds every
+figure, table and number macro the manuscript uses (`cd analysis && ../.venv/bin/python -m
+paper_assets`), but each figure is now declared in its module's `FIGURE_SPECS` as a draw
+function that writes nothing, plus a dict of its own knobs (which methods and scans are
+drawn, geometry, legend, line weights). `analysis/notebooks/paper/fig_{main,reviewer,large,
+spectra}.ipynb` draw them with `paper_assets.notebook` (`pf.make` / `f.ax(i)` / `f.save`),
+and `pf.pin(...)` persists a choice to `analysis/paper_assets/figure_overrides.yaml`, which
+the CLI reads too — so a tweak made in a notebook survives the next full rebuild instead of
+being reverted. `tools/cmp_figures.py` answers "did that rebuild change a figure, or only
+its timestamp?". The contract for adding or changing a figure is
+`campaign/FIGURE_API_CONTRACT.md`.
+
 Conventions the analysis is held to (`analysis/ANALYSIS_FIXES.md`,
 `campaign/ANALYSIS_CONTRACTS.md`): selection on validation only, **test metrics are outcomes
 and never selection inputs**; diverged runs excluded from means and counted, with

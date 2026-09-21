@@ -25,6 +25,7 @@ What is checked is what would corrupt the paper silently:
 """
 from __future__ import annotations
 
+import copy
 import math
 import re
 import sys
@@ -33,6 +34,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 ANALYSIS = REPO / 'analysis'
@@ -44,6 +46,7 @@ import matplotlib                                  # noqa: E402
 matplotlib.use('Agg')
 
 from paper_assets import common as C               # noqa: E402
+from paper_assets import figspec as F              # noqa: E402
 from paper_assets import spectra as S              # noqa: E402
 import spectra_figs as sf                          # noqa: E402
 
@@ -405,13 +408,266 @@ def test_a_table_writes_its_provenance_outside_the_manuscript(data, paper_dirs):
 
 
 # ---------------------------------------------------------------------------
+# The figure registry: draw / save split, knobs (campaign/FIGURE_API_CONTRACT.md)
+# ---------------------------------------------------------------------------
+MNIST_LR = 'mnist_scan_labelRegression'
+MNIST_CE = 'mnist_scan_ce'
+
+
+def _grid_frame(d, ks=(8, 16, 32, 128), rtols=(0.3, 0.03, 1e-4)):
+    """A :func:`spectra_figs.used_rank_grid`-shaped frame: one row per ``(k, rtol)`` cell.
+
+    The selected cell must be IN the grid or the heatmap draws no red square, so the
+    fixture's ``k`` / ``rtol`` values are the ones the synthetic diags carry.
+    """
+    rows = []
+    for k in ks:
+        for rtol in rtols:
+            rows.append({'k': k, 'rtol': rtol, 'lr': d.lr,
+                         'used': min(float(k), 8.0),
+                         'used_frac_k': min(1.0, 8.0 / k),
+                         # one cell rests on fewer seeds than the grid intended: that is
+                         # the hatched-cell path of _grid_heatmap
+                         'n_seeds': 3 if rtol > 1e-4 else 1, 'n_records': 3})
+    return pd.DataFrame(rows)
+
+
+def _probe_entries(n_seeds=2, n_ck=5, width=24):
+    """``ckpt_tools.load_spectra``-shaped trajectories, without touching the cache.
+
+    The offline probe figures are the ones that read ``analysis/ckpt_spectra/``; a unit
+    test must not, or it fails for a reason this module is not responsible for (and it
+    would be reading a read-only results tree).
+    """
+    steps = np.array([0, 1, 4, 16, 64])[:n_ck]
+    out = []
+    for s in range(n_seeds):
+        svals = np.geomspace(1.0, 1e-6, width)[None, :] * np.ones((len(steps), 1))
+        utr = np.tile(np.geomspace(1.0, 1e-3, width), (len(steps), 1))
+        out.append({'model_seed': 2000 + s, 'step': steps, 'svals': svals, 'utr': utr,
+                    'method': 'Sven'})
+    return out
+
+
+@pytest.fixture
+def probe_cache(monkeypatch):
+    def load_spectra(scan, method=None, model_seed=None, n_probe=-1, epochs_only=None,
+                     out_dir=None):
+        ents = _probe_entries()
+        if model_seed is not None:
+            ents = [e for e in ents if str(e['model_seed']) == str(model_seed)]
+        return ents
+    monkeypatch.setattr(S.ct, 'load_spectra', load_spectra)
+    return load_spectra
+
+
+@pytest.fixture
+def rich(data):
+    """The synthetic :class:`Data` widened until all 13 figures have something to draw.
+
+    ``data`` is enough for the tables; the figures also need the two MNIST scans (the
+    LR-vs-CE panel), a ``(k, rtol)`` grid and a second scan with probe metrics.
+    """
+    lr = _diag(MNIST_LR, k=64, B=64, rtol=1e-4, lr=0.5, title='MNIST (label regression)')
+    ce = _diag(MNIST_CE, k=32, B=64, rtol=0.03, lr=0.5, title='MNIST (cross-entropy)')
+    data.diags[MNIST_LR] = lr
+    data.diags[MNIST_CE] = ce
+    data.arrays[MNIST_LR] = _arrays(lr, 3, 64.0, 64.0, 1.0, 1.0)
+    data.arrays[MNIST_CE] = _arrays(ce, 3, 60.0, 21.0, 0.99, 0.72)
+    data.seed_target.update({MNIST_LR: 3, MNIST_CE: 3})
+    data.grids = {SCAN_A: _grid_frame(data.diags[SCAN_A]),
+                  MNIST_CE: _grid_frame(ce)}
+    data.probe_methods[MNIST_CE] = ['Sven', 'Adam', 'MuonW', 'HIG']
+    data.probe[MNIST_CE] = _probe_table(MNIST_CE)
+    return data
+
+
+@pytest.fixture
+def store(tmp_path, monkeypatch):
+    """An EMPTY override file: a test must see the builders' own defaults."""
+    path = tmp_path / 'figure_overrides.yaml'
+    path.write_text('{}\n')
+    monkeypatch.setattr(F, 'OVERRIDES_PATH', path)
+    monkeypatch.setattr(F, '_CACHE', {'mtime': None, 'data': {}})
+    return path
+
+
+@pytest.fixture
+def registry(monkeypatch, rich):
+    """Only THIS module's specs in the registry, plus its context.
+
+    The four figure modules are converted independently; a test of this one must not go
+    down with a half-written builder in another.
+    """
+    reg = {}
+    for name, spec in S.FIGURE_SPECS.items():
+        s = copy.copy(spec)
+        s.name, s.module, s.group = name, 'spectra', S.GROUP
+        reg[name] = s
+    monkeypatch.setattr(F, '_REGISTRY', reg)
+    monkeypatch.setattr(F, 'context', lambda module, root=None, reload=False: rich)
+    return reg
+
+
+def _no_writing(monkeypatch):
+    """Make every write path of the module fail loudly, for the "draw writes nothing" tests."""
+    def boom(*a, **k):
+        raise AssertionError('a draw function wrote something')
+    monkeypatch.setattr(C, 'save_fig', boom)
+    monkeypatch.setattr(C, 'write_provenance', boom)
+    monkeypatch.setattr(C, 'write_table', boom)
+
+
+@pytest.mark.parametrize('name', list(S.FIGURE_SPECS))
+def test_every_figure_draws_without_writing_and_returns_axes_and_provenance(
+        name, rich, store, probe_cache, monkeypatch):
+    """The split the notebook rests on: ``draw`` returns ``(fig, meta)`` and writes nothing.
+
+    ``meta['axes']`` is what the notebook hands the user to edit and what
+    ``figspec.apply_opts`` acts on; ``meta['provenance']`` is the record the figure is
+    saved with, and ``figspec.save_figure`` refuses a figure without it.
+    """
+    import matplotlib.pyplot as plt
+    _no_writing(monkeypatch)
+    spec = S.FIGURE_SPECS[name]
+    opts = F.figure_opts(name, spec.defaults)
+    fig, meta = spec.draw(rich, opts)
+    axes = F._axes_list(meta['axes'])
+    assert axes and all(hasattr(ax, 'get_xlabel') for ax in axes)
+    assert all(ax.figure is fig for ax in axes)
+    rec = meta['provenance']
+    assert rec['functions'] and rec['selection_sha256_16'] is not None
+    assert rec['scan_dirs'], name
+    plt.close(fig)
+
+
+def test_the_generic_cosmetics_reach_every_figure_through_the_registry(registry, store):
+    """One figure through ``figspec.draw_figure``: the knobs and the generic cosmetics."""
+    import matplotlib.pyplot as plt
+    F.set_overrides('online_mechanism', ylabel='Kept', legend={'ncol': 2})
+    fig, meta, opts = F.draw_figure('online_mechanism')
+    assert opts['smooth'] == S.SMOOTH_STEPS      # the builder's own default, untouched
+    assert [ax.get_ylabel() for ax in meta['axes']] == ['Kept'] * 4
+    leg = meta['axes'][3].get_legend()           # the per-seed panel's own key, restyled
+    assert getattr(leg, '_ncols', getattr(leg, '_ncol', None)) == 2
+    plt.close(fig)
+
+
+@pytest.mark.parametrize('name,knob,expected', [
+    ('online_spectra', {'scans': [SCAN_A]}, 1),
+    ('online_spectra', {'scans': [SCAN_A, MNIST_CE]}, 2),
+    ('probe_metrics', {'metrics': ['cond']}, 2),
+])
+def test_a_knob_visibly_changes_what_is_drawn(name, knob, expected, rich, store,
+                                              probe_cache):
+    """A pinned knob must reach the panels, not just the options dict."""
+    import matplotlib.pyplot as plt
+    spec = S.FIGURE_SPECS[name]
+    fig, meta = spec.draw(rich, F.figure_opts(name, spec.defaults, **knob))
+    assert len(F._axes_list(meta['axes'])) == expected
+    plt.close(fig)
+
+
+def test_the_geometry_knobs_change_the_figure_size(rich, store):
+    import matplotlib.pyplot as plt
+    spec = S.FIGURE_SPECS['spectrum_truncation']
+    base = spec.draw(rich, F.figure_opts('spectrum_truncation', spec.defaults))[0]
+    wide = spec.draw(rich, F.figure_opts('spectrum_truncation', spec.defaults,
+                                         fraction=0.49, aspect=0.5, extra_h=1.0))[0]
+    assert wide.get_size_inches()[0] > base.get_size_inches()[0]
+    assert wide.get_size_inches()[1] > base.get_size_inches()[1]
+    plt.close(base)
+    plt.close(wide)
+
+
+@pytest.mark.parametrize('name', list(S.PROBE_FIGURES))
+def test_a_probe_figure_without_a_cache_says_so(name, data, store):
+    """``build()`` skips these; a notebook asking for one deserves a sentence, not a
+    ``KeyError`` from inside a helper three frames down."""
+    data.probe_methods, data.probe = {}, {}
+    spec = S.FIGURE_SPECS[name]
+    with pytest.raises(RuntimeError, match='no cached probe spectra'):
+        spec.draw(data, F.figure_opts(name, spec.defaults))
+
+
+def test_every_spec_declares_yaml_representable_knobs_and_shadows_none():
+    """A knob whose value is a python object cannot be pinned from a notebook, and one
+    that shadows a generic cosmetic would be applied twice."""
+    F.check_defaults(S.FIGURE_SPECS)
+    for name, spec in S.FIGURE_SPECS.items():
+        assert spec.doc.strip() and '\n' not in spec.doc.strip().split('\n')[0]
+        assert not set(spec.defaults) & set(F.COMMON_KEYS), name
+        round_trip = yaml.safe_load(yaml.safe_dump(spec.defaults))
+        assert round_trip == spec.defaults, name
+        for key in ('ncol', 'fraction', 'aspect', 'extra_h', 'sharex', 'sharey'):
+            assert key in spec.defaults, (name, key)
+
+
+def test_the_figure_names_are_the_pdf_stems():
+    """The registry key IS the output stem, so ``figures_iclr/spectra/<key>.pdf``."""
+    assert list(S.FIGURE_SPECS) == [
+        'spectrum_truncation', 'online_spectra', 'online_utr', 'online_mechanism',
+        'online_norms', 'mnist_lr_vs_ce', 'used_rank_grid', 'probe_spectra',
+        'probe_spectra_all', 'probe_metrics', 'probe_metrics_all', 'probe_norms',
+        'probe_energy']
+    assert set(S.PROBE_FIGURES) <= set(S.FIGURE_SPECS)
+
+
+def test_context_reads_the_passes_once_per_root(monkeypatch):
+    calls = []
+    monkeypatch.setattr(S, '_CONTEXT', {})
+    monkeypatch.setattr(S, 'load',
+                        lambda root=None, verbose=True: calls.append(root) or 'DATA')
+    assert S.context() == 'DATA'
+    assert S.context() == 'DATA'
+    assert calls == [None]                      # expensive: read once, then cached
+    S.context(reload=True)
+    S.context(root='/other/root')
+    assert calls == [None, None, '/other/root']
+
+
+# ---------------------------------------------------------------------------
 # Module contract
 # ---------------------------------------------------------------------------
 def test_the_module_declares_its_assets():
-    assert S.FIGURES and S.PROBE_FIGURES and S.TABLES
-    for fn in S.FIGURES + S.PROBE_FIGURES + S.TABLES:
+    assert len(S.FIGURE_SPECS) == 13 and S.TABLES
+    for name, spec in S.FIGURE_SPECS.items():
+        assert callable(spec.draw) and spec.draw.__doc__, name
+    for fn in S.TABLES:
         assert callable(fn) and fn.__doc__
     assert S.GROUP == 'spectra'
+
+
+def test_the_dry_run_names_the_files_the_build_actually_writes():
+    """It used to name the BUILDERS (``fig_online_utr.pdf``) while the build wrote
+    ``online_utr.pdf``: thirteen file names that never existed."""
+    report = S.build(dry_run=True, verbose=False)
+    assert report['figures'] == [f'{name}.pdf' for name in S.FIGURE_SPECS]
+    assert not any(n.startswith('fig_') for n in report['figures'])
+    assert report['tables'] == [f'{fn.__name__}.tex' for fn in S.TABLES]
+    assert report['status'] == 'dry run'
+
+
+def test_build_writes_every_figure_once_through_save_fig(rich, store, probe_cache,
+                                                         paper_dirs):
+    report = S.build(data=rich, figures=True, tables=False, numbers=False,
+                     verbose=False)
+    written = sorted(p.name for p in (C.FIG_DIR / 'spectra').glob('*.pdf'))
+    assert written == sorted(f'{name}.pdf' for name in S.FIGURE_SPECS)
+    assert len(report['figures']) == len(S.FIGURE_SPECS)
+    # every figure carries a provenance sidecar, and none of them lands in the manuscript
+    side = sorted(p.name for p in (paper_dirs / 'lab').rglob('*.pdf.provenance.json'))
+    assert side == sorted(f'{name}.pdf.provenance.json' for name in S.FIGURE_SPECS)
+    assert not list(C.MANUSCRIPT.rglob('*.provenance.json'))
+
+
+def test_build_skips_the_probe_figures_when_nothing_is_cached(rich, store, paper_dirs):
+    rich.probe_methods, rich.probe = {}, {}
+    report = S.build(data=rich, figures=True, tables=False, numbers=False, verbose=False)
+    online = [n for n in S.FIGURE_SPECS if n not in S.PROBE_FIGURES]
+    assert len(report['figures']) == len(online)
+    assert sorted(p.stem for p in (C.FIG_DIR / 'spectra').glob('*.pdf')) == sorted(online)
+    assert [n for n in report['notes'] if 'no cached probe spectra' in n]
 
 
 def test_build_refuses_a_provisional_scan_under_strict_mode(data, monkeypatch):

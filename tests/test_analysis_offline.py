@@ -660,7 +660,8 @@ def test_nbconvert_is_a_recorded_dev_dependency_and_installed():
 # ===========================================================================
 # The analysis/ layout (2026-09-21 reorganisation)
 # ===========================================================================
-NB_GROUPS = ('headline', 'spectra', 'mlp_studies', 'large_models', 'profiling', 'legacy')
+NB_GROUPS = ('headline', 'spectra', 'mlp_studies', 'large_models', 'profiling',
+             'legacy', 'paper')
 
 
 def _notebooks():
@@ -671,7 +672,7 @@ def test_every_notebook_lives_in_a_group_directory():
     """No notebook is left at the top of analysis/, and every one is in a known group."""
     assert not list((REPO / 'analysis').glob('*.ipynb'))
     nbs = _notebooks()
-    assert len(nbs) == 23, [p.name for p in nbs]
+    assert len(nbs) == 27, [p.name for p in nbs]      # 23 analysis + 4 paper-figure
     assert {p.parent.name for p in nbs} <= set(NB_GROUPS)
     names = [p.stem for p in nbs]
     assert len(set(names)) == len(names), 'a notebook name must resolve to ONE path'
@@ -717,8 +718,44 @@ def test_make_plots_resolves_a_notebook_by_name_and_a_group_by_directory():
     assert 'analysis/notebooks' in src
     # the script names notebooks WITHOUT a group or a suffix and looks them up; the four
     # lists must therefore stay in step with what is on disk, in both directions.
-    known = {p.stem for p in _notebooks()}
+    known = {p.stem for p in _notebooks()
+             if p.parent.name != 'paper'}          # the paper figures run as a group
     listed = {w for w in re.findall(r'[A-Za-z0-9_]+', src) if w in known}
     assert listed == known, (known - listed, listed - known)
     assert 'find "$NBDIR" -name "${1%.ipynb}.ipynb"' in src   # by name
     assert 'if [ -d "$NBDIR/$1" ]; then' in src               # by group directory
+
+
+def test_the_paper_figure_notebooks_are_generated_from_the_registry():
+    """`analysis/notebooks/paper/` is one notebook per figure group, and every figure the
+    paper carries must have a cell in one of them -- which is what the generator
+    (`agent_lab/paper_nb/build_fig_notebooks.py`) guarantees by reading the registry.
+    Regenerate after adding a figure; this test is what catches forgetting to."""
+    sys.path.insert(0, str(REPO / 'analysis'))
+    from paper_assets import figspec as F
+    reg = F.registry()
+    cells = {}
+    for path in (REPO / 'analysis' / 'notebooks' / 'paper').glob('fig_*.ipynb'):
+        cells[path.stem.replace('fig_', '')] = json.loads(path.read_text())
+    assert set(cells) == {s.group for s in reg.values()}, sorted(cells)
+    for name, spec in reg.items():
+        src = ''.join(''.join(c['source']) for c in cells[spec.group]['cells'])
+        assert f"pf.make('{name}')" in src, f'{name} has no cell in fig_{spec.group}'
+
+
+def test_the_paper_notebooks_never_write_the_manuscript_when_executed():
+    """Executing one of them must be safe: the save()/pin()/rebuild() lines are there for
+    the person editing, but commented, so a top-to-bottom run draws and writes nothing."""
+    for path in (REPO / 'analysis' / 'notebooks' / 'paper').glob('fig_*.ipynb'):
+        nb = json.loads(path.read_text())
+        for cell in nb['cells']:
+            if cell['cell_type'] != 'code':
+                continue
+            for line in cell['source']:
+                bare = line.strip()
+                if bare.startswith('#'):
+                    continue
+                assert '.save(' not in bare, (path.name, bare)
+                assert 'pf.pin(' not in bare, (path.name, bare)
+                assert 'pf.rebuild(' not in bare, (path.name, bare)
+                assert 'pf.unpin(' not in bare, (path.name, bare)

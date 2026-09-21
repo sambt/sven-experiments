@@ -37,6 +37,21 @@ Two deliberate deviations, both cosmetic:
 * a figure-level legend is placed by :func:`_legend_below` (constrained layout) rather
   than :func:`reviewer_figs.figure_legend` (which calls ``tight_layout``).
 
+**The figures follow the registry contract** (``campaign/FIGURE_API_CONTRACT.md``):
+:data:`FIGURE_SPECS` names all eight, each ``draw(ctx, opts) -> (fig, meta)`` writing
+nothing, so one panel can be redrawn and re-tuned from ``analysis/notebooks/paper/``
+without rebuilding the appendix::
+
+    import paper_assets.notebook as pf
+    pf.info('batchsize')                       # its knobs and what is pinned
+    f = pf.make('batchsize', cmap='cividis')   # draws, writes nothing
+    f.save()                                   # PDF + PNG + provenance sidecar
+
+``ctx`` is the :class:`_Data` object :func:`context` returns: it memoises both the scan
+frames and the per-section analysis frames (``ctx.overparam()``, ``ctx.batchsize()``,
+...), which is what lets any single figure be drawn on its own while :func:`build` still
+computes each section exactly once.
+
 Run it alone with ``cd analysis && ../.venv/bin/python -m paper_assets.reviewer``.
 """
 from __future__ import annotations
@@ -48,6 +63,8 @@ try:                                   # the module is ``common.py``; the plan c
     from paper_assets import common as C
 except ImportError:                    # pragma: no cover
     from paper_assets import _common as C
+
+from paper_assets import figspec       # the registry + the notebooks' override layer
 
 import analysis_helpers as ah          # noqa: E402  (C puts analysis/ on sys.path)
 import budget                          # noqa: E402
@@ -360,8 +377,13 @@ def _axes_handles(axes):
     return handles, labels
 
 
-def _legend_below(fig, handles, labels, ncol=5, height=0.42, fontsize=None):
-    """One legend under the panels, with the space for it taken out of the layout."""
+def _legend_below(fig, handles, labels, ncol=5, height=0.42, fontsize=None, **kw):
+    """One legend under the panels, with the space for it taken out of the layout.
+
+    ``height`` is in inches (it is the ``extra_h`` the figure was sized with); anything
+    else goes straight to ``fig.legend`` through :func:`common.legend_below`, so a
+    notebook can move it or give it a frame.
+    """
     w, h = fig.get_size_inches()
     frac = min(0.45, float(height) / max(h, 1e-6))
     engine = fig.get_layout_engine()
@@ -370,10 +392,62 @@ def _legend_below(fig, handles, labels, ncol=5, height=0.42, fontsize=None):
             engine.set(rect=(0.0, frac, 1.0, 1.0 - frac))
         except (AttributeError, TypeError):        # pragma: no cover - older mpl
             pass
-    kw = {'ncol': ncol}
+    kw['ncol'] = ncol
     if fontsize is not None:
         kw['fontsize'] = fontsize
     return C.legend_below(fig, handles, labels, y=0.0, **kw)
+
+
+def _figure_legend(fig, handles, labels, spec):
+    """:func:`_legend_below` driven by a figure's ``legend_below`` option dict.
+
+    The keys are ``ncol``, ``height``, ``fontsize`` and whatever ``fig.legend`` takes
+    (``loc``, ``frameon``, ``bbox_to_anchor``, ...), plus ``remove: True`` for "no shared
+    legend at all" -- the same spelling the generic ``legend`` cosmetic uses, and the only
+    one that works through the override layer, which MERGES a dict-valued option into the
+    default rather than replacing it.
+    """
+    kw = dict(spec or {})
+    if not kw or kw.pop('remove', False):
+        return None
+    return _legend_below(fig, handles, labels, ncol=kw.pop('ncol', 5),
+                         height=kw.pop('height', 0.42),
+                         fontsize=kw.pop('fontsize', None), **kw)
+
+
+def _panel_legend(ax, spec):
+    """A per-panel legend from an option dict; ``remove: True`` leaves the panel bare."""
+    kw = dict(spec or {})
+    if not kw or kw.pop('remove', False):
+        return None
+    return ax.legend(**kw)
+
+
+def _subplots(opts, nrow=None, ncol=None, aspect=None, extra_h=None):
+    """``plt.subplots`` at the size the page gives these panels.
+
+    ``fraction`` is the panel width as a fraction of ``\\linewidth`` and drives
+    :func:`common.figsize`; ``style_fraction`` is the separate key
+    :func:`common.set_paper_style` looks the font sizes up by (a 3-panel row is 1/3 wide
+    and set at the 0.32 sizes).  ``squeeze=False``, so ``axes[i][j]`` works even when a
+    notebook asks for a single row.
+    """
+    import matplotlib.pyplot as plt
+
+    figspec.paper_style(opts['style_fraction'])
+    nrow = int(opts['nrow'] if nrow is None else nrow)
+    ncol = int(opts['ncol'] if ncol is None else ncol)
+    size = C.figsize(ncol, nrow, opts['fraction'],
+                     aspect=(opts['aspect'] if aspect is None else aspect),
+                     extra_h=(opts['extra_h'] if extra_h is None else extra_h))
+    return plt.subplots(nrow, ncol, figsize=size, squeeze=False)
+
+
+def _pn_marker(ax, opts):
+    """The dotted $P/N = 1$ guide the App. G panels carry (``mark_pn_one``)."""
+    if opts.get('mark_pn_one'):
+        ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
+    return ax
 
 
 def _proxy(label, **kw):
@@ -387,11 +461,21 @@ def _proxy(label, **kw):
 # Loading (one frame per scan, reused by every section)
 # ---------------------------------------------------------------------------
 class _Data:
-    """Lazy, memoised scan frames plus the provenance list of what was read."""
+    """Lazy, memoised scan frames plus the provenance list of what was read.
+
+    Also the ``ctx`` every ``draw(ctx, opts)`` takes.  Each appendix's analysis frames
+    used to be computed inside its ``build_*``, which meant a single figure could not be
+    drawn without rebuilding the section; they are memoised accessors here instead
+    (:meth:`overparam` ... :meth:`divergence`), so ``build()`` still computes each one
+    once and a notebook can draw one panel on its own.  The provenance record a section's
+    assets are written with is memoised the same way (:meth:`prov`), so a figure and the
+    tables beside it keep quoting one record.
+    """
 
     def __init__(self, root=None):
         self.root = root
         self._frames = {}
+        self._cache = {}
         self.scans = []
 
     def __call__(self, name):
@@ -402,10 +486,81 @@ class _Data:
         return self._frames[name]
 
     def drop(self, name=None):
+        """Forget scan frames -- one, or (``name=None``) every one AND the section cache.
+
+        ``build()`` calls this between sections and depends on it to keep the peak
+        footprint at one appendix's worth of frames: the section frames hold references
+        to the scan frames, so dropping only the latter would free nothing.  A cached
+        context is therefore empty but perfectly usable afterwards -- the next
+        ``ctx.kappa()`` re-loads its scan.  ``self.scans`` (what the provenance records
+        was read) is kept on purpose.
+        """
         if name is None:
             self._frames.clear()
+            self._cache.clear()
         else:
             self._frames.pop(name, None)
+
+    # -- the per-section analysis frames, each computed at most once ---------
+    def _memo(self, key, make):
+        if key not in self._cache:
+            self._cache[key] = make()
+        return self._cache[key]
+
+    def overparam(self):
+        """App. G: ``{task: {best, ranks, gaps, reach, div, ...}}`` (three scans)."""
+        return self._memo('overparam', lambda: _overparam_frames(self))
+
+    def overparam_ranks(self):
+        """App. G: Sven's rank on every arm of every task, as one frame."""
+        return self._memo('overparam_ranks', lambda: _sven_rank_rows(self.overparam()))
+
+    def batchsize(self):
+        """App. H: the batch-size sweep's selection, ranks, costs and divergence."""
+        return self._memo('batchsize', lambda: _batchsize_frames(self))
+
+    def kappa(self):
+        """App. M: the kappa table at matched effective step, paired and covered."""
+        return self._memo('kappa', lambda: _kappa_frames(self))
+
+    def knobs(self):
+        """App. N: ``{knob: {task: ...}}`` for micro-batching and parameter masking."""
+        return self._memo('knobs', lambda: _knob_frames(self))
+
+    def budget(self):
+        """App. F: best-of-n curves, trajectory counts and the equal-budget table."""
+        return self._memo('budget', lambda: _budget_frames(self.root))
+
+    def divergence(self):
+        """App. P: the campaign-wide divergence accounting and the per-grid maps."""
+        return self._memo('divergence', lambda: _divergence_frames(self.root))
+
+    def prov(self, section):
+        """The provenance record ``section``'s figures and tables are written with."""
+        return self._memo(f'prov:{section}', lambda: _PROVENANCE[section](self))
+
+
+# ---------------------------------------------------------------------------
+# The module's context: one _Data per results root, so drawing two figures from a
+# notebook loads each scan once (see campaign/FIGURE_API_CONTRACT.md).
+# ---------------------------------------------------------------------------
+_CONTEXTS: dict = {}
+
+
+def context(root=None, reload=False):
+    """The :class:`_Data` this module's ``draw`` functions take, cached per ``root``.
+
+    Cheap to call twice.  ``reload=True`` throws the cached one away (after a scan has
+    been re-selected on disk, say).  Note that :meth:`_Data.drop` empties a context
+    without invalidating it -- the cache still hands out the same object, which simply
+    re-loads what it is asked for next.
+    """
+    key = str(root) if root is not None else ''
+    if reload:
+        _CONTEXTS.pop(key, None)
+    if key not in _CONTEXTS:
+        _CONTEXTS[key] = _Data(root)
+    return _CONTEXTS[key]
 
 
 # ---------------------------------------------------------------------------
@@ -486,21 +641,34 @@ def _reach_ratio(d):
     return pd.DataFrame(rows)
 
 
-def _fig_overparam(over, ranks, provenance):
-    import matplotlib.pyplot as plt
+#: the outcome each F5b row draws, and the axis label it carries.  A knob lists the
+#: quantities; the wording stays here so the option itself is a flat list of column names
+_OUTCOME_LABELS = {
+    'final_val_loss': 'Final val. loss',
+    'final_test_loss': 'Final test loss',
+    'final_train_eval': 'Final train loss (full set)',
+}
 
-    C.set_paper_style(0.32)
-    fig, axes = plt.subplots(2, 3, figsize=C.figsize(3, 2, 1 / 3, aspect=0.86,
-                                                     extra_h=0.50))
-    keys = [k for k, _ in OVERPARAM_SCANS if k in over]
+
+def _overparam_keys(over, opts):
+    """The tasks F5/F5b draw: the ``tasks`` option, in the scan list's order."""
+    return [k for k, _ in OVERPARAM_SCANS if k in over and k in opts['tasks']]
+
+
+def _fig_overparam(ctx, opts):
+    over, ranks = ctx.overparam(), ctx.overparam_ranks()
+    fig, axes = _subplots(opts)
+    keys = _overparam_keys(over, opts)
 
     for j, key in enumerate(keys):
         d = over[key]
         ax = axes[0][j]
         rf.plot_arm(ax, d['best'], 'P_over_N', 'final_val_loss', logx=True, logy=True)
-        _thin(ax)
-        ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
-        rf.arm_ticks(ax, d['pn'], fmt='{:.2g}', min_log_sep=0.12)
+        _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'],
+              ms=opts['thin_ms'])
+        _pn_marker(ax, opts)
+        rf.arm_ticks(ax, d['pn'], fmt=opts['arm_tick_fmt'],
+                     min_log_sep=opts['min_log_sep'])
         ax.set_xlabel('$P/N$')
         ax.set_ylabel('Final val. loss' if j == 0 else '')
         ax.set_title(_task_title(key))
@@ -511,18 +679,18 @@ def _fig_overparam(over, ranks, provenance):
     for key in keys:
         sub = ranks[ranks['task'] == key].sort_values('P_over_N')
         c = TASK_COLORS[key]
-        ax.plot(sub['P_over_N'], sub['rank_val'], '-o', color=c, lw=1.0, ms=2.4,
-                label=_task_title(key))
-        ax.plot(sub['P_over_N'], sub['rank_test'], '--s', color=c, lw=0.7, ms=2.0,
-                alpha=0.8, mfc='none')
-    ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
+        ax.plot(sub['P_over_N'], sub['rank_val'], '-o', color=c, lw=opts['lw'],
+                ms=opts['ms'], label=_task_title(key))
+        ax.plot(sub['P_over_N'], sub['rank_test'], '--s', color=c, lw=opts['overlay_lw'],
+                ms=opts['overlay_ms'], alpha=0.8, mfc='none')
+    _pn_marker(ax, opts)
     ax.set_xscale('log')
     ax.invert_yaxis()
     top = int(np.nanmax(np.r_[ranks['rank_val'].to_numpy(), ranks['rank_test'].to_numpy()]))
     ax.set_yticks(range(1, top + 1, 1 if top <= 6 else 2))
     ax.set_xlabel('$P/N$')
     ax.set_ylabel("Sven's rank: val, test")
-    ax.legend(fontsize=5.0, loc='upper left', handlelength=1.1)
+    _panel_legend(ax, opts['panel_legend'])
     _grid(ax)
 
     # (1,1) time to the per-arm median-method target, relative to that median
@@ -530,14 +698,14 @@ def _fig_overparam(over, ranks, provenance):
     for key in keys:
         t = _reach_ratio(over[key])
         c = TASK_COLORS[key]
-        ax.plot(t['P_over_N'], t['ratio'], '-o', color=c, lw=1.0, ms=2.4,
+        ax.plot(t['P_over_N'], t['ratio'], '-o', color=c, lw=opts['lw'], ms=opts['ms'],
                 label=_task_title(key))
         miss = t[~t['all_reached']]
-        if len(miss):
+        if len(miss) and opts['mark_partial_reach']:
             ax.plot(miss['P_over_N'], miss['ratio'], 'o', color=c, ms=3.4, mfc='white',
                     mew=0.7, zorder=4)
     ax.axhline(1.0, ls='-', c='0.55', lw=0.5, zorder=0)
-    ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
+    _pn_marker(ax, opts)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlabel('$P/N$')
@@ -550,51 +718,51 @@ def _fig_overparam(over, ranks, provenance):
         d = over[key]
         c = TASK_COLORS[key]
         sv = d['div'][d['div']['method'] == SVEN].sort_values('n_data')
-        ax.plot([d['P'] / n for n in sv['n_data']], sv['frac'], '-o', color=c, lw=1.0,
-                ms=2.4, label=_task_title(key))
+        ax.plot([d['P'] / n for n in sv['n_data']], sv['frac'], '-o', color=c,
+                lw=opts['lw'], ms=opts['ms'], label=_task_title(key))
         # the WORST baseline, not the cleanest: the honest comparison is whether Sven
         # sits above the noisiest method of the field (C17), and a "best baseline" line
         # is 0 on every arm of every scan and says nothing
         other = d['div'][d['div']['method'] != SVEN]
         hi = other.groupby('n_data')['frac'].max().reset_index().sort_values('n_data')
-        ax.plot([d['P'] / n for n in hi['n_data']], hi['frac'], '--', color=c, lw=0.7,
-                alpha=0.8)
-    ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
+        ax.plot([d['P'] / n for n in hi['n_data']], hi['frac'], '--', color=c,
+                lw=opts['overlay_lw'], alpha=0.8)
+    _pn_marker(ax, opts)
     ax.set_xscale('log')
     ax.set_xlabel('$P/N$')
     ax.set_ylabel('diverged: Sven, worst baseline')
     _grid(ax)
 
     handles, labels = _axes_handles(axes[0])
-    _legend_below(fig, handles, labels, ncol=5, height=0.50, fontsize=5.2)
-    return C.save_fig(fig, 'overparam', GROUP, provenance_record=provenance)
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('overparam'), 'tasks': keys,
+                 'style_fraction': opts['style_fraction']}
 
 
-def _fig_overparam_outcomes(over, provenance):
-    import matplotlib.pyplot as plt
-
-    C.set_paper_style(0.32)
-    fig, axes = plt.subplots(2, 3, figsize=C.figsize(3, 2, 1 / 3, aspect=0.86,
-                                                     extra_h=0.50))
-    keys = [k for k, _ in OVERPARAM_SCANS if k in over]
-    rows = (('final_test_loss', 'Final test loss'),
-            ('final_train_eval', 'Final train loss (full set)'))
-    for i, (q, lab) in enumerate(rows):
+def _fig_overparam_outcomes(ctx, opts):
+    over = ctx.overparam()
+    fig, axes = _subplots(opts)
+    keys = _overparam_keys(over, opts)
+    for i, q in enumerate(opts['metrics']):
         for j, key in enumerate(keys):
             d = over[key]
             ax = axes[i][j]
             rf.plot_arm(ax, d['best'], 'P_over_N', q, logx=True, logy=True)
-            _thin(ax)
-            ax.axvline(1.0, ls=':', c='0.55', lw=0.6, zorder=0)
-            rf.arm_ticks(ax, d['pn'], fmt='{:.2g}', min_log_sep=0.12)
+            _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'],
+                  ms=opts['thin_ms'])
+            _pn_marker(ax, opts)
+            rf.arm_ticks(ax, d['pn'], fmt=opts['arm_tick_fmt'],
+                         min_log_sep=opts['min_log_sep'])
             ax.set_xlabel('$P/N$')
-            ax.set_ylabel(lab if j == 0 else '')
+            ax.set_ylabel(_OUTCOME_LABELS.get(q, q) if j == 0 else '')
             if i == 0:
                 ax.set_title(_task_title(key))
             _grid(ax)
     handles, labels = _axes_handles(axes[0])
-    _legend_below(fig, handles, labels, ncol=5, height=0.50, fontsize=5.2)
-    return C.save_fig(fig, 'overparam_outcomes', GROUP, provenance_record=provenance)
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('overparam'), 'tasks': keys,
+                 'metrics': list(opts['metrics']),
+                 'style_fraction': opts['style_fraction']}
 
 
 def _gap_cell(gap):
@@ -689,22 +857,24 @@ def _table_overparam_loss(over, provenance):
     return path
 
 
-def build_overparam(data, M, want, report):
-    scans = [s for _, s in OVERPARAM_SCANS]
-    prov = C.provenance(
+def _prov_overparam(ctx=None):
+    return C.provenance(
         functions=('reviewer_figs.arm_table', 'reviewer_figs.rank_table',
                    'reviewer_figs.neighbour_gaps', 'reviewer_figs.median_method_target',
                    'reviewer_figs.reach_table', 'reviewer_figs.reach_count_table',
                    'reviewer_figs.divergence_table',
                    'reviewer_figs.divergence_vs_reference', 'reviewer_figs.plot_arm',
                    'analysis_helpers.n_params_of'),
-        scans=scans, note='App. G (P > N): F5, F5b, T12')
-    over = _overparam_frames(data)
-    ranks = _sven_rank_rows(over)
+        scans=[s for _, s in OVERPARAM_SCANS], note='App. G (P > N): F5, F5b, T12')
+
+
+def build_overparam(data, M, want, report):
+    prov = data.prov('overparam')
+    over = data.overparam()
+    ranks = data.overparam_ranks()
 
     if want['figures']:
-        report['figures'].append(str(_fig_overparam(over, ranks, prov)[0]))
-        report['figures'].append(str(_fig_overparam_outcomes(over, prov)[0]))
+        _figures('overparam', data, report)
     if want['tables']:
         report['tables'].append(str(_table_overparam(over, ranks, prov)))
         report['tables'].append(str(_table_overparam_loss(over, prov)))
@@ -863,84 +1033,91 @@ def _batchsize_frames(data):
     return out
 
 
-def _fig_batchsize(b, provenance):
+def _fig_batchsize(ctx, opts):
     import matplotlib.pyplot as plt
 
-    C.set_paper_style(0.49)
-    fig, axes = plt.subplots(2, 2, figsize=C.figsize(2, 2, 0.49, aspect=0.80,
-                                                     extra_h=0.55))
-    Bs = b['Bs']
-    best = b['best']
+    b = ctx.batchsize()
+    fig, axes = _subplots(opts)
+    Bs = [B for B in b['Bs'] if not opts['batch_sizes'] or B in opts['batch_sizes']]
+    best = b['best'][b['best']['batch_size'].isin(Bs)] if opts['batch_sizes'] \
+        else b['best']
 
     ax = axes[0][0]
     rf.plot_arm(ax, best, 'batch_size', 'final_val_loss', logy=True)
-    _thin(ax)
+    _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'], ms=opts['thin_ms'])
     ax.set_xscale('log', base=2)
-    rf.arm_ticks(ax, Bs, fmt='{:.0f}')
+    rf.arm_ticks(ax, Bs, fmt=opts['arm_tick_fmt'])
     ax.set_xlabel('batch size $B$')
     ax.set_ylabel('Final validation loss')
     ax.set_title('Selected config. per method')
     _grid(ax)
 
     ax = axes[0][1]
-    rtols = sorted(b['rank_by_rtol']['rtol'].unique())
-    cmap = plt.get_cmap('viridis')
+    rank_by_rtol = b['rank_by_rtol']
+    rtols = sorted(rank_by_rtol['rtol'].unique())
+    cmap = plt.get_cmap(opts['cmap'])
     for i, rt in enumerate(rtols):
-        s = b['rank_by_rtol'][b['rank_by_rtol']['rtol'] == rt].sort_values('batch_size')
-        ax.plot(s['batch_size'], s['rank_eff'], '-o', lw=0.9, ms=2.2,
-                color=cmap(i / max(1, len(rtols) - 1)),
+        s = rank_by_rtol[rank_by_rtol['rtol'] == rt].sort_values('batch_size')
+        ax.plot(s['batch_size'], s['rank_eff'], '-o', lw=opts['rtol_lw'],
+                ms=opts['rtol_ms'], color=cmap(i / max(1, len(rtols) - 1)),
                 label=f'{RTOL_FIG} $={_tex_num(rt)}$')
-    ax.plot(Bs, Bs, ls='--', c='0.45', lw=0.8, label='$k=B$ (the cap)')
+    if opts['cap_line']:
+        ax.plot(Bs, Bs, ls='--', c='0.45', lw=0.8, label='$k=B$ (the cap)')
     ax.set_xscale('log', base=2)
     ax.set_yscale('log')
-    rf.arm_ticks(ax, Bs, fmt='{:.0f}')
+    rf.arm_ticks(ax, Bs, fmt=opts['arm_tick_fmt'])
     ax.set_xlabel('batch size $B$')
     ax.set_ylabel('singular values kept / step')
     ax.set_title("Sven's used rank vs the cap")
-    ax.legend(fontsize=5.4, loc='upper left', handlelength=1.1, ncol=1)
+    _panel_legend(ax, opts['rank_legend'])
     _grid(ax)
 
     ax = axes[1][0]
     for i, rt in enumerate(rtols):
         s = b['step'][b['step']['rtol'] == rt].sort_values('batch_size')
-        ax.plot(s['batch_size'], s['value'], '-o', lw=0.9, ms=2.2,
-                color=cmap(i / max(1, len(rtols) - 1)),
+        ax.plot(s['batch_size'], s['value'], '-o', lw=opts['rtol_lw'],
+                ms=opts['rtol_ms'], color=cmap(i / max(1, len(rtols) - 1)),
                 label=f'{RTOL_FIG} $={_tex_num(rt)}$')
     sel = best[best['method'] == SVEN].sort_values('batch_size')
     ax.plot(sel['batch_size'], sel['step_s'] * 1e3, 's--', lw=1.2, ms=2.6, color='k',
             label='selected config.')
     ax.set_xscale('log', base=2)
-    rf.arm_ticks(ax, Bs, fmt='{:.0f}')
+    rf.arm_ticks(ax, Bs, fmt=opts['arm_tick_fmt'])
     ax.set_xlabel('batch size $B$')
     ax.set_ylabel('ms per optimizer step')
     ax.set_title(f"Sven's cost at fixed {RTOL_FIG}")
     _grid(ax)
-    ax2 = ax.twinx()
-    mem = b['mem'].groupby('batch_size')['value'].mean().reset_index()
-    ax2.plot(mem['batch_size'], mem['value'], ':', lw=0.8, color='#B35806',
-             label='peak memory')
-    ax2.set_ylabel('peak memory (MB)', color='#B35806')
-    ax2.tick_params(axis='y', colors='#B35806', labelsize=5.6)
-    ax.legend(fontsize=5.4, loc='upper left', handlelength=1.1)
+    if opts['memory_axis']:
+        ax2 = ax.twinx()
+        mem = b['mem'].groupby('batch_size')['value'].mean().reset_index()
+        ax2.plot(mem['batch_size'], mem['value'], ':', lw=0.8,
+                 color=opts['memory_color'], label='peak memory')
+        ax2.set_ylabel('peak memory (MB)', color=opts['memory_color'])
+        ax2.tick_params(axis='y', colors=opts['memory_color'],
+                        labelsize=opts['memory_labelsize'])
+    _panel_legend(ax, opts['cost_legend'])
 
     ax = axes[1][1]
     for m in ah.method_order(sorted(b['div']['method'].unique())):
         s = b['div'][b['div']['method'] == m].sort_values('batch_size')
-        if s['n_diverged'].sum() == 0:
+        if opts['only_diverging_methods'] and s['n_diverged'].sum() == 0:
             continue
         ax.plot(s['batch_size'], s['frac'], '-o', color=style.method_color(m),
-                lw=1.25 if m == SVEN else 0.75, ms=2.4 if m == SVEN else 2.0,
+                lw=opts['sven_lw'] if m == SVEN else opts['other_lw'],
+                ms=opts['ms'] if m == SVEN else opts['overlay_ms'],
                 label=style.method_label(m), zorder=3 if m == SVEN else 1)
     ax.set_xscale('log', base=2)
-    rf.arm_ticks(ax, Bs, fmt='{:.0f}')
+    rf.arm_ticks(ax, Bs, fmt=opts['arm_tick_fmt'])
     ax.set_xlabel('batch size $B$')
     ax.set_ylabel('fraction diverged (wide rule)')
     ax.set_title('Divergence, wide rule')
     _grid(ax)
 
     handles, labels = _axes_handles([axes[0][0]])
-    _legend_below(fig, handles, labels, ncol=5, height=0.55, fontsize=5.6)
-    return C.save_fig(fig, 'batchsize', GROUP, provenance_record=provenance)
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('batchsize'),
+                 'batch_sizes': list(Bs), 'rtols': [float(r) for r in rtols],
+                 'style_fraction': opts['style_fraction']}
 
 
 def _table_batchsize(b, provenance):
@@ -1043,16 +1220,20 @@ def _table_batchsize_loss(b, provenance):
     return path
 
 
-def build_batchsize(data, M, want, report):
-    prov = C.provenance(
+def _prov_batchsize(ctx=None):
+    return C.provenance(
         functions=('reviewer_figs.arm_table', 'reviewer_figs.rank_table',
                    'reviewer_figs.neighbour_gaps', 'reviewer_figs.monotonicity_table',
                    'reviewer_figs.divergence_table', 'reviewer_figs.fixed_knob_cost',
                    'reviewer_figs.effective_rank', 'reviewer_figs.plot_arm'),
         scans=(BATCHSIZE_SCAN,), note='App. H (batch size): F6, T13')
-    b = _batchsize_frames(data)
+
+
+def build_batchsize(data, M, want, report):
+    prov = data.prov('batchsize')
+    b = data.batchsize()
     if want['figures']:
-        report['figures'].append(str(_fig_batchsize(b, prov)[0]))
+        _figures('batchsize', data, report)
     if want['tables']:
         report['tables'].append(str(_table_batchsize(b, prov)))
         report['tables'].append(str(_table_batchsize_loss(b, prov)))
@@ -1160,18 +1341,19 @@ def _kappa_frames(data):
     return out
 
 
-def _fig_kappa(kp, provenance):
-    import matplotlib.pyplot as plt
+def _fig_kappa(ctx, opts):
+    kp = ctx.kappa()
+    fig, axes = _subplots(opts)
+    tbl, B = kp['tbl'], kp['B']
+    ks = [k for k in kp['ks'] if not opts['ks'] or k in opts['ks']]
+    kappas = [kap for kap in sorted(tbl['kappa'].unique())
+              if not opts['kappas'] or int(kap) in opts['kappas']]
+    ls_for = {k: (opts['full_ls'] if int(k) == B else opts['trunc_ls']) for k in ks}
+    default_lw, other_lw = opts['default_kappa_lw'], opts['other_lw']
 
-    C.set_paper_style(0.32)
-    fig, axes = plt.subplots(1, 3, figsize=C.figsize(3, 1, 1 / 3, aspect=0.92,
-                                                     extra_h=0.42))
-    tbl, ks, B = kp['tbl'], kp['ks'], kp['B']
-    ls_for = {k: ('-' if int(k) == B else '--') for k in ks}
-
-    ax = axes[0]
+    ax = axes[0][0]
     for k in ks:
-        for kap in sorted(tbl['kappa'].unique()):
+        for kap in kappas:
             s = tbl[(tbl['k'] == k) & (tbl['kappa'] == kap)].sort_values('eff_step')
             if s.empty:
                 continue
@@ -1180,53 +1362,58 @@ def _fig_kappa(kp, provenance):
                         yerr=style.clipped_yerr(s['final_val_loss'],
                                                 s['final_val_loss_std'],
                                                 s['final_val_loss_min']),
-                        marker='o', ms=2.0, capsize=1.2, elinewidth=0.5,
-                        lw=1.2 if int(kap) == 2 else 0.8, ls=ls_for[k],
+                        marker='o', ms=opts['ms'], capsize=opts['capsize'],
+                        elinewidth=opts['elinewidth'],
+                        lw=default_lw if int(kap) == 2 else other_lw, ls=ls_for[k],
                         color=KAPPA_COLORS[int(kap)])
-    for e in kp['matched']:
-        ax.axvline(e, ls=':', c='0.6', lw=0.6, zorder=0)
+    if opts['mark_matched_steps']:
+        for e in kp['matched']:
+            ax.axvline(e, ls=':', c='0.6', lw=0.6, zorder=0)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlabel(r'effective step $2\eta/\kappa$')
     ax.set_ylabel('Final validation loss')
     _grid(ax)
 
-    ax = axes[1]
+    ax = axes[0][1]
     for k in ks:
         s = kp['m_val'][kp['m_val']['k'] == k].sort_values('eff_step')
-        ax.plot(s['eff_step'], s['rel_spread'], marker='o', ms=2.2, lw=1.0,
-                ls=ls_for[k], color='k')
+        ax.plot(s['eff_step'], s['rel_spread'], marker='o', ms=opts['spread_ms'],
+                lw=opts['lw'], ls=ls_for[k], color='k')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    rf.arm_ticks(ax, kp['matched'], fmt='{:g}')
+    rf.arm_ticks(ax, kp['matched'], fmt=opts['arm_tick_fmt'])
     ax.set_xlabel(r'matched effective step')
     ax.set_ylabel(r'spread over $\kappa$')
     _grid(ax)
 
-    ax = axes[2]
+    ax = axes[0][2]
     for k in ks:
-        for kap in sorted(tbl['kappa'].unique()):
+        for kap in kappas:
             s = tbl[(tbl['k'] == k) & (tbl['kappa'] == kap)
                     & (tbl['n_diverged'] == 0)].sort_values('eff_step')
             if s.empty:
                 continue
-            ax.plot(s['eff_step'], s['rank_eff'], marker='o', ms=2.0, lw=0.9,
-                    ls=ls_for[k], color=KAPPA_COLORS[int(kap)])
+            ax.plot(s['eff_step'], s['rank_eff'], marker='o', ms=opts['ms'],
+                    lw=opts['rank_lw'], ls=ls_for[k], color=KAPPA_COLORS[int(kap)])
     ax.set_xscale('log')
     ax.set_xlabel(r'effective step $2\eta/\kappa$')
     ax.set_ylabel('singular values kept / step')
     _grid(ax)
 
     handles = [_proxy(rf'$\kappa={int(k)}$' + (' (default)' if int(k) == 2 else ''),
-                      color=KAPPA_COLORS[int(k)], lw=1.2 if int(k) == 2 else 0.8)
-               for k in sorted(tbl['kappa'].unique())]
+                      color=KAPPA_COLORS[int(k)],
+                      lw=default_lw if int(k) == 2 else other_lw)
+               for k in kappas]
     handles += [_proxy(f'$k={int(k)}$' + (' ($=B$)' if int(k) == B else ''),
                        color='0.35', ls=ls_for[k]) for k in ks]
     handles += [h for h in _axes_handles(axes)[0]
                 if getattr(h, 'get_label', lambda: '')() == style.seed_spread_label()]
     labels = [h.get_label() for h in handles]
-    _legend_below(fig, handles, labels, ncol=6, height=0.42, fontsize=5.4)
-    return C.save_fig(fig, 'kappa', GROUP, provenance_record=provenance)
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('kappa'),
+                 'ks': list(ks), 'kappas': [int(k) for k in kappas],
+                 'style_fraction': opts['style_fraction']}
 
 
 def _table_kappa(kp, provenance):
@@ -1301,15 +1488,19 @@ def _table_kappa(kp, provenance):
     return path
 
 
-def build_kappa(data, M, want, report):
-    prov = C.provenance(
+def _prov_kappa(ctx=None):
+    return C.provenance(
         functions=('reviewer_figs.kappa_table', 'reviewer_figs.matched_step_table',
                    'reviewer_figs.matched_step_paired',
                    'reviewer_figs.eff_step_coverage', 'reviewer_figs.paired_seed_diff'),
         scans=(KAPPA_SCAN,), note='App. M (kappa): F8, T14')
-    kp = _kappa_frames(data)
+
+
+def build_kappa(data, M, want, report):
+    prov = data.prov('kappa')
+    kp = data.kappa()
     if want['figures']:
-        report['figures'].append(str(_fig_kappa(kp, prov)[0]))
+        _figures('kappa', data, report)
     if want['tables']:
         report['tables'].append(str(_table_kappa(kp, prov)))
     if not want['numbers']:
@@ -1462,32 +1653,33 @@ def _knob_ref_row(d, knob, ref):
     return _row(d['at_lr'], **{knob: ref})
 
 
-def _fig_knobs(knobs, provenance):
-    import matplotlib.pyplot as plt
-
-    C.set_paper_style(0.49)
-    fig, axes = plt.subplots(2, 2, figsize=C.figsize(2, 2, 0.49, aspect=0.80,
-                                                     extra_h=0.50))
+def _fig_knobs(ctx, opts):
+    knobs = ctx.knobs()
+    fig, axes = _subplots(opts)
     xlab = {k: lab for k, _, _, lab in KNOBS}
+    tasks = list(opts['tasks'])
+    drawn = []
 
     for j, (knob, ref, scans, _) in enumerate(KNOBS):
         ax = axes[0][j]
         for key, _name in scans:
             d = knobs[knob].get(key)
-            if d is None or d['at_lr'].empty:
+            if d is None or d['at_lr'].empty or key not in tasks:
                 continue
             r0 = _knob_ref_row(d, knob, ref)
             if r0 is None:
                 continue
             base = _num(r0['final_val_loss'])
             s = d['at_lr']
-            ax.plot(s[knob], _rel(s['final_val_loss'], base), '-o', lw=1.0, ms=2.4,
-                    color=SCAN_COLORS[key], label=_task_title(key))
-        ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
+            ax.plot(s[knob], _rel(s['final_val_loss'], base), '-o', lw=opts['lw'],
+                    ms=opts['ms'], color=SCAN_COLORS[key], label=_task_title(key))
+            drawn.append((knob, key))
+        if opts['reference_line']:
+            ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
         ax.set_yscale('log')
         if knob == 'microbatch_size':
             ax.set_xscale('log', base=2)
-            rf.arm_ticks(ax, _knob_levels(knobs[knob], knob), fmt='{:.0f}')
+            rf.arm_ticks(ax, _knob_levels(knobs[knob], knob), fmt=opts['arm_tick_fmt'])
         ax.set_xlabel(xlab[knob])
         ax.set_ylabel('val. loss / reference' if j == 0 else '')
         ax.set_title(f'Quality vs {"micro-batching" if j == 0 else "parameter masking"}')
@@ -1496,16 +1688,18 @@ def _fig_knobs(knobs, provenance):
     ax = axes[1][0]
     for key, _name in MICROBATCH_SCANS:
         d = knobs['microbatch_size'].get(key)
-        if d is None or d['rank_cap'] is None or d['rank_cap'].empty:
+        if d is None or d['rank_cap'] is None or d['rank_cap'].empty or key not in tasks:
             continue
         chk = d['rank_cap'].sort_values('microbatch_size')
-        ax.plot(chk['microbatch_size'], chk['rank_used'], '-o', lw=1.0, ms=2.4,
-                color=SCAN_COLORS[key], label=_task_title(key))
-        ax.plot(chk['microbatch_size'], chk['cap'], ':', lw=0.7, color=SCAN_COLORS[key])
+        ax.plot(chk['microbatch_size'], chk['rank_used'], '-o', lw=opts['lw'],
+                ms=opts['ms'], color=SCAN_COLORS[key], label=_task_title(key))
+        if opts['cap_line']:
+            ax.plot(chk['microbatch_size'], chk['cap'], ':', lw=opts['cap_lw'],
+                    color=SCAN_COLORS[key])
     ax.set_xscale('log', base=2)
     ax.set_yscale('log')
     rf.arm_ticks(ax, _knob_levels(knobs['microbatch_size'], 'microbatch_size'),
-                 fmt='{:.0f}')
+                 fmt=opts['arm_tick_fmt'])
     ax.set_xlabel(xlab['microbatch_size'])
     ax.set_ylabel('singular values kept / step')
     ax.set_title(r'Used rank vs the cap $B/\mu B$ (dotted)')
@@ -1516,7 +1710,7 @@ def _fig_knobs(knobs, provenance):
         ls = '-' if knob == 'microbatch_size' else '--'
         for key, _name in scans:
             d = knobs[knob].get(key)
-            if d is None or d['at_lr'].empty:
+            if d is None or d['at_lr'].empty or key not in tasks:
                 continue
             r0 = _knob_ref_row(d, knob, ref)
             if r0 is None:
@@ -1525,9 +1719,10 @@ def _fig_knobs(knobs, provenance):
             s = d['at_lr']
             x = pd.to_numeric(s[knob], errors='coerce')
             x = x / x.max() if knob == 'microbatch_size' else x
-            ax.plot(x, _rel(s['step_s'], base), ls=ls, marker='o', lw=0.9, ms=2.0,
-                    color=SCAN_COLORS[key])
-    ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
+            ax.plot(x, _rel(s['step_s'], base), ls=ls, marker='o', lw=opts['time_lw'],
+                    ms=opts['time_ms'], color=SCAN_COLORS[key])
+    if opts['reference_line']:
+        ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlabel(r'knob / its maximum ($\mu B/B$ or $f$)')
@@ -1536,11 +1731,13 @@ def _fig_knobs(knobs, provenance):
     _grid(ax)
 
     handles, labels = _axes_handles([axes[0][0], axes[0][1]])
-    handles += [_proxy(r'micro-batch ($\mu B$)', color='0.35', ls='-'),
-                _proxy('parameter fraction ($f$)', color='0.35', ls='--')]
-    labels += [h.get_label() for h in handles[-2:]]
-    _legend_below(fig, handles, labels, ncol=3, height=0.50, fontsize=5.6)
-    return C.save_fig(fig, 'knobs', GROUP, provenance_record=provenance)
+    if opts['family_proxies']:
+        handles += [_proxy(r'micro-batch ($\mu B$)', color='0.35', ls='-'),
+                    _proxy('parameter fraction ($f$)', color='0.35', ls='--')]
+        labels += [h.get_label() for h in handles[-2:]]
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('knobs'), 'drawn': drawn,
+                 'style_fraction': opts['style_fraction']}
 
 
 def _table_knobs(knobs, provenance):
@@ -1602,15 +1799,19 @@ def _table_knobs(knobs, provenance):
     return path
 
 
-def build_knobs(data, M, want, report):
-    scans = [s for _, s in MICROBATCH_SCANS] + [s for _, s in PARAMFRAC_SCANS]
-    prov = C.provenance(
+def _prov_knobs(ctx=None):
+    return C.provenance(
         functions=('reviewer_figs.knob_table', 'reviewer_figs.rank_vs_cap',
                    'reviewer_figs.plot_knob', 'analysis_helpers.best_per_method'),
-        scans=scans, note='App. N (micro-batch / parameter fraction): F14, T21')
-    knobs = _knob_frames(data)
+        scans=[s for _, s in MICROBATCH_SCANS] + [s for _, s in PARAMFRAC_SCANS],
+        note='App. N (micro-batch / parameter fraction): F14, T21')
+
+
+def build_knobs(data, M, want, report):
+    prov = data.prov('knobs')
+    knobs = data.knobs()
     if want['figures']:
-        report['figures'].append(str(_fig_knobs(knobs, prov)[0]))
+        _figures('knobs', data, report)
     if want['tables']:
         report['tables'].append(str(_table_knobs(knobs, prov)))
     if not want['numbers']:
@@ -1705,23 +1906,26 @@ def _budget_frames(root=None):
     return out
 
 
-def _fig_budget(bud, provenance):
-    import matplotlib.pyplot as plt
-
-    C.set_paper_style(0.49)
-    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, 0.49, aspect=0.82,
-                                                     extra_h=0.62))
-    for ax, scan in zip(axes, BUDGET_PANELS):
+def _fig_budget(ctx, opts):
+    bud = ctx.budget()
+    panels = [s for s in opts['panels'] if s in bud]
+    fig, axes = _subplots(opts, ncol=len(panels) or 1)
+    for ax, scan in zip(axes[0], panels):
         curves = bud[scan]['curves']
-        methods = [m for m in curves['method'].unique()]
+        methods = [m for m in curves['method'].unique()
+                   if not opts['methods'] or hl.method_key(m) in opts['methods']]
         methods = ([m for m in methods if hl.method_key(m) == SVEN]
                    + sorted(m for m in methods if hl.method_key(m) != SVEN))
         budget.plot_best_of_n(curves, ax, methods=methods)
-        _thin(ax, sven_lw=1.3, other_lw=0.7)
-        ax.axvline(hf.BUDGET_EQUAL_N, ls=':', c='crimson', lw=0.8)
-        ax.annotate(f'$n={hf.BUDGET_EQUAL_N}$', (hf.BUDGET_EQUAL_N, 0.02),
-                    xycoords=('data', 'axes fraction'), fontsize=5.4, color='crimson',
-                    ha='left', va='bottom')
+        _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'],
+              ms=opts['thin_ms'])
+        if opts['equal_budget_line']:
+            ax.axvline(hf.BUDGET_EQUAL_N, ls=':', c=opts['equal_budget_color'], lw=0.8)
+        if opts['annotate_equal_budget']:
+            ax.annotate(f'$n={hf.BUDGET_EQUAL_N}$', (hf.BUDGET_EQUAL_N, 0.02),
+                        xycoords=('data', 'axes fraction'),
+                        fontsize=opts['annotation_fontsize'],
+                        color=opts['equal_budget_color'], ha='left', va='bottom')
         ax.set_title(hl.scan_title(scan))
         ax.set_xlabel('tuning budget $n$ (random draws)')
         ax.set_ylabel('expected best val. loss')
@@ -1731,14 +1935,16 @@ def _fig_budget(bud, provenance):
         ax.grid(True, which='major', ls='--', lw=0.35, alpha=0.45)
         ax.grid(False, which='minor')
     handles, labels = C.method_handles(
-        [hl.method_key(m) for m in bud[BUDGET_PANELS[0]]['curves']['method'].unique()],
-        lw=0.9)
+        [hl.method_key(m) for m in bud[panels[0]]['curves']['method'].unique()
+         if not opts['methods'] or hl.method_key(m) in opts['methods']],
+        lw=opts['legend_lw']) if panels else ([], [])
     order = np.argsort([0 if l == style.method_label(SVEN) else 1 for l in labels],
                        kind='stable')
     handles = [handles[i] for i in order]
     labels = [labels[i] for i in order]
-    _legend_below(fig, handles, labels, ncol=5, height=0.62, fontsize=5.4)
-    return C.save_fig(fig, 'budget', GROUP, provenance_record=provenance)
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('budget'), 'panels': panels,
+                 'methods': labels, 'style_fraction': opts['style_fraction']}
 
 
 def _table_budget(bud, provenance):
@@ -1843,17 +2049,22 @@ def _table_optimism(opt, provenance):
         notes=('headline.selection_optimism_table',))
 
 
-def build_budget(M, want, report, root=None):
-    prov = C.provenance(
+def _prov_budget(ctx=None):
+    return C.provenance(
         functions=('headline.budget_table', 'headline.best_of_n_table',
                    'headline.selection_optimism_table', 'budget.trajectory_table',
                    'budget.best_of_n_curve', 'budget.plot_best_of_n',
                    'headline_figs.equal_budget_table'),
         scans=BUDGET_SCANS, note='App. F (tuning budget): F4, T6',
         provisional=C.provisional_scans(list(BUDGET_SCANS)))
-    bud = _budget_frames(root)
+
+
+def build_budget(data, M, want, report):
+    root = data.root
+    prov = data.prov('budget')
+    bud = data.budget()
     if want['figures']:
-        report['figures'].append(str(_fig_budget(bud, prov)[0]))
+        _figures('budget', data, report)
     if want['tables']:
         report['tables'].append(str(_table_budget(bud, prov)))
         report['tables'].append(str(_table_equal_budget(bud, prov)))
@@ -1955,15 +2166,21 @@ def _divergence_frames(root=None):
             'grids': grids, 'top': top}
 
 
-def _fig_divergence(dv, provenance):
-    import matplotlib.pyplot as plt
+def _divergence_grids(dv, opts):
+    """The grids the App. P maps show: at most ``max_grids`` of what the data layer read.
 
-    C.set_paper_style(0.49)
-    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, 0.49, aspect=0.86,
-                                                     extra_h=0.62))
+    :func:`_divergence_frames` already stops at :data:`N_DIVERGENCE_GRIDS` scans (each is
+    a full scan load), so this can only narrow that list, never widen it.
+    """
+    return list(dv['top'])[:int(opts['max_grids'])]
 
-    ax = axes[0]
-    for i, scan in enumerate(dv['top']):
+
+def _fig_divergence(ctx, opts):
+    dv = ctx.divergence()
+    fig, axes = _subplots(opts)
+
+    ax = axes[0][0]
+    for i, scan in enumerate(_divergence_grids(dv, opts)):
         frac, counts = dv['grids'][scan]
         if frac is None:
             continue
@@ -1971,7 +2188,7 @@ def _fig_divergence(dv, provenance):
         bad = np.nan_to_num(frac.values.astype(float)) * n
         by_rtol = pd.Series(bad.sum(axis=1) / np.where(n.sum(axis=1) > 0, n.sum(axis=1), 1),
                             index=[float(v) for v in frac.index]).sort_index()
-        ax.plot(by_rtol.index, by_rtol.to_numpy(), '-o', lw=1.0, ms=2.4,
+        ax.plot(by_rtol.index, by_rtol.to_numpy(), '-o', lw=opts['lw'], ms=opts['ms'],
                 color=_grid_color(scan, i), label=_scan_label(scan))
     ax.set_xscale('log')
     ax.set_xlabel(f'{RTOL_FIG} (the relative singular-value cut)')
@@ -1979,8 +2196,8 @@ def _fig_divergence(dv, provenance):
     ax.set_title(f'Divergence lives at the bottom of the {RTOL_FIG} grid')
     _grid(ax)
 
-    ax = axes[1]
-    scans = BUDGET_SCANS
+    ax = axes[0][1]
+    scans = [s for s in opts['scans'] if s in dv['per_method']]
     methods = []
     for scan in scans:
         methods.extend(dv['per_method'][scan]['method'].tolist())
@@ -1991,34 +2208,40 @@ def _fig_divergence(dv, provenance):
             r = _row(t, method=m)
             if r is None:
                 continue
-            off = (i - (len(scans) - 1) / 2) * 0.16
-            ax.plot([_num(r['frac_diverged'])], [y + off], 'o', ms=2.6,
+            off = (i - (len(scans) - 1) / 2) * opts['scan_offset']
+            ax.plot([_num(r['frac_diverged'])], [y + off], 'o', ms=opts['dot_ms'],
                     color=_grid_color(scan, i), mfc=_grid_color(scan, i),
                     label=_scan_label(scan) if y == 0 else None)
     ax.set_yticks(range(len(order)))
-    ax.set_yticklabels([style.method_label(m) for m in order], fontsize=5.2)
+    ax.set_yticklabels([style.method_label(m) for m in order],
+                       fontsize=opts['method_labelsize'])
     ax.invert_yaxis()
     ax.set_xlabel('fraction of the grid that diverged')
     ax.set_title('Per method, on the four MLP grids')
     ax.grid(axis='x', ls='--', lw=0.35, alpha=0.45)
-    ax.legend(fontsize=4.8, loc='lower right', handlelength=0.8, markerscale=1.2)
+    _panel_legend(ax, opts['panel_legend'])
 
-    handles, labels = _axes_handles([axes[0]])
-    _legend_below(fig, handles, labels, ncol=3, height=0.62, fontsize=5.2)
-    return C.save_fig(fig, 'divergence', GROUP, provenance_record=provenance)
+    handles, labels = _axes_handles([axes[0][0]])
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('divergence'),
+                 'scans': scans, 'methods': order,
+                 'style_fraction': opts['style_fraction']}
 
 
-def _fig_divergence_grids(dv, provenance):
+def _fig_divergence_grids(ctx, opts):
     import matplotlib.pyplot as plt
 
-    C.set_paper_style(0.32)
-    n = len(dv['top'])
-    ncol = 3
+    dv = ctx.divergence()
+    figspec.paper_style(opts['style_fraction'])
+    top = _divergence_grids(dv, opts)
+    n = len(top)
+    ncol = int(opts['ncol'])
     nrow = int(np.ceil(n / ncol)) or 1
-    fig, axes = plt.subplots(nrow, ncol, figsize=C.figsize(ncol, nrow, 1 / 3,
-                                                           aspect=1.02))
-    axes = np.atleast_2d(axes)
-    for i, scan in enumerate(dv['top']):
+    fig, axes = plt.subplots(nrow, ncol, squeeze=False,
+                             figsize=C.figsize(ncol, nrow, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']))
+    for i, scan in enumerate(top):
         ax = axes[i // ncol][i % ncol]
         frac, counts = dv['grids'][scan]
         if frac is None:
@@ -2030,16 +2253,18 @@ def _fig_divergence_grids(dv, provenance):
         # for one line, so it keeps the COUNTS (the denominators are the point of the
         # table) and drops the percentage the helper prints above them
         for text in ax.texts:
-            text.set_text(text.get_text().split('\n')[-1])
-            text.set_fontsize(4.4)
+            if opts['counts_only']:
+                text.set_text(text.get_text().split('\n')[-1])
+            text.set_fontsize(opts['cell_fontsize'])
         ax.set_yticklabels([f'${_tex_num(v)}$' for v in frac.index])
-        ax.tick_params(labelsize=4.6)
-        ax.title.set_fontsize(5.4)
-        ax.xaxis.label.set_fontsize(5.6)
-        ax.yaxis.label.set_fontsize(5.6)
+        ax.tick_params(labelsize=opts['panel_ticksize'])
+        ax.title.set_fontsize(opts['title_fontsize'])
+        ax.xaxis.label.set_fontsize(opts['label_fontsize'])
+        ax.yaxis.label.set_fontsize(opts['label_fontsize'])
     for j in range(n, nrow * ncol):
         axes[j // ncol][j % ncol].axis('off')
-    return C.save_fig(fig, 'divergence_grids', GROUP, provenance_record=provenance)
+    return fig, {'axes': axes, 'provenance': ctx.prov('divergence'), 'grids': top,
+                 'style_fraction': opts['style_fraction']}
 
 
 def _table_divergence(dv, provenance):
@@ -2130,8 +2355,9 @@ def _table_divergence(dv, provenance):
     return path
 
 
-def build_divergence(M, want, report, root=None):
-    prov = C.provenance(
+def _prov_divergence(ctx=None):
+    root = None if ctx is None else ctx.root
+    return C.provenance(
         functions=('headline_figs.campaign_divergence',
                    'headline_figs.divergence_by_method',
                    'headline_figs.divergence_pattern',
@@ -2144,10 +2370,13 @@ def build_divergence(M, want, report, root=None):
              + (' A scan it reads is still refreshing, so the denominator can move.'
                 if C.provisional_scans() else ''),
         provisional=C.provisional_scans())
-    dv = _divergence_frames(root)
+
+
+def build_divergence(data, M, want, report):
+    prov = data.prov('divergence')
+    dv = data.divergence()
     if want['figures']:
-        report['figures'].append(str(_fig_divergence(dv, prov)[0]))
-        report['figures'].append(str(_fig_divergence_grids(dv, prov)[0]))
+        _figures('divergence', data, report)
     if want['tables']:
         report['tables'].append(str(_table_divergence(dv, prov)))
     if not want['numbers']:
@@ -2212,6 +2441,229 @@ def build_divergence(M, want, report, root=None):
 
 
 # ---------------------------------------------------------------------------
+# The figure registry (campaign/FIGURE_API_CONTRACT.md)
+# ---------------------------------------------------------------------------
+#: the provenance record each appendix's assets are written with, by section.  Memoised
+#: through :meth:`_Data.prov`, so the figure and the tables beside it quote one record.
+_PROVENANCE = {
+    'budget': _prov_budget, 'overparam': _prov_overparam,
+    'batchsize': _prov_batchsize, 'kappa': _prov_kappa, 'knobs': _prov_knobs,
+    'divergence': _prov_divergence,
+}
+
+#: the legend strip every figure of this module carries under its panels.  ``height`` is
+#: the inches :func:`common.figsize` was given as ``extra_h``; the rest goes to
+#: ``fig.legend``, and ``{}`` drops the legend altogether.
+_LEGEND = {'loc': 'lower center', 'frameon': False}
+
+FIGURE_SPECS = figspec.check_defaults({
+    # ---------------- App. F ----------------
+    'budget': figspec.FigureSpec(
+        draw=_fig_budget,
+        doc='F4: best-of-n tuning curves on two grids, with the equal-budget mark',
+        defaults={
+            'panels': list(BUDGET_PANELS),   # the scans drawn, one panel each
+            'methods': [],                   # [] = every method on the grid, Sven first
+            'nrow': 1,                       # the column count follows `panels`
+            'fraction': 0.49,                # panel width / \linewidth
+            'style_fraction': 0.49,          # the font-size set (common.set_paper_style)
+            'aspect': 0.82,                  # panel height / width
+            'extra_h': 0.62,                 # inches added for the legend strip
+            'sven_lw': 1.3,                  # _thin: Sven's line
+            'other_lw': 0.7,                 # _thin: every other method
+            'thin_ms': 2.2,                  # _thin: marker size
+            'equal_budget_line': True,       # the dotted n = BUDGET_EQUAL_N rule
+            'annotate_equal_budget': True,   # ... and the "$n=8$" label beside it
+            'annotation_fontsize': 5.4,
+            'equal_budget_color': 'crimson',
+            'legend_lw': 0.9,                # the width of the legend's own handles
+            'legend_below': dict(_LEGEND, ncol=5, height=0.62, fontsize=5.4),
+        }),
+    # ---------------- App. G ----------------
+    'overparam': figspec.FigureSpec(
+        draw=_fig_overparam,
+        doc='F5: the P/N sweep -- selected val. loss per task, then rank, reach, divergence',
+        defaults={
+            'tasks': [k for k, _ in OVERPARAM_SCANS],   # which tasks are drawn
+            'nrow': 2, 'ncol': 3,
+            'fraction': 1 / 3, 'style_fraction': 0.32,
+            'aspect': 0.86, 'extra_h': 0.50,
+            'lw': 1.0, 'ms': 2.4,            # the per-task summary lines (row 2)
+            'overlay_lw': 0.7,               # their dashed second series (test, worst)
+            'overlay_ms': 2.0,
+            'sven_lw': 1.25, 'other_lw': 0.75, 'thin_ms': 2.2,   # _thin, row 1
+            'arm_tick_fmt': '{:.2g}',        # the arm ticks of row 1
+            'min_log_sep': 0.12,             # ... and how close two labels may sit
+            'mark_pn_one': True,             # the dotted P/N = 1 guide
+            'mark_partial_reach': True,      # hollow marker where a Sven seed never got there
+            'panel_legend': {'fontsize': 5.0, 'loc': 'upper left', 'handlelength': 1.1},
+            'legend_below': dict(_LEGEND, ncol=5, height=0.50, fontsize=5.2),
+        }),
+    'overparam_outcomes': figspec.FigureSpec(
+        draw=_fig_overparam_outcomes,
+        doc='F5b: the same sweep read on test loss and on full-set train loss',
+        defaults={
+            'tasks': [k for k, _ in OVERPARAM_SCANS],
+            'metrics': ['final_test_loss', 'final_train_eval'],   # one row each
+            'nrow': 2, 'ncol': 3,
+            'fraction': 1 / 3, 'style_fraction': 0.32,
+            'aspect': 0.86, 'extra_h': 0.50,
+            'sven_lw': 1.25, 'other_lw': 0.75, 'thin_ms': 2.2,
+            'arm_tick_fmt': '{:.2g}', 'min_log_sep': 0.12,
+            'mark_pn_one': True,
+            'legend_below': dict(_LEGEND, ncol=5, height=0.50, fontsize=5.2),
+        }),
+    # ---------------- App. H ----------------
+    'batchsize': figspec.FigureSpec(
+        draw=_fig_batchsize,
+        doc='F6: batch-size sweep -- selection, used rank vs the cap, cost, divergence',
+        defaults={
+            'batch_sizes': [],               # [] = every arm in the scan
+            'nrow': 2, 'ncol': 2,
+            'fraction': 0.49, 'style_fraction': 0.49,
+            'aspect': 0.80, 'extra_h': 0.55,
+            'cmap': 'viridis',               # the rtol colour ramp
+            'rtol_lw': 0.9, 'rtol_ms': 2.2,  # one line per rtol (panels 2 and 3)
+            'sven_lw': 1.25, 'other_lw': 0.75, 'thin_ms': 2.2,
+            'ms': 2.4, 'overlay_ms': 2.0,    # divergence panel: Sven / the others
+            'only_diverging_methods': True,  # drop a method that never diverged
+            'cap_line': True,                # the dashed k = B cap
+            'memory_axis': True,             # the twinned peak-memory curve
+            'memory_color': '#B35806',
+            'memory_labelsize': 5.6,
+            'arm_tick_fmt': '{:.0f}',
+            'rank_legend': {'fontsize': 5.4, 'loc': 'upper left', 'handlelength': 1.1,
+                            'ncol': 1},
+            'cost_legend': {'fontsize': 5.4, 'loc': 'upper left', 'handlelength': 1.1},
+            'legend_below': dict(_LEGEND, ncol=5, height=0.55, fontsize=5.6),
+        }),
+    # ---------------- App. M ----------------
+    'kappa': figspec.FigureSpec(
+        draw=_fig_kappa,
+        doc='F8: kappa at matched effective step -- loss, spread over kappa, used rank',
+        defaults={
+            'ks': [],                        # [] = every rank cut in the scan
+            'kappas': [],                    # [] = every kappa in the scan
+            'nrow': 1, 'ncol': 3,
+            'fraction': 1 / 3, 'style_fraction': 0.32,
+            'aspect': 0.92, 'extra_h': 0.42,
+            'ms': 2.0, 'spread_ms': 2.2,
+            'capsize': 1.2, 'elinewidth': 0.5,
+            'default_kappa_lw': 1.2,         # kappa = 2 is the default and drawn thicker
+            'other_lw': 0.8,
+            'lw': 1.0,                       # the spread panel
+            'rank_lw': 0.9,                  # the used-rank panel
+            'full_ls': '-',                  # k = B (the untruncated solve)
+            'trunc_ls': '--',                # k < B
+            'mark_matched_steps': True,       # the dotted matched-effective-step rules
+            'arm_tick_fmt': '{:g}',
+            'legend_below': dict(_LEGEND, ncol=6, height=0.42, fontsize=5.4),
+        }),
+    # ---------------- App. N ----------------
+    'knobs': figspec.FigureSpec(
+        draw=_fig_knobs,
+        doc='F14: micro-batching and parameter masking -- quality, used rank, step time',
+        defaults={
+            'tasks': [k for k, _ in MICROBATCH_SCANS],   # which scans of each family
+            'nrow': 2, 'ncol': 2,
+            'fraction': 0.49, 'style_fraction': 0.49,
+            'aspect': 0.80, 'extra_h': 0.50,
+            'lw': 1.0, 'ms': 2.4,
+            'time_lw': 0.9, 'time_ms': 2.0,  # the step-time panel
+            'cap_line': True, 'cap_lw': 0.7,  # the dotted B/uB cap
+            'reference_line': True,          # the "= the reference setting" rule at 1
+            'family_proxies': True,          # the two line-style entries in the legend
+            'arm_tick_fmt': '{:.0f}',
+            'legend_below': dict(_LEGEND, ncol=3, height=0.50, fontsize=5.6),
+        }),
+    # ---------------- App. P ----------------
+    'divergence': figspec.FigureSpec(
+        draw=_fig_divergence,
+        doc='F10: where Sven diverges -- by rtol on the worst grids, and by method',
+        defaults={
+            'max_grids': N_DIVERGENCE_GRIDS,  # grids in the left panel (<= what was read)
+            'scans': list(BUDGET_SCANS),      # the grids of the right panel
+            'nrow': 1, 'ncol': 2,
+            'fraction': 0.49, 'style_fraction': 0.49,
+            'aspect': 0.86, 'extra_h': 0.62,
+            'lw': 1.0, 'ms': 2.4,
+            'dot_ms': 2.6,                    # the per-method dots
+            'scan_offset': 0.16,              # how far apart a method's four grids sit
+            'method_labelsize': 5.2,
+            'panel_legend': {'fontsize': 4.8, 'loc': 'lower right', 'handlelength': 0.8,
+                             'markerscale': 1.2},
+            'legend_below': dict(_LEGEND, ncol=3, height=0.62, fontsize=5.2),
+        }),
+    'divergence_grids': figspec.FigureSpec(
+        draw=_fig_divergence_grids,
+        doc='F10b: the per-grid (rtol, eta) divergence maps, one panel per grid',
+        defaults={
+            'max_grids': N_DIVERGENCE_GRIDS,  # panels (rows follow from `ncol`)
+            'ncol': 3,
+            'fraction': 1 / 3, 'style_fraction': 0.32,
+            'aspect': 1.02, 'extra_h': 0.0,   # no legend strip: the maps are annotated
+            'counts_only': True,              # keep the counts, drop the helper's percent
+            'cell_fontsize': 4.4,
+            'panel_ticksize': 4.6,
+            'title_fontsize': 5.4,
+            'label_fontsize': 5.6,
+        }),
+})
+
+#: which figures each section owns, in the order ``build()`` writes them
+SECTION_FIGURES = {
+    'budget': ('budget',),
+    'overparam': ('overparam', 'overparam_outcomes'),
+    'batchsize': ('batchsize',),
+    'kappa': ('kappa',),
+    'knobs': ('knobs',),
+    'divergence': ('divergence', 'divergence_grids'),
+}
+
+
+def _draw(name, ctx, **call_opts):
+    """Draw one figure and write NOTHING.  ``(fig, meta)``.
+
+    Deliberately not :func:`figspec.draw_figure`: that resolves the name through the
+    registry, which imports every other figure module, and a rebuild of this group has
+    no reason to depend on those.  The two do the same thing -- resolve the options,
+    draw inside the figure's ``rc``, then apply the generic cosmetics.
+    """
+    import matplotlib.pyplot as plt
+
+    spec = FIGURE_SPECS[name]
+    opts = figspec.figure_opts(name, spec.defaults, **call_opts)
+    with plt.rc_context(opts.get('rc') or {}):
+        fig, meta = spec.draw(ctx, opts)
+        meta = dict(meta or {})
+        figspec.apply_opts(fig, meta.get('axes'), opts)
+    meta['options'] = opts
+    return fig, meta
+
+
+def _save(name, ctx):
+    """Draw one figure and write it: the manuscript PDF, the PNG twin, the sidecar."""
+    fig, meta = _draw(name, ctx)
+    record = meta.get('provenance')
+    if record is None:                      # pragma: no cover - a bug in the draw fn
+        raise RuntimeError(f'{name}: no provenance record; a paper figure is never '
+                           f'written without one (campaign/FIGURE_API_CONTRACT.md)')
+    # the draw ran inside an rc_context, so the paper rcParams it set are gone again by
+    # now -- and savefig reads pdf.fonttype (42, never Type 3) and savefig.bbox off the
+    # LIVE ones, so they go back before the write
+    figspec.paper_style(meta.get('style_fraction', 0.32))
+    pdf, _png = C.save_fig(fig, name, GROUP, provenance_record=record)
+    return pdf
+
+
+def _figures(section, ctx, report):
+    """Write ``section``'s figures, in order, and record them in the report."""
+    for name in SECTION_FIGURES[section]:
+        report['figures'].append(str(_save(name, ctx)))
+    return report
+
+
+# ---------------------------------------------------------------------------
 # build()
 # ---------------------------------------------------------------------------
 SECTIONS = ('budget', 'overparam', 'batchsize', 'kappa', 'knobs', 'divergence')
@@ -2226,9 +2678,8 @@ def build(root=None, dry_run=False, figures=True, tables=True, numbers=True,
               'sections': sections, 'status': ''}
     if dry_run:
         report['status'] = 'dry run'
-        report['figures'] = [str(C.fig_path(n, GROUP)) for n in
-                             ('budget', 'overparam', 'overparam_outcomes', 'batchsize',
-                              'kappa', 'knobs', 'divergence', 'divergence_grids')]
+        report['figures'] = [str(C.fig_path(n, GROUP)) for s in SECTIONS
+                             for n in SECTION_FIGURES[s]]
         report['tables'] = [str(C.TABLE_DIR / f'{n}.tex') for n in
                             ('budget', 'equal_budget', 'overparam',
                              'overparam_loss', 'batchsize', 'batchsize_loss', 'kappa',
@@ -2242,9 +2693,12 @@ def build(root=None, dry_run=False, figures=True, tables=True, numbers=True,
         return report
 
     M = C.Macros(module=MODULE)
-    data = _Data(root)
+    data = context(root, reload=True)       # a build starts from nothing cached
+    # one section at a time, dropping its frames (and the section cache that holds them)
+    # before the next: the peak footprint is one appendix's worth of scans
     if 'budget' in sections:
-        build_budget(M, want, report, root=root)
+        build_budget(data, M, want, report)
+        data.drop()
     if 'overparam' in sections:
         build_overparam(data, M, want, report)
         data.drop()
@@ -2260,7 +2714,7 @@ def build(root=None, dry_run=False, figures=True, tables=True, numbers=True,
     if 'divergence' in sections:
         # the campaign-wide count reads all 21 grids; give it the headroom
         hl.clear_cache()
-        build_divergence(M, want, report, root=root)
+        build_divergence(data, M, want, report)
     if want['numbers'] and len(M):
         # the divergence section's macros are campaign-wide (``campaign_divergence`` reads
         # every on-grid scan), so the macro file's provenance has to list those too --

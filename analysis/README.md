@@ -7,15 +7,18 @@ the outputs are still written to the same places.
 
 ```
 analysis/
-  notebooks/        the 23 notebooks, grouped -- see notebooks/README.md for the index
+  notebooks/        the 27 notebooks, grouped -- see notebooks/README.md for the index
     headline/       the seven headline scans + the paper's tables
     spectra/        singular values: what the truncation keeps and discards
     mlp_studies/    the reviewer studies on the MLP tasks (P>N, batch size, kappa, ...)
     large_models/   CIFAR-10/ResNet18, nanoGPT, GPT-2
     profiling/      memory and step time (profile_results_v3/)
     legacy/         legacy vs fresh: what the robustness fixes changed
+    paper/          the MANUSCRIPT's figures: make, edit and save them (paper/README.md)
   lib/              the shared helper modules the notebooks import
-  paper_assets/     the paper's figures/tables/number macros (python -m paper_assets)
+  paper_assets/     the paper's figures/tables/number macros (python -m paper_assets);
+                    figspec.py = the figure registry + the override layer the notebooks
+                    write, figure_overrides.yaml = the pinned options the CLI replays
   plots_v2/         figures the notebooks write (one directory per notebook)
   tables/           markdown/LaTeX tables the notebooks export
   ckpt_spectra/     cached checkpoint Jacobian spectra (regenerable, gitignored)

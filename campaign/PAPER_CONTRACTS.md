@@ -1,5 +1,14 @@
 # Manuscript-update contracts (2026-09-20) — binding for every paper agent
 
+> **Figure API, 2026-09-21.** The figures are no longer drawn-and-written in one call:
+> each one is a `FIGURE_SPECS` entry in its `paper_assets` module (`draw(ctx, opts) ->
+> (fig, meta)`, writing nothing) and `build()` is the only save path, so the same builder
+> can be driven from `analysis/notebooks/paper/`. Cosmetic choices made there are pinned in
+> `analysis/paper_assets/figure_overrides.yaml` and replayed by the CLI, so **the override
+> file is part of how the paper looks** — read it before concluding a figure's builder
+> produces what you see. `campaign/FIGURE_API_CONTRACT.md` is binding for any change to a
+> figure; `tools/cmp_figures.py` checks whether a rebuild moved anything.
+>
 > **Layout change 2026-09-21.** The analysis layer this document points at was reorganised:
 > the helper modules are now `analysis/lib/*.py` (`headline.py`, `headline_figs.py`,
 > `large_figs.py`, `spectra_figs.py`, `reviewer_figs.py`, `legacy_diff.py`,

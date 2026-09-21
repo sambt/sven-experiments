@@ -1,8 +1,8 @@
 # The analysis notebooks
 
-23 notebooks, grouped by what they look at.  Read them in the order below: the
+27 notebooks, grouped by what they look at.  Read them in the order below: the
 `headline/` group is the paper's main result, everything after it is a study that
-qualifies it.
+qualifies it, and `paper/` is where the manuscript's own figures are made and edited.
 
 Every notebook is self-contained in the sense that matters here — its first cell
 chdir's to `analysis/` and puts `analysis/lib/` on `sys.path`, so it can be opened
@@ -66,3 +66,17 @@ frozen before-table), not the scans.
 | notebook | what it shows |
 |---|---|
 | `legacy_vs_fresh` | the legacy results against the fresh campaign: which conclusions the robustness fixes moved, and why |
+
+## paper/ — the manuscript's figures
+
+The paper's own figures, drawn by the same builders `python -m paper_assets` uses, so an
+edit here is an edit to the paper. `paper/README.md` has the loop (make → edit → save →
+pin); pinned options go to `analysis/paper_assets/figure_overrides.yaml`, which the CLI
+build replays.
+
+| notebook | figures |
+|---|---|
+| `fig_main` | the main text: **Fig. 1 (`headline_curves`)**, `cost_memory`, `k_sweeps`, `hparam_landscape`, the all-seed versions |
+| `fig_reviewer` | the reviewer studies: `overparam`, `batchsize`, `kappa`, `knobs`, `budget`, `divergence` |
+| `fig_large` | CIFAR, Fig. 5, nanoGPT, GPT-2 and the six profile figures |
+| `fig_spectra` | the singular-value figures: spectra along training, norms, used rank, probe sets |
