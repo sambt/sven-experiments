@@ -179,3 +179,18 @@ schema-2 analysis notebooks.
   timing/diag/confirm if the pick changed, then re-execute cifar_analysis + headline_tables.
 * 09-20 ~20:20 EDT — Phase B workflow `sven-analysis-phaseB` (wu7rezhmf): WP2 headline notebooks, WP3 spectrum figures,
   WP4a reviewer MLP notebooks, WP4b CIFAR/nanoGPT/new GPT-2 notebook, WP5 legacy-vs-fresh diff (implement -> review -> fix).
+* 09-20 ~21:55 EDT — **Analysis phase B committed (4d133ea)**; reports `campaign/analysis_reports/B.*`. 23 notebooks
+  (19 old + headline_tables, spectra_analysis, gpt2_analysis, legacy_vs_fresh) registered in make_plots.sh. Key results
+  (confirmation seeds): Sven rank by val = toy 2/15, polynomial 2/15 (HIG first on both), MNIST label-reg 3/14, MNIST-CE
+  4/14 (MuonW first), nanoGPT 2/5, CIFAR label-reg 9/11, CIFAR-CE 9/11 (11/11 on test acc), GPT-2 last (5.20 vs 3.77).
+  Honest caveats found by the reviews: at an EQUAL small tuning budget (n=8) Sven ranks 15/15 on toy, 4/15 poly, 10/15 and
+  8/15 on MNIST (its larger grid is partly redundant: 47-66% distinct trajectories); epochs-to-target Sven is 2nd-4th,
+  not first; Sven needs fewer epochs than Adam on 3/3 regression scans but less WALL TIME on only 1/3; overparam: only 1 of
+  14 rank-1/2 gaps is significant (mostly ties), Sven's divergence rate is 2nd worst on polynomial overparam; kappa differs
+  at 2 of 3 matched effective steps (k=32); distance-from-init advantage NOT resolved; legacy->fresh Sven rank on
+  same-target points: 7 better / 5 unchanged / 3 worse (CIFAR label-reg +3 worse). Fig-5 ran at the legacy set point
+  (k=64, lr=1.0) not the fresh selection (k=128, lr=0.5) -> rerun launched in phase C.
+* 09-20 ~22:00 EDT — Phase C workflow `sven-analysis-phaseC` (w0r80pzm0): cifar-followup (wait rtol ext 42/45 -> re-select
+  CIFAR-CE by SPLICING -> rerun CIFAR-CE Sven timing/diag/confirm if changed -> Fig-5 rerun at selected config, 15 runs ->
+  re-execute dependent notebooks), profile-v3 (job 47396284 running -> switch notebooks to v3, v2-vs-v3 table), then an
+  independent final gate (tests, make_plots on a copy, >= 12 spot checks, cross-document consistency, honesty audit) + fixer.
