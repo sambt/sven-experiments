@@ -194,3 +194,13 @@ schema-2 analysis notebooks.
   CIFAR-CE by SPLICING -> rerun CIFAR-CE Sven timing/diag/confirm if changed -> Fig-5 rerun at selected config, 15 runs ->
   re-execute dependent notebooks), profile-v3 (job 47396284 running -> switch notebooks to v3, v2-vs-v3 table), then an
   independent final gate (tests, make_plots on a copy, >= 12 spot checks, cross-document consistency, honesty audit) + fixer.
+* 09-20 ~22:40 EDT — USER (going to bed): let phase C finish; then update the ICLR manuscript (`iclr_manuscript/`, its own
+  Overleaf-synced git repo - never commit/push there) in a NEW tex file copied from `iclr2026_conference.tex`, all edits in
+  BLUE: new results + baselines (consider polynomial/MNIST/nanoGPT as headline), reworked SV-spectrum discussion, Gram-trick
+  main-text mention + full appendix, all reviewer-driven studies (mostly appendix), new profiling, anything else needed;
+  concise, in the existing style. Rules: `campaign/PAPER_CONTRACTS.md` (numbers only via generated macros/tables from
+  `analysis/paper_assets/`, blue markup, claims discipline). Workflow `sven-paper-update` (wbuzu9mp7) launched in parallel
+  with phase C: plan (`campaign/PAPER_PLAN.md`) -> 4 asset modules + Gram appendix + experiment-details drafts ->
+  integrate into `iclr_manuscript/iclr2026_conference_v2.tex` -> compile -> 3-lens review -> fix. AFTER BOTH workflows
+  finish: re-run `cd analysis && ../.venv/bin/python -m paper_assets`, recompile, check the refreshed CIFAR-CE / Fig-5 /
+  profile-v3 numbers flow into the PDF, final read-through.
