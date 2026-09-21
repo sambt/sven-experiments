@@ -211,3 +211,16 @@ schema-2 analysis notebooks.
   (w1nq68ygk: notebook refresh + profile v3 switch -> final gate -> fixer) and the paper workflow resumed from its cache
   (wc9dsdk4f, script now at campaign/workflows/sven-paper-update.js; plan + Gram appendix + experiment-details drafts were
   cached, the 4 asset agents rerun, then integrate -> review -> fix). Blueprint: campaign/PAPER_PLAN.md.
+* 09-21 ~09:15 EDT — **ANALYSIS COMPLETE (phase C + final gate).** Refresh 040f271, gate fixes ad863fe / 4118687; reports
+  `campaign/analysis_reports/C.*`. Gate: tests 1225 passed; 23/23 notebooks 0 error cells on an isolated copy, no
+  PROVISIONAL banner, committed tables reproduce byte-identically; 21 numbers recomputed from raw records (17 ok, 4 wrong ->
+  fixed); all 8 findings real and fixed. Final CIFAR-CE Sven (new pick k=128, lr=0.5, rtol=0.3; confirmation seeds):
+  val 1.355 (9/11), test 1.339 (8/11), test acc 58.2% (10/11), train-eval 0.159 (was 0.82: the optimisation failure was the
+  rtol edge), 178 ms/step. Fig-5 at the selected config (k=128, lr=0.5): 0 divergences; test acc 69.1/68.8/67.8/25.6/19.2%
+  at param fraction 1/0.5/0.25/0.1/0.05; masking makes the step SLOWER (x2.4 at pf 0.5) and saves memory only at small pf.
+  Profile v2->v3: CIFAR full-J Sven 842 -> 188 ms, chunked 470 -> 208, nanoGPT hooks 83 -> 60; memory ~unchanged.
+  Reproducibility: same-GPU reruns are bit-identical for MLP scans + nanoGPT, NOT for CIFAR; cross-GPU (MIG-40 vs A100-80)
+  Sven deviates 6e-9 (poly) to 1.4e-2 median (MNIST-CE). Settled record total 24,894. Open by design: rev2 Q2b (Sven on
+  hidden layers only) was never run - state as a non-answer; campaign-wide checkpoint verification only sampled (diag
+  passes); remaining grid edges: rtol high edge on MNIST-CE and CIFAR-CE (accepted).
+  Paper workflow (wc9dsdk4f) still running; it must re-run `python -m paper_assets` after these commits.
