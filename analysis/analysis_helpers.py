@@ -13,7 +13,10 @@ import style
 from scan_analysis import seed_band  # noqa: F401  (re-exported: mean + clipped seed band of a curve)
 from style import (assert_selection_metric, clipped_yerr, config_eligible, final_value,
                    hparam_columns, is_diverged, is_failed, status_of)
-from style import method_color  # noqa: F401  (re-exported: the global optimizer colours)
+#: re-exported: the global optimizer colours, the display names a legend / a table
+#: column shows (``LBFGS`` -> "Stochastic L-BFGS", C-B7) and the one wording for the
+#: seed band, for a printed table header (``seed_spread_label(plain=True)``, C-A6).
+from style import method_color, method_label, seed_spread_label  # noqa: F401
 
 
 def loss_curve(row, which='val'):
@@ -109,12 +112,22 @@ _manifest_memo = {}
 def expected_run_ids(df, results_root=None):
     """The run_ids the scan(s) in ``df`` intend to contain, from their manifests
     (C-R2), or an empty set for a legacy scan that has none.  Memoised per
-    ``(scan, root)``: :func:`config_table` is called several times per notebook."""
+    ``(scan, root)``: :func:`config_table` is called several times per notebook.
+
+    The root is, per scan: an explicit ``results_root``, else the root the frame was
+    LOADED from (``_results_root``, :func:`style.frame_results_root`), else the
+    process default.  Preferring the frame's own root is what keeps a foreign-root
+    load honest: a frame loaded from ``experiment_results_legacy_2026-09-18`` used
+    to read the FRESH ``mnist_scan_ce`` manifest (1610 expected run_ids for a
+    1040-run scan, 122 phantom "missing" configurations, all of them fresh-campaign
+    grid points the legacy scan never intended)."""
     out = set()
     if '_scan' not in df.columns:
         return out
-    root = style.resolve_results_root(results_root)
     for name in df['_scan'].dropna().unique():
+        root = (results_root if results_root is not None
+                else style.frame_results_root(df, name)
+                or style.resolve_results_root(None))
         key = (str(name), str(root))
         if key not in _manifest_memo:
             _manifest_memo[key] = style.manifest_run_ids(name, results_root=root)
@@ -259,9 +272,20 @@ def fmt_pm(row, q, spec='.3e'):
 
 def errorbar_seeds(ax, rows, x, q, **kw):
     """``ax.errorbar`` of the seed mean of outcome `q` vs column `x`, with THE seed
-    error bar: +/- 1 std, lower end clipped at the lowest seed (style.clipped_yerr)."""
+    error bar: +/- 1 std, lower end clipped at the lowest seed (style.clipped_yerr).
+
+    Two reader-facing conventions come with it, so every caller gets them without
+    repeating itself: a ``label`` that is an optimizer key is shown under its
+    DISPLAY name (``label='LBFGS'`` -> "Stochastic L-BFGS", C-B7; every notebook
+    passes ``label=m`` straight from the ``method`` column), and the axes gets the
+    one legend entry that says what the error bars are (C-A6,
+    :func:`style.band_legend`).  Any other label passes through unchanged.
+    """
     rows = rows.sort_values(x)
     kw = {'marker': 'o', 'capsize': 3, **kw}
+    if isinstance(kw.get('label'), str):
+        kw['label'] = method_label(kw['label'])
+    style.band_legend(ax)
     return ax.errorbar(rows[x], rows[q], yerr=clipped_yerr(rows[q], rows[f'{q}_std'],
                                                           rows[f'{q}_min']), **kw)
 

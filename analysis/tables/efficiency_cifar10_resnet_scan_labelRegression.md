@@ -1,0 +1,13 @@
+| display | config | wall_s | wall_s_std | epoch_s | sync_train_s | ms_per_step | peak_gpu_mem_mb | steps | examples | wall_vs_sven | scan_wall_s | scan_inflation | gpu_timing | gpu_scan | gpu_scan_frac | fin_timing | att_timing |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SGD | lr=0.001 | 54.95 | 0.1648 | 2.747 | 40.75 | 5.805 | 402.9 | 7020 | 8.986e+05 | 0.04371 | 164.7 | 2.997 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| SGD + momentum | lr=0.001 | 55.79 | 0.3327 | 2.789 | 41.56 | 5.92 | 447.6 | 7020 | 8.986e+05 | 0.04438 | 166.7 | 2.988 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| RMSprop | lr=0.001 | 57.77 | 0.3451 | 2.888 | 43.53 | 6.201 | 447.6 | 7020 | 8.986e+05 | 0.04596 | 167.7 | 2.903 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| AdamW | lr=0.01, weight_decay=0.01 | 59.54 | 0.2915 | 2.977 | 45.49 | 6.48 | 492.3 | 7020 | 8.986e+05 | 0.04737 | 211.7 | 3.555 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| Adam | lr=0.01 | 59.7 | 0.2274 | 2.985 | 45.65 | 6.502 | 492.3 | 7020 | 8.986e+05 | 0.04749 | 171.3 | 2.869 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| Polyak SGD | f_star=0, max_lr=1, eps=1e-08 | 69.01 | 0.3568 | 3.45 | 54.6 | 7.778 | 402.9 | 7020 | 8.986e+05 | 0.0549 | 183.1 | 2.653 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| Muon | lr=0.01 | 111.2 | 0.7001 | 5.56 | 97.31 | 13.86 | 447.7 | 7020 | 8.986e+05 | 0.08847 | 245.7 | 2.209 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| MuonW | lr=0.01, weight_decay=0.1 | 112.5 | 0.3068 | 5.624 | 98.32 | 14.01 | 447.7 | 7020 | 8.986e+05 | 0.08948 | 246.8 | 2.194 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| Stochastic L-BFGS | lr=2, max_iter=3, history_size=2 | 186.8 | 0.5613 | 9.34 | 172 | 24.5 | 794.1 | 7020 | 8.986e+05 | 0.1486 | 541.2 | 2.897 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| SOAP | lr=0.01 | 247.4 | 0.4654 | 12.37 | 232.9 | 33.17 | 518.2 | 7020 | 8.986e+05 | 0.1968 | 477.8 | 1.931 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |
+| Sven | k=128, lr=0.5, rtol=0.001 | 1257 | 0.7895 | 62.85 | 1242 | 176.9 | 2.296e+04 | 7020 | 8.986e+05 | 1 | 1338 | 1.065 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-80GB | 1 | 5 | 5 |

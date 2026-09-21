@@ -251,3 +251,101 @@ best configs; not now. **Launched in part 2** (`submit_reruns_2026-09-17_part2.s
 (`weight_decays=[0.1]` explicit), and GPT-2-small via `./submit_gpt2.sh` (partitions widened). Still open:
 item 6 backfill, the lower-lr grid for paramfrac f <= 0.25.
 After everything finishes: sync `experiment_results/`, then `./make_plots.sh`.
+
+---
+
+# Launch log -- the robustness campaign, 2026-09-18 .. 2026-09-20
+
+**Everything above this line is historical.** It was written on 2026-09-17 against the results
+that are now frozen read-only at `experiment_results_legacy_2026-09-18/`. The campaign below
+supersedes items 0-7 and 10 (new baselines at their own weight decay, full-spectrum logging,
+standalone timing, missing/extra seeds, `n_params`/`n_train`/`steps_per_epoch` on every
+record, the CIFAR ablations); item 8, "a held-out test split", is **done** -- three splits with
+fixed sizes are now the foundation of every scan, selection uses validation only and test is
+an outcome. What each scan actually ran is in `EXPERIMENTS.md`; the plan and the decisions are
+in `campaign/CONTRACTS.md` and `campaign/CAMPAIGN_STATUS.md`.
+
+Results root: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments` (repo symlink
+`experiment_results`), started EMPTY on 2026-09-18 ~20:55 EDT. Pool logs under
+`/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs/`. Every phase ran from
+an exported snapshot, `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/<sv3sha8>_<svensha8>/`,
+never from the working tree; `git_dirty` is `false` on all 24,824 records (19:10 EDT; the
+total still rises with the in-flight row 5). Both repos on branch
+`robustness-campaign`. SHAs and job ids below are read back from the records' provenance
+blocks, not from the launch commands.
+
+The **date** column is the span of the phase's own records (`start_time` of the first to
+`end_time` of the last), converted to **EDT** throughout -- the records store UTC, which is
+EDT + 4 h. `EXPERIMENTS.md`'s phase table gives the same spans in UTC; if the two ever
+disagree, one of them has been hand-edited.
+
+| # | date (EDT) | phase | snapshot (sv3 + sven) | SLURM jobs | runs | outcome |
+|---|---|---|---|---|---|---|
+| 1 | 09-18 20:02 -> 09-19 22:10 | main campaign: 6 headline scans + nanoGPT (P0), 3 overparam + Fig-5 + batch-size (P1), kappa + 8 micro-batch/param-fraction scans (P3) | `2c6faf59` + `203a4e61` | CIFAR Sven 47080825/26/27/28/29/32; CIFAR baselines 47080834/35; nanoGPT 47080839; MIG combined list 47080843/44 (all four MLP headline scans) then, after the 03:55 reorder, 47143141/45 (`all_mlp_mig_v2` = P1 -> P3 -> MNIST HIG last); MLP A100 overflow 47080846/48/49/50 and 47274379/80 (the MNIST-CE HIG tail); Fig-5 47080858/60 -- **21 jobs with records** | **15,735** | COMPLETE, reconcile clean, 0 oom/error. MIG jobs hit the 12 h wall twice (expected, resubmitted with the same command). 47080843/44 were cancelled at 03:55 on 09-19 because MNIST HIG at NPROC 6 was blocking the MIG lane ahead of P1; ~48 partial HIG runs lost, stale claims expired after 10 min and were retaken automatically. Report: `campaign/reconcile_2026-09-19.txt` |
+| 2 | 09-19 23:34 -> 09-20 03:48 | C-B3 grid-extension round: additive points on 9 scans, every one closing an edge the reconcile flagged | `62e5105e` + `203a4e61` | MIG 47322040/42; CIFAR baselines 47322047/52; MLP headline overflow 47322064/67/70 (toy, polynomial, MNIST-CE); P1 overflow 47322076/79/82 (the three overparam + batch-size scans) -- 10 jobs | **+7,480** | COMPLETE, reconcile clean. Additive only: existing `run_id`s unchanged, the 15,735 finished runs deduped out by their done markers, **0 `_stale/` directories created**. In-plan total 23,215 |
+| 3 | 09-20 01:49 -> 09-20 19:13 | `exp_gpt2_small_comparison` (re-admitted by the user 09-19 22:40): 1 seed, 1 epoch = 13,125 steps at B = 16, k = B = 16, step-based evaluation every 500 steps | `e5b6fb77` + `203a4e61` | 47330243-65 -- 10 jobs, NPROC 1, one A100-80GB per run | **29** | COMPLETE: 29 of 29 `ok`, 0 diverged, reconcile `0 run(s) to do` (the last SOAP run, lr 3e-3, finished 09-20 19:13 EDT; an earlier pass of this log recorded it as still in flight). Smoke first (GREEN: Sven 2.52 s/step = 9.2 h/run, 36,050 MB peak; AdamW 2.8 h, Muon 2.9 h, SOAP 4.1 h), then Sven's lrs were extended to [0.02,0.05,0.1,0.5,1.0] because lr 0.5 was unstable in the smoke |
+| 4 | 09-20 04:00 -> 09-20 10:39 | phase 5, the three result-dependent passes over all 7 headline scans: `<scan>_timing` (425), `<scan>_diag` (425), `<scan>_confirm` (725) | `b8fadc6f` + `203a4e61` | MLP MIG 47337921 (diag) / 47337922 (confirm); heavy A100 47337923/24 (CIFAR + nanoGPT diag) and 47337927/30 (CIFAR + nanoGPT confirm); MLP A100 47337931 (MNIST-CE diag) / 47337933 (MNIST confirm); **one serial timing job per scan**, 47337934 (CIFAR-CE), 47337935 (CIFAR-label-reg), 47337936 (nanoGPT), 47337937 (MNIST-CE), 47337938 (MNIST-label-reg), 47337939 (polynomial), 47337941 (toy) -- 15 jobs | **1,575** | COMPLETE, reconcile clean. Launched only after the extension round reconciled clean and `tools/select_best.py` + `tools/gen_phase5_plan.py` had been re-run. Timing jobs were non-exclusive with `bench/calibrate_step.py` at the start and end of each job so host-load contamination is detectable after the fact |
+| 5 | 09-20 18:37 -> IN FLIGHT | `p2_cifar_ce_rtol`: the approved CIFAR-CE Sven `rtol` extension, **off-grid by design** -- `mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]` as a plan item rather than a config-grid edit, so run counts, `campaign/grid_counts.md` and `tests/golden/` do not move (committed as `f0f89b2`) | `f0f89b24` + `203a4e61` | 47394881-47394885 -- 5 jobs so far (launched by the GPU-items track) | **45** (7 done at 19:21) | running. `cifar10_resnet_ce_scan`: expected 740 -> 785, 747 on disk at 19:21 (all `ok`, none diverged under either definition); reconcile read `35 run(s) to do; incomplete: cifar10_resnet_ce_scan` at 19:05, and that number falls as the runs land. Every count for this one scan is a snapshot until it finishes; every other scan is final. Purely additive: no existing `run_id` or `run_hash` moves. **If it changes the selected CIFAR-CE Sven configuration**, re-run `select_best.py` -> `gen_phase5_plan.py` -> the three passes, for CIFAR-CE Sven only |
+
+**Verified after the fact (2026-09-20 18:00-19:10 EDT, this analysis phase):**
+
+* `tools/reconcile.py --all campaign/plan_campaign.yaml` -> `21 scan(s), 0 run(s) to do;
+  incomplete: none`; 23,215 expected, 21,813 `ok`, 1,402 `diverged`, **0 `oom`, 0 `error`, 0
+  `started-only`, 0 `stale-hash`, 0 `jsonl-only`, 0 `never-started`**. (Re-run at 19:05 after
+  row 5 landed its first records: `35 run(s) to do; incomplete: cifar10_resnet_ce_scan`,
+  expected 785, 745 on disk. Nothing else moved.)
+* **Two failure counts, and they are not interchangeable.** The 1,402 above is
+  `status == "diverged"`, the lifecycle count that decides retries. The analysis definition
+  (`analysis/style.is_diverged`: recorded, or non-finite, or final val > 10x `val[0]`) counts
+  **2,553** over the same 21 scans, and that is the one selection and every table use. Of the
+  1,402 recorded, 1,147 carry a `diverged_at_step` (`DivergedError`) and **275 do not** -- 243
+  K-FAC `_LinAlgError` and 32 Sven `RuntimeError` from the masked-Gram guard, both mapped to
+  `diverged` by `_classify_failure`, which is why `status: "error"` is 0. Per-scan and
+  per-method figures for both counts: `EXPERIMENTS.md` §7.
+* `tools/reconcile.py --all campaign/plan_phase5.yaml` -> `21 scan(s), 0 run(s) to do`;
+  1,575 runs across the 21 companion directories -- of which **20 are `diverged`** (21 under
+  the wide rule), 13 of them `polynomial_scan_confirm`'s 15 L-BFGS runs. The passes are not
+  failure-free; see `EXPERIMENTS.md` §4.
+* `tools/reconcile.py --all campaign/plan_gpt2.yaml` -> `1 scan(s), 0 run(s) to do; incomplete:
+  none`; 29 expected, **29 `ok`**, 0 diverged (re-run 19:12 EDT; it read 28 `ok` / 1
+  `claimed-live` an hour earlier).
+* `bench/check_timing_join.py` -> **425 timing runs, 425 joined onto their scan by `run_id`
+  AND `run_hash`, 0 missing.** Trajectories: nanoGPT bit-identical (median 0.00e+00), toy
+  4.5e-07, polynomial 8.7e-09, MNIST-CE 5.7e-05, MNIST-label-reg 8.3e-03, CIFAR 2.5-3.1e-02
+  (relative, median). Deviations are confined to methods that are not bit-reproducible across
+  GPU types -- Muon's bf16 Newton-Schulz, L-BFGS's `strong_wolfe` line search, SOAP / Shampoo /
+  HIG decompositions at 1e-9-scale losses, CIFAR's cuDNN kernel selection -- because the scans
+  ran mostly on A100-40GB MIG slices and the passes on A100-80GB. Hashes match, so these are
+  the same experiments.
+* `bench/best_configs.json` (schema 2, rule `full`, generated 2026-09-20T03:58:14-0400) agrees
+  with `analysis/scan_analysis.py` on all **85** (scan, method) picks; `tools/reconcile.py`'s
+  quick table differs on 6 of the 85 because it omits the fewest-diverged tier.
+* No `_stale/` and no `attempts/` directory exists under any of the 43 result directories.
+
+**Still open after the campaign** (tracked in `campaign/ANALYSIS_PLAN.md` §7, not here):
+
+1. **CIFAR-CE Sven `rtol` sat on its top edge** (1e-2) — **now being extended**, see row 5 of
+   the table above. Afterwards: re-run `select_best.py`, regenerate `plan_phase5.yaml`, and
+   re-run timing/diag/confirm for CIFAR-CE Sven **only if its selected configuration changed**.
+2. **`toy_1d_scan` Sven lr is on the new bottom edge** (0.01 after the extension round).
+   `k:EDGE-HIGH` on six scans is `k = B`, a method boundary, and is deliberately not extended.
+3. **The Fig-5 set point was never re-derived.** The scan ran (15/15) on the pre-Gram classic
+   k = 64 / lr = 1.0 / rtol = 1e-3 while the config still carries its
+   `SET POINT, STILL TENTATIVE` marker; the BN-fixed headline optimum is k = 128 / lr = 0.5 /
+   rtol = 1e-3. Re-running it at the headline set point is 15 runs, ~5.5 GPU-h.
+4. **`profile_results_v2` needs re-measuring** at the campaign code into `profile_results_v3/`:
+   it was profiled with the per-step `torch.cuda.empty_cache()` that is now off, which makes it
+   up to 4.5x pessimistic for Sven's full-capture variants. Approved; ~2 h on one exclusive
+   A100-80GB node.
+5. **Parked, config edits standing:** `exp_finetune_cifar_smallN` (408 runs; all eight
+   `p3_finetune` items in `campaign/plan_campaign.yaml` are `enabled: false`) and the 200
+   enumerated JD + HIG runs on the two CIFAR configs (`p3_cifar_jd_hig`, all items disabled;
+   HIG on ResNet18 needs a full per-sample Jacobian, ~50 GPU-h per scan).
+6. **One timing record is not its scan's trajectory:** `mnist_scan_labelRegression`, SOAP at
+   lr 0.01, mseed 3001, ends at 0.901 in the scan and 184.8 in the timing pass. Take step times
+   from `<scan>_timing` and loss values from the scan or the confirmation pass -- never loss
+   values from a timing record.
+
+After any rerun: `tools/reconcile.py`, then `tools/select_best.py --require-complete`, then
+`tools/gen_phase5_plan.py`, then `./make_plots.sh` (the slim caches under
+`experiment_results/_cache/` invalidate themselves on any file change).

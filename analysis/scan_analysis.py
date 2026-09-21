@@ -30,9 +30,10 @@ import pandas as pd
 
 import sv_diagnostics as sv
 import style
-from style import (assert_selection_metric, clipped_band, clipped_yerr, config_eligible,
-                   final_value, is_diverged, is_failed, load_results, lr_labels,
-                   method_color, metric_label, resolve_results_root, status_of)
+from style import (assert_selection_metric, band_legend, clipped_band, clipped_yerr,
+                   config_eligible, final_value, is_diverged, is_failed, load_results,
+                   lr_labels, method_color, method_label, metric_label,
+                   resolve_results_root, status_of)
 
 #: The results root, resolved from ``$SV3_RESULTS_ROOT`` at import (one root for
 #: the whole analysis layer -- see :mod:`style`).  ``None`` anywhere below means
@@ -603,8 +604,10 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
     cmap = method_colors(baselines, colors)
     time_key = resolve_time_key(scan, time_key)
     chosen = {}
+    banded = False
 
     def draw(rows, label, color, lw, zorder):
+        nonlocal banded
         mean, lower, upper = seed_band(rows, which)
         if mean is None:
             return
@@ -618,6 +621,7 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
         if band and len(rows) > 1:
             ax.fill_between(x, lower[:n], upper[:n], color=color, alpha=0.2,
                             lw=0, zorder=zorder - 0.5)
+            banded = True
 
     cfg = scan.best_sven()
     if cfg is not None:
@@ -630,8 +634,11 @@ def plot_best_curves(scan, ax, which='train', versus='epoch', baselines=None,
         if cfg is None:
             continue
         chosen[opt] = cfg
-        draw(scan.baseline_rows(cfg), opt, cmap[opt], 2, 2)
+        # legend shows the DISPLAY name (C-B7: 'LBFGS' is minibatch L-BFGS)
+        draw(scan.baseline_rows(cfg), method_label(opt), cmap[opt], 2, 2)
 
+    if banded:
+        band_legend(ax)      # ONE entry, last, saying what the shaded band is (C-A6)
     ax.set_xlabel(axis_label(versus, time_key))
     ax.set_ylabel({'train': 'Train loss', 'val': 'Validation loss',
                    'val_acc': 'Validation accuracy', 'test': 'Test loss',
@@ -652,7 +659,7 @@ def plot_k_sweep(scan, ax, lr, rtol, which='train', reference='SGD', cmap='virid
 
     ks = scan.ks
     colors = plt.get_cmap(cmap)(np.linspace(0, 0.9, len(ks)))
-    drawn = []
+    drawn, banded = [], False
     for i, k in enumerate(ks):
         rows = scan.sven_rows(k=k, lr=lr, rtol=rtol)
         mean, lower, upper = seed_band(rows, which)
@@ -663,6 +670,7 @@ def plot_k_sweep(scan, ax, lr, rtol, which='train', reference='SGD', cmap='virid
         ax.plot(x, mean[:n], color=colors[i], lw=3, label=f'$k={int(k)}$', **plot_kw)
         if band and len(rows) > 1:
             ax.fill_between(x, lower[:n], upper[:n], color=colors[i], alpha=0.2, lw=0)
+            banded = True
         drawn.append(k)
 
     if reference:
@@ -673,8 +681,10 @@ def plot_k_sweep(scan, ax, lr, rtol, which='train', reference='SGD', cmap='virid
             if mean is not None:
                 x = epoch_axis(ref_rows, mean, which)
                 ax.plot(x, mean[:len(x)], color='k', ls='--', lw=3,
-                        label=f'{reference} ($\\eta={fmt(cfg["lr"])}$)')
+                        label=f'{method_label(reference)} ($\\eta={fmt(cfg["lr"])}$)')
 
+    if banded:
+        band_legend(ax)      # C-A6
     ax.set_xlabel('Epoch')
     ax.set_ylabel({'train': 'Train loss', 'val': 'Validation loss'}.get(which, which))
     ax.set_yscale('log')
@@ -769,6 +779,7 @@ def plot_sensitivity(scan, ax, x='lr', lines='k', metric=None, third='best', ban
     # k is coloured viridis (dark -> light with k) everywhere it is a line family
     colors = (plt.get_cmap('viridis')(np.linspace(0, 0.9, len(vals))) if lines == 'k'
               else [f'C{i}' for i in range(len(vals))])
+    banded = False
     for i, val in enumerate(vals):
         sub = cfg[cfg[lines] == val]
         sub = sub.loc[sub.groupby(x)['score'].idxmin()].sort_values(x)
@@ -778,6 +789,9 @@ def plot_sensitivity(scan, ax, x='lr', lines='k', metric=None, third='best', ban
         if band and (sub['n_seeds'] > 1).any():
             lower, upper = clipped_band(sub['score'], sub['score_std'], sub['score_min'])
             ax.fill_between(sub[x], lower, upper, color=colors[i], alpha=0.15, lw=0)
+            banded = True
+    if banded:
+        band_legend(ax)      # C-A6
     ax.set_xlabel({'lr': 'Learning rate', 'k': '$k$', 'rtol': 'rtol'}[x])
     ax.set_ylabel(metric_label(metric))
     if x in ('lr', 'rtol'):
@@ -817,7 +831,7 @@ def plot_knob_curves(scan, ax, knob, lr, which='val', values=None, cmap='viridis
 
     values = values if values is not None else knob_values(scan, knob)
     colors = plt.get_cmap(cmap)(np.linspace(0, 0.9, len(values)))
-    drawn = []
+    drawn, banded = [], False
     for i, v in enumerate(values):
         rows = scan.runs(lr=lr, **{knob: v}, **fixed)
         mean, lower, upper = seed_band(rows, which)
@@ -828,7 +842,10 @@ def plot_knob_curves(scan, ax, knob, lr, which='val', values=None, cmap='viridis
         ax.plot(x, mean[:n], color=colors[i], lw=3, label=KNOB_LABELS[knob](v))
         if band and len(rows) > 1:
             ax.fill_between(x, lower[:n], upper[:n], color=colors[i], alpha=0.2, lw=0)
+            banded = True
         drawn.append(v)
+    if banded:
+        band_legend(ax)      # C-A6
     ax.set_xlabel('Epoch')
     ax.set_ylabel({'train': 'Train loss', 'val': 'Validation loss'}.get(which, which))
     ax.set_yscale('log')
@@ -928,8 +945,9 @@ def plot_time_summary(scan, ax, quantity='total_time', baselines=None, source='a
     yerr = clipped_yerr(means, [st[1] for st in stats], [st[2] for st in stats])
     bars = ax.bar(x, means, yerr=np.nan_to_num(yerr), capsize=3,
                   color=[cmap[m] for m in labels], **bar_kw)
+    band_legend(ax)   # the error bars are the seed spread, and say so (C-A6)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_xticklabels([method_label(m) for m in labels], rotation=45, ha='right')
     ax.set_ylabel(quantity.replace('_', ' ') + (' (standalone)' if source == 'standalone'
                                                 else ' (sharded scan)'))
     return dict(zip(labels, means)), bars, source
@@ -1046,7 +1064,7 @@ def plot_time_comparison(scan, ax, quantity='total_time', baselines=None, width=
     ax.bar(x + width / 2, [out[m][1] for m in methods], width, color=[cmap[m] for m in methods],
            label=labels[1], **bar_kw)
     ax.set_xticks(x)
-    ax.set_xticklabels(methods, rotation=45, ha='right')
+    ax.set_xticklabels([method_label(m) for m in methods], rotation=45, ha='right')
     ax.set_ylabel(quantity.replace('_', ' '))
     ax.legend()
     return out
@@ -1062,6 +1080,7 @@ def plot_time_vs_k(scan, ax, quantity='total_time', rtol='best', lrs=None, **plo
     if rtol == 'best':
         rtol = scan.best_sven()['rtol']
     lrs = lrs if lrs is not None else scan.sven_lrs
+    banded = False
     for i, lr in enumerate(lrs):
         cfg = scan.configs(scan.runs(lr=lr, rtol=rtol), ['k'], quantity)
         cfg = cfg[cfg['eligible']].sort_values('k')
@@ -1070,6 +1089,9 @@ def plot_time_vs_k(scan, ax, quantity='total_time', rtol='best', lrs=None, **plo
         ax.errorbar(cfg['k'], cfg['score'],
                     yerr=clipped_yerr(cfg['score'], cfg['score_std'], cfg['score_min']),
                     fmt='o-', capsize=3, color=f'C{i}', label=f'$\\eta={fmt(lr)}$', **plot_kw)
+        banded = True
+    if banded:
+        band_legend(ax)      # C-A6
     ax.set_xlabel('$k$')
     ax.set_ylabel('Total training time (s), sharded scan')
     return rtol
@@ -1087,7 +1109,7 @@ def plot_efficiency(scan, ax, metric=None, quantity='total_time', baselines=None
     for opt in baselines:
         sub = usable(scan.baseline[scan.baseline['optimizer'] == opt])
         ax.scatter(sub[quantity], sub[metric], c=cmap[opt], alpha=0.5, s=30,
-                   marker='s', label=opt)
+                   marker='s', label=method_label(opt))
     ax.set_xlabel('Total training time (s), sharded scan')
     ax.set_ylabel(metric_label(metric, seed_mean=False))
     ax.set_yscale('log')
@@ -1240,6 +1262,8 @@ def summary_table(scan, metric=None, baselines=None):
             {style.config_key(r) for r in runs['run_id']}, per_config, len(scan.seeds))
         entry = {
             'method': method,
+            # the machine key stays `method`; `label` is what a reader sees (C-B7)
+            'label': method_label(method),
             # string-valued hparams (JD aggregator / inner_optimizer) have no ':g'
             'config': ', '.join(f'{k}={v}' if isinstance(v, str) else f'{k}={v:g}'
                                 for k, v in cfg.items()

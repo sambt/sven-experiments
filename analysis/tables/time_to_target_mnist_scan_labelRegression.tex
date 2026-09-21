@@ -1,0 +1,48 @@
+\begin{tabular}{lrlrrrrrrrrrrrr}
+\toprule
+target & target\_value & display & n\_runs & n\_reached & n\_never\_reached & n\_diverged & elig\_conf & all\_reached & epochs & epochs\_std & steps & examples & sync\_train\_s & standalone\_s \\
+\midrule
+easy (2x median) & 0.1132 & Sven & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 9.461 & 3.738 \\
+easy (2x median) & 0.1132 & Adam & 5 & 5 & 0 & 0 & True & True & 1.4 & 0.5477 & 1093 & 6.998e+04 & 2.764 & 2.07 \\
+easy (2x median) & 0.1132 & AdamW & 5 & 5 & 0 & 0 & True & True & 1.4 & 0.5477 & 1093 & 6.998e+04 & 3.285 & 2.05 \\
+easy (2x median) & 0.1132 & HIG & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 341.7 & 58.26 \\
+easy (2x median) & 0.1132 & JD (UPGrad) & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 31.47 & 33.53 \\
+easy (2x median) & 0.1132 & Stochastic L-BFGS & 5 & 5 & 0 & 0 & True & True & 4.4 & 0.5477 & 3436 & 2.199e+05 & 65.71 & 17.91 \\
+easy (2x median) & 0.1132 & Muon & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 3.691 & 2.343 \\
+easy (2x median) & 0.1132 & MuonW & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 3.584 & 2.398 \\
+easy (2x median) & 0.1132 & Polyak SGD & 5 & 5 & 0 & 0 & True & True & 1 & 0 & 781 & 4.998e+04 & 2.25 & 1.552 \\
+easy (2x median) & 0.1132 & RMSprop & 5 & 5 & 0 & 0 & True & True & 1.6 & 0.5477 & 1250 & 7.997e+04 & 3.358 & 2.256 \\
+easy (2x median) & 0.1132 & SGD & 5 & 5 & 0 & 0 & True & True & 2 & 0 & 1562 & 9.997e+04 & 4.059 & 2.659 \\
+easy (2x median) & 0.1132 & SGD + momentum & 5 & 5 & 0 & 0 & True & True & 2 & 0 & 1562 & 9.997e+04 & 3.527 & 2.706 \\
+easy (2x median) & 0.1132 & SOAP & 5 & 2 & 3 & 0 & True & False & 1 & 0 & 781 & 4.998e+04 & 6.128 & 3.336 \\
+easy (2x median) & 0.1132 & Shampoo & 5 & 5 & 0 & 0 & True & True & 4.6 & 0.8944 & 3593 & 2.299e+05 & 475.8 & 461.4 \\
+median method & 0.05658 & Sven & 5 & 5 & 0 & 0 & True & True & 9.2 & 1.304 & 7185 & 4.599e+05 & 83.18 & 34.39 \\
+median method & 0.05658 & Adam & 5 & 3 & 2 & 0 & True & False & 12.67 & 3.215 & 9893 & 6.331e+05 & 24.34 & 18.73 \\
+median method & 0.05658 & AdamW & 5 & 4 & 1 & 0 & True & False & 13.25 & 3.775 & 1.035e+04 & 6.623e+05 & 28.65 & 19.4 \\
+median method & 0.05658 & HIG & 5 & 5 & 0 & 0 & True & True & 7 & 1 & 5467 & 3.499e+05 & 2418 & 407.8 \\
+median method & 0.05658 & JD (UPGrad) & 5 & 3 & 2 & 0 & True & False & 11 & 2.646 & 8591 & 5.498e+05 & 360.1 & 368.9 \\
+median method & 0.05658 & Stochastic L-BFGS & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+median method & 0.05658 & Muon & 5 & 5 & 0 & 0 & True & True & 6 & 1.225 & 4686 & 2.999e+05 & 20.58 & 14.06 \\
+median method & 0.05658 & MuonW & 5 & 5 & 0 & 0 & True & True & 6 & 0.7071 & 4686 & 2.999e+05 & 19.89 & 14.39 \\
+median method & 0.05658 & Polyak SGD & 5 & 5 & 0 & 0 & True & True & 9.6 & 4.336 & 7498 & 4.798e+05 & 21.09 & 14.9 \\
+median method & 0.05658 & RMSprop & 5 & 3 & 2 & 0 & True & False & 12.33 & 1.528 & 9632 & 6.165e+05 & 25.1 & 17.39 \\
+median method & 0.05658 & SGD & 5 & 5 & 0 & 0 & True & True & 14.2 & 3.768 & 1.109e+04 & 7.098e+05 & 27.81 & 18.88 \\
+median method & 0.05658 & SGD + momentum & 5 & 4 & 1 & 0 & True & False & 13.75 & 2.217 & 1.074e+04 & 6.873e+05 & 23.77 & 18.61 \\
+median method & 0.05658 & SOAP & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+median method & 0.05658 & Shampoo & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Sven & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Adam & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & AdamW & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & HIG & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & JD (UPGrad) & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Stochastic L-BFGS & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Muon & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & MuonW & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Polyak SGD & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & RMSprop & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & SGD & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & SGD + momentum & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & SOAP & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+hard (0.5x median) & 0.02829 & Shampoo & 5 & 0 & 5 & 0 & True & False & NaN & NaN & NaN & NaN & NaN & NaN \\
+\bottomrule
+\end{tabular}

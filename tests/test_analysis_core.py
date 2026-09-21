@@ -29,6 +29,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pandas as pd
 import pytest
 
 matplotlib.use('Agg')          # no plotting windows, no DISPLAY
@@ -90,6 +91,25 @@ def baseline_record(optimizer, lr, seed, **extra):
     return rec
 
 
+#: Everything the CAMPAIGN runner writes onto every record that is an OUTCOME
+#: (``generic_scan.summarize_curves`` + the test / train-eval finals, C-E5) or a
+#: recorded FACT (the evaluation protocol, the checkpoint bookkeeping, the Muon
+#: grouping rule, C-R4).  Every value varies per run here, which is exactly what
+#: makes an unregistered one fragment the grouping or warn.
+#:
+#: The list is the one found empirically on 2026-09-20 by loading all 43
+#: directories of ``experiment_results/`` and collecting the "[style] column ...
+#: AVERAGED OVER" warnings; :func:`test_schema2_columns_are_registered` pins it.
+def schema2_outcomes(i):
+    return {'val_final': 1.0 * i, 'val_best': 0.5 * i, 'val_best_index': i % 4,
+            'val_last3_mean': 0.9 * i, 'test': 1.1 * i, 'test_acc': 0.01 * i,
+            'train_eval_final': 0.8 * i,
+            'effective_loader_seed': 1000 + i, 'checkpoint_policy': 'final' if i % 2 else 'log',
+            'ckpt_init_file': f'ckpt/init_mseed{i}.pt', 'ckpt_error': None if i % 2 else 'quota',
+            'train_eval_size': 10_000, 'eval_every_steps': None if i % 2 else 50,
+            'muon_variant': f'v{i % 2}', 'muon_rule': 'hidden2d+convflat:match_rms_adamw:v1'}
+
+
 #: What schema 2 adds to every record and what a run is allowed to differ in
 #: without becoming a different configuration (C-R3 / C-R4).
 def provenance(seed, i):
@@ -100,7 +120,8 @@ def provenance(seed, i):
             'start_time': f'2026-09-18T0{i % 10}:00:00+00:00', 'start_unix': 1.0 * i,
             'end_time': f'2026-09-18T0{i % 10}:30:00+00:00', 'end_unix': 2.0 * i,
             'wall_time_s': 1.0 * i, 'n_params': 321, 'n_train': 800, 'n_val': 200,
-            'n_test': 200, 'steps_per_epoch': 100, 'torch_version': '2.9.1'}
+            'n_test': 200, 'steps_per_epoch': 100, 'torch_version': '2.9.1',
+            **schema2_outcomes(i)}
 
 
 def write_scan(root, name, records, manifest=None, diag=None):
@@ -203,6 +224,72 @@ def test_average_over_seeds_ignores_provenance(root):
     b = style.average_over_seeds(load(root, 'prov'))
     assert len(a) == len(b) == 4
     assert list(a['n_seeds']) == list(b['n_seeds']) == [len(SEEDS)] * 4
+
+
+def test_average_over_seeds_tolerates_a_partly_string_column(root):
+    """A column that is a STRING for some optimizers and absent for the rest --
+    `gram_capture`, `muon_variant` / `muon_rule` on every real scan -- arrives as
+    NaN where it does not apply.  Reading the NaN as the column's first value sent
+    it down the numeric branch, where np.mean met the strings and raised
+    ``the resolved dtypes are not compatible with add.reduce`` (seen on
+    mnist_scan_ce / mnist_scan_labelRegression / rebuttal_overparam_mnist_scan)."""
+    recs = grid_records()
+    for r in recs:
+        if r['optimizer'] == 'SVD':
+            r['gram_capture'] = 'chunked'
+            r['muon_variant'] = None
+        else:
+            r['gram_capture'] = None     # -> NaN in the frame, and sorted first
+            r['muon_variant'] = 'hidden2d+adamw:match_rms_adamw:v1'
+    write_scan(root, 'mixed', recs)
+    out = style.average_over_seeds(ah.add_derived(load(root, 'mixed')))
+    assert len(out) == 4
+    assert set(out['gram_capture'].dropna()) == {'chunked'}          # kept as-is
+    assert set(out['muon_variant'].dropna()) == {'hidden2d+adamw:match_rms_adamw:v1'}
+    assert out['final_val_loss'].notna().all()                       # numbers still averaged
+
+
+def test_schema2_columns_are_registered(root, capsys):
+    """WP1.1: every column the campaign runner adds is registered as an OUTCOME or
+    as PROVENANCE, so a fresh scan produces NO "[style] ... AVERAGED OVER" warning
+    and none of them can become part of a configuration's identity.
+
+    The list is what `experiment_results/` actually contains (all 43 directories,
+    loaded once through `style.load_results` -> `analysis_helpers.config_table`
+    and `scan_analysis.Scan.configs` on 2026-09-20).
+    """
+    outcomes = ('val_final', 'val_best', 'val_best_index', 'val_last3_mean',
+                'test', 'test_acc', 'train_eval_final')
+    prov = ('effective_loader_seed', 'checkpoint_policy', 'ckpt_init_file', 'ckpt_error',
+            'train_eval_size', 'eval_every_steps', 'svd_spectra_schedule',
+            'muon_variant', 'muon_rule')
+    for col in outcomes:
+        assert col in style.OUTCOME_COLUMNS, col
+        assert col not in style.HPARAM_COLUMNS, col
+    for col in prov:
+        assert col in style.PROVENANCE_COLUMNS, col
+        assert col not in style.HPARAM_COLUMNS, col
+    # the runner's own `test` / `test_acc` are test-split quantities, so the
+    # selection guard covers them too (C-E1)
+    assert style.is_test_metric('test') and style.is_test_metric('test_acc')
+    assert not any(style.is_test_metric(c) for c in
+                   ('val_final', 'val_best', 'val_last3_mean', 'train_eval_final'))
+
+    # and on a scan that carries them all, nothing is warned about and the
+    # grouping is the same as without them
+    write_scan(root, 'plain2', grid_records(with_provenance=False))
+    write_scan(root, 'schema2', grid_records(with_provenance=True))
+    for col in (*outcomes, *prov):
+        style._unlisted_warned.discard(col)
+    d = load(root, 'schema2')
+    assert {*outcomes, *(c for c in prov if c != 'svd_spectra_schedule')} <= set(d.columns)
+    cols = ah.config_columns(d)
+    out = capsys.readouterr().out
+    assert 'AVERAGED OVER' not in out, out
+    for col in (*outcomes, *prov):
+        assert col not in cols, col
+    assert groups(d) == groups(load(root, 'plain2'))
+    assert len(ah.config_table(d)) == 4
 
 
 def test_unlisted_varying_column_is_reported(root, capsys):
@@ -571,6 +658,12 @@ def labels_of(ax):
     return [ln.get_label() for ln in ax.lines]
 
 
+def legend_labels(ax):
+    """What a reader sees in ``ax.legend()`` -- lines, bars, error bars AND the
+    shaded-band proxy patches, which are not in ``ax.lines``."""
+    return ax.get_legend_handles_labels()[1]
+
+
 def test_full_width_spectrum_plot_marks_k_rtol_and_floor(root):
     """Full spectra (C-L1): x normalised by the WIDTH (so the axis really ends at
     1), a vertical line at the k cut, horizontals at rtol and the float32 floor."""
@@ -872,7 +965,8 @@ def test_real_scan_grouping_unchanged(name):
     generations with different columns for the same configuration -- F16's schema
     drift, and the run_id reading is the right one there.
     """
-    root = os.environ.get('SV3_LEGACY_RESULTS_ROOT', str(REPO / 'experiment_results'))
+    root = os.environ.get('SV3_LEGACY_RESULTS_ROOT',
+                          str(REPO / 'experiment_results_legacy_2026-09-18'))
     df = style.load_results(name, results_root=root,
                             cache_dir=os.environ.get('SV3_CACHE_DIR'))
     old = sorted(len(g) for _, g in df.groupby(legacy_config_columns(df), dropna=False))
@@ -884,3 +978,284 @@ def test_real_scan_grouping_unchanged(name):
                           f'run_ids ({len(by_id)}) -- two record generations in one '
                           f'configuration?')
     assert len(ah.config_table(df)) == len(old)
+
+
+@pytest.mark.skipif(os.environ.get('SV3_CHECK_REAL_SCANS') != '1',
+                    reason='set SV3_CHECK_REAL_SCANS=1 (slow: Lustre)')
+@pytest.mark.parametrize('name', ['toy_1d_scan', 'mnist_scan_ce',
+                                  'cifar10_resnet_ce_scan', 'mnist_scan_ce_confirm'])
+def test_real_fresh_scan_grouping_matches_run_ids(name, capsys):
+    """The same check on the CAMPAIGN root, where auto-detection is no longer a
+    usable oracle -- that is the whole point of the allow-list.
+
+    Schema 2 puts `run_hash`, `effective_loader_seed`, `val_final`, `test`, ... on
+    every record, so the pre-C-A2 rule makes EVERY RUN its own configuration
+    (mnist_scan_ce: 1610 runs -> 1610 "configurations" instead of 322).  The
+    invariant that still holds, and the one the manifest counts against, is the
+    run_id partition (:func:`style.config_key`).  This also asserts that loading a
+    fresh scan prints no "[style] ... AVERAGED OVER" warning (WP1.1).
+    """
+    root = os.environ.get('SV3_RESULTS_ROOT_FRESH', str(REPO / 'experiment_results'))
+    df = style.load_results(name, results_root=root,
+                            cache_dir=os.environ.get('SV3_CACHE_DIR'))
+    capsys.readouterr()                      # drop the loader's own chatter
+    cols = ah.config_columns(df)
+    assert 'AVERAGED OVER' not in capsys.readouterr().out
+    new = sorted(len(g) for _, g in df.groupby(cols, dropna=False))
+    by_id = sorted(style.expected_per_config(df['run_id']).values())
+    fragmented = df.groupby(legacy_config_columns(df), dropna=False).ngroups
+    print(f'{name}: {len(df)} runs, {len(new)} configurations by columns, '
+          f'{len(by_id)} by run_id, {fragmented} under auto-detection')
+    assert new == by_id, (f'{name}: column grouping ({len(new)}) disagrees with the '
+                          f'run_ids ({len(by_id)})')
+    assert fragmented == len(df), (f'{name}: auto-detection no longer fragments '
+                                   f'({fragmented} of {len(df)}) -- has a schema-2 '
+                                   f'column been dropped from the records?')
+
+
+# ---------------------------------------------------------------------------
+# 11. The method registry: a colour and a display name for every optimizer in
+#     the campaign records (WP1.2; C-B2 SGDm, C-B7 stochastic L-BFGS, C-A6)
+# ---------------------------------------------------------------------------
+#: Every `optimizer` value in the fresh results (all 43 directories of
+#: `experiment_results/`, 2026-09-20), as `style.canonical_method` spells it.
+CAMPAIGN_METHODS = ('Sven', 'SGD', 'SGDm', 'PolyakSGD', 'RMSprop', 'Adam', 'AdamW',
+                    'LBFGS', 'Muon', 'MuonW', 'SOAP', 'Shampoo', 'KFAC', 'JD', 'HIG')
+
+
+def test_every_campaign_method_has_a_colour(capsys):
+    """No method may fall back to the unknown-optimizer grey: that is how a new
+    baseline (SGDm) ends up the same colour as another one."""
+    for m in CAMPAIGN_METHODS:
+        style.method_color._warned.discard(m)
+    colours = {m: style.method_color(m) for m in CAMPAIGN_METHODS}
+    assert 'no colour registered' not in capsys.readouterr().out
+    assert colours['Sven'] == '#000000'                      # Sven is black, always
+    assert len(set(colours.values())) == len(colours)        # no two methods share one
+    # the record spellings reach the same entries
+    assert style.method_color('SVD') == colours['Sven']
+    assert style.method_color('JD_UPGrad') == colours['JD']
+
+
+def test_method_labels(root, tmp_path):
+    """`LBFGS` is minibatch L-BFGS and must say so wherever a reader sees it
+    (C-B7); the machine key stays the record's own spelling."""
+    assert style.method_label('LBFGS') == 'Stochastic L-BFGS'
+    assert style.method_label('LBFGS1') == 'Stochastic L-BFGS'      # alias
+    assert style.method_label('SGDm') == 'SGD + momentum'
+    assert style.method_label('SVD') == 'Sven'
+    assert style.method_label('Adam') == 'Adam'                     # unregistered: unchanged
+    assert style.method_label('BrandNewOptimizer') == 'BrandNewOptimizer'
+    assert ah.method_label is style.method_label                    # one implementation
+
+    recs = [r for seed in SEEDS for r in
+            (sven_record(8, 0.01, 1e-4, seed), baseline_record('LBFGS', 0.1, seed),
+             baseline_record('SGDm', 0.1, seed))]
+    write_scan(root, 'labels', recs)
+    scan = scan_of(root, 'labels', tmp_path)
+
+    t = sa.summary_table(scan).set_index('method')
+    assert list(t.columns)[0] == 'label'                            # right after `method`
+    assert t.loc['LBFGS', 'label'] == 'Stochastic L-BFGS'
+    assert t.loc['SGDm', 'label'] == 'SGD + momentum'
+    assert t.loc['Sven', 'label'] == 'Sven'
+
+    # plots: legend entries and tick labels carry the display name, the returned
+    # dicts keep the machine key (so notebook code indexing by 'LBFGS' still works)
+    fig, ax = plt.subplots()
+    chosen = sa.plot_best_curves(scan, ax, which='val')
+    assert {'LBFGS', 'SGDm'} <= set(chosen)
+    legend = {t.get_text() for t in ax.legend().get_texts()}
+    assert 'Stochastic L-BFGS' in legend and 'SGD + momentum' in legend
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    means, _, _ = sa.plot_time_summary(scan, ax, quantity='total_time')
+    assert {'LBFGS', 'SGDm'} <= set(means)
+    assert 'Stochastic L-BFGS' in {t.get_text() for t in ax.get_xticklabels()}
+    plt.close(fig)
+
+
+def test_seed_spread_label_is_the_one_band_legend(root, tmp_path):
+    """C-A6: every seed band says the same thing, from one constant -- and it is on
+    the FIGURE, not only in a module.  Pinning the string alone let every band ship
+    unlabelled: `scan_analysis`'s four `fill_between` calls and the clipped error
+    bars carried no legend entry at all, so no figure in the paper said what its
+    shaded band was."""
+    import paired
+    assert paired.SEED_SPREAD_LABEL == r'$\pm$ 1 std over seeds'
+    assert style.seed_spread_label() == paired.SEED_SPREAD_LABEL     # one source
+    assert style.seed_spread_label(plain=True) == '± 1 std over seeds'
+    assert ah.seed_spread_label is style.seed_spread_label
+    LABEL = paired.SEED_SPREAD_LABEL
+
+    # `band_legend` adds exactly one entry, however many times it is called, and
+    # its proxy has no data, so it cannot move an axis (log axes included)
+    fig, ax = plt.subplots()
+    ax.plot([3, 4], [10, 20])
+    fig.canvas.draw()
+    before = (ax.get_xlim(), ax.get_ylim())
+    assert style.band_legend(ax) is not None
+    assert style.band_legend(ax) is None
+    fig.canvas.draw()
+    assert (ax.get_xlim(), ax.get_ylim()) == before
+    assert legend_labels(ax).count(LABEL) == 1
+    plt.close(fig)
+
+    recs = [r for seed in SEEDS for r in
+            (sven_record(8, 0.01, 1e-4, seed), sven_record(4, 0.01, 1e-4, seed),
+             baseline_record('Adam', 0.001, seed), baseline_record('SGD', 0.1, seed))]
+    write_scan(root, 'bands', recs)
+    scan = scan_of(root, 'bands', tmp_path)
+
+    # every helper that draws seed uncertainty names it
+    for draw in (lambda ax: sa.plot_best_curves(scan, ax, which='val'),
+                 lambda ax: sa.plot_k_sweep(scan, ax, lr=0.01, rtol=1e-4, which='val'),
+                 lambda ax: sa.plot_sensitivity(scan, ax, x='k', lines='lr'),
+                 lambda ax: sa.plot_time_summary(scan, ax, quantity='total_time'),
+                 lambda ax: sa.plot_time_vs_k(scan, ax, quantity='total_time')):
+        fig, ax = plt.subplots()
+        draw(ax)
+        assert legend_labels(ax).count(LABEL) == 1, draw
+        plt.close(fig)
+
+    # ... and so does the notebooks' own error-bar helper (one entry for N methods)
+    tab = ah.best_per_method(ah.add_derived(load(root, 'bands')), by='final_val_loss',
+                             extra_group=['batch_size'])
+    fig, ax = plt.subplots()
+    for m in tab['method'].unique():
+        ah.errorbar_seeds(ax, tab[tab.method == m], 'batch_size', 'final_val_loss', label=m)
+    assert legend_labels(ax).count(LABEL) == 1
+    plt.close(fig)
+
+    # a band drawn with band=False is not labelled (nothing to name)
+    fig, ax = plt.subplots()
+    sa.plot_best_curves(scan, ax, which='val', band=False)
+    assert LABEL not in legend_labels(ax)
+    plt.close(fig)
+
+
+def test_errorbar_seeds_shows_display_names(root):
+    """C-B7 reaches the notebook legends too: every notebook passes `label=m`
+    straight from the `method` column, so the mapping belongs in the helper -- that
+    is what kept "LBFGS" in the legends of overparam / batchsize / critbatch /
+    finetune while the tables beside them said "Stochastic L-BFGS"."""
+    recs = [r for seed in SEEDS for r in
+            (sven_record(8, 0.01, 1e-4, seed), baseline_record('LBFGS', 0.1, seed),
+             baseline_record('SGDm', 0.1, seed))]
+    write_scan(root, 'labelled_bars', recs)
+    tab = ah.best_per_method(ah.add_derived(load(root, 'labelled_bars')),
+                             by='final_val_loss', extra_group=['batch_size'])
+    fig, ax = plt.subplots()
+    for m in tab['method'].unique():
+        ah.errorbar_seeds(ax, tab[tab.method == m], 'batch_size', 'final_val_loss', label=m)
+    shown = legend_labels(ax)
+    assert 'Stochastic L-BFGS' in shown and 'SGD + momentum' in shown and 'Sven' in shown
+    assert 'LBFGS' not in shown and 'SGDm' not in shown
+    plt.close(fig)
+
+    # a label that is not a method key passes through untouched
+    fig, ax = plt.subplots()
+    ah.errorbar_seeds(ax, tab[tab.method == 'Sven'], 'batch_size', 'final_val_loss',
+                      label='$N=100$')
+    assert '$N=100$' in legend_labels(ax)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# 12. A frame remembers WHICH root it was loaded from (foreign-root loads)
+# ---------------------------------------------------------------------------
+def test_expected_run_ids_follow_the_frames_own_root(tmp_path, monkeypatch):
+    """A frame loaded from a foreign root must not read the DEFAULT root's manifest.
+
+    `critbatch_analysis` / `finetune_analysis` load the legacy root explicitly, and
+    the legacy-vs-fresh diff loads scans that exist in BOTH roots; the helpers they
+    hand the frame to take no root argument.  Before `_results_root`, a legacy
+    `mnist_scan_ce` frame (1040 runs) read the FRESH manifest: 1610 expected
+    run_ids and 122 "missing" configurations that were fresh-campaign grid points
+    the legacy scan never intended."""
+    fresh, legacy = tmp_path / 'fresh', tmp_path / 'legacy'
+    for d in (fresh, legacy):
+        d.mkdir()
+    monkeypatch.setenv(style.RESULTS_ROOT_ENV, str(fresh))
+
+    # the same scan NAME in both roots: the legacy copy has 2 seeds, the fresh one 3
+    # plus a whole extra configuration
+    legacy_recs = [sven_record(8, 0.01, 1e-4, s) for s in SEEDS[:2]]
+    fresh_recs = [sven_record(k, 0.01, 1e-4, s) for s in SEEDS for k in (8, 4)]
+    write_scan(legacy, 'both', legacy_recs, manifest=[r['run_id'] for r in legacy_recs])
+    write_scan(fresh, 'both', fresh_recs, manifest=[r['run_id'] for r in fresh_recs])
+
+    df_leg = style.load_results('both', results_root=str(legacy))
+    df_fresh = style.load_results('both')
+    assert style.frame_results_root(df_leg) == str(legacy)
+    assert style.frame_results_root(df_fresh) == str(fresh)
+    assert '_results_root' in style.PROVENANCE_COLUMNS      # never a config column
+    assert '_results_root' not in ah.config_columns(df_leg)
+
+    assert ah.expected_run_ids(df_leg) == {r['run_id'] for r in legacy_recs}
+    assert ah.expected_run_ids(df_fresh) == {r['run_id'] for r in fresh_recs}
+    assert ah.missing_configs(df_leg).empty          # was: the fresh grid's k=4 config
+    # an explicit root still wins over the frame's own
+    assert ah.expected_run_ids(df_leg, results_root=str(fresh)) == \
+        {r['run_id'] for r in fresh_recs}
+
+    row = ah.config_table(df_leg).iloc[0]
+    assert (row['n_seeds'], row['attempted'], row['n_missing']) == (2, 2, 0)
+
+    # a frame concatenated from two roots: each scan keeps its own root
+    write_scan(legacy, 'legacy_only', legacy_recs, manifest=[r['run_id'] for r in legacy_recs])
+    mixed = pd.concat([style.load_results('legacy_only', results_root=str(legacy)),
+                       df_fresh], ignore_index=True)
+    assert ah.expected_run_ids(mixed) == \
+        {r['run_id'] for r in legacy_recs} | {r['run_id'] for r in fresh_recs}
+
+    # a hand-built frame with no `_results_root` behaves exactly as before
+    plain = df_fresh.drop(columns=['_results_root'])
+    assert ah.expected_run_ids(plain) == {r['run_id'] for r in fresh_recs}
+
+
+def test_diagnostics_come_from_the_rows_own_root(tmp_path, monkeypatch):
+    """Same rule for the heavy npz: a row loaded from the legacy root reads the
+    LEGACY diag file, not the fresh scan's file of the same run_id."""
+    fresh, legacy = tmp_path / 'fresh', tmp_path / 'legacy'
+    for d in (fresh, legacy):
+        d.mkdir()
+    monkeypatch.setenv(style.RESULTS_ROOT_ENV, str(fresh))
+    recs = [sven_record(8, 0.01, 1e-4, SEEDS[0])]
+    run_id = recs[0]['run_id']
+    recs[0]['diag_file'] = f'diag/{run_id}.npz'
+    for d, value in ((fresh, 1.0), (legacy, 2.0)):
+        write_scan(d, 'both', recs, diag={run_id: {'train_batch': np.full(4, value)}})
+
+    row = style.load_results('both', results_root=str(legacy)).iloc[0]
+    assert style.load_diagnostics(row)['train_batch'].tolist() == [2.0] * 4
+    assert style.load_diagnostics(row, results_root=str(fresh))['train_batch'].tolist() \
+        == [1.0] * 4                                   # an explicit root still wins
+    assert style.load_diagnostics(style.load_results('both').iloc[0])[
+        'train_batch'].tolist() == [1.0] * 4
+
+
+def test_clipped_band_never_crosses_the_mean():
+    """The seed band's lower edge is clipped at the lowest seed, which is <= the mean
+    in exact arithmetic but NOT in floats when every seed recorded the same value:
+    `peak_gpu_mem_mb` is bit-identical across seeds, so `v.mean()` can land a few
+    1e-15 BELOW `v.min()`.  The raw clip then produced a NEGATIVE yerr and
+    `ax.bar` raised "'yerr' must not contain negative values", which is how the
+    memory panel of mnist_analysis / mnist_analysis_labelRegression died."""
+    v = np.array([31.476224] * 5)
+    mean, std, lo = v.mean(), v.std(ddof=1), v.min()
+    assert lo > mean          # the round-off that caused it (else this test is moot)
+    lower, upper = style.clipped_band(mean, std, lo)
+    assert lower <= mean <= upper
+    yerr = style.clipped_yerr(mean, std, lo)
+    assert (yerr >= 0).all()
+
+    # the normal case is untouched: band = mean +/- std, floored at the lowest seed
+    lower, upper = style.clipped_band(10.0, 4.0, 8.0)
+    assert (float(lower), float(upper)) == (8.0, 14.0)
+    lower, upper = style.clipped_band(10.0, 1.0, 2.0)
+    assert (float(lower), float(upper)) == (9.0, 11.0)
+    # a NaN std (a single seed) stays a zero-width band, not a NaN one
+    lower, upper = style.clipped_band(10.0, np.nan, 10.0)
+    assert (float(lower), float(upper)) == (10.0, 10.0)

@@ -4,6 +4,8 @@
 #   ./make_plots.sh                 every notebook, in dependency-free order
 #   ./make_plots.sh toy_1d_analysis comparisons     just these (name without .ipynb)
 #   ONLY_SCANS=1 ./make_plots.sh    the four headline scan notebooks + comparisons
+#   NO_PROFILES=1 ./make_plots.sh   everything except the four profile_* notebooks
+#                                   (those read profile_results_v2/ -> v3, not the scans)
 #
 # A notebook whose data is not in experiment_results/ prints "[skip] ... not found" /
 # "missing ..." and carries on (see analysis/RERUNS_NEEDED.md, item 7); a notebook that
@@ -30,9 +32,22 @@ STUDIES=(baselines_analysis batchsize_analysis overparam_analysis critbatch_anal
          cifar_analysis kappa_analysis finetune_analysis microbatch_analysis paramfrac_analysis)
 PROFILES=(profile_overview profile_scaling profile_paramfrac_microbatch profile_sven_backends)
 
+# >>> NEW NOTEBOOKS OF THE 2026-09-20 ANALYSIS WORK PACKAGES -- ADD YOURS HERE <<<
+# One line per work package (campaign/ANALYSIS_PLAN.md section 6).  A notebook stays
+# commented out until it exists and executes clean, so `./make_plots.sh` keeps working
+# while the packages land one at a time; uncomment the entry in the same commit that
+# adds the notebook.  Keep the names sorted by package, no .ipynb suffix.
+NEW=(
+  # WP2 headline   : headline_tables
+  # WP3 spectra    : spectra_analysis
+  # WP4b large     : gpt2_analysis
+  # WP5 legacy diff: legacy_vs_fresh
+)
+
 if [ $# -gt 0 ]; then NBS=("$@")
 elif [ "${ONLY_SCANS:-0}" = 1 ]; then NBS=("${SCANS[@]}")
-else NBS=("${SCANS[@]}" "${STUDIES[@]}" "${PROFILES[@]}"); fi
+elif [ "${NO_PROFILES:-0}" = 1 ]; then NBS=("${SCANS[@]}" "${STUDIES[@]}" ${NEW[@]+"${NEW[@]}"})
+else NBS=("${SCANS[@]}" "${STUDIES[@]}" ${NEW[@]+"${NEW[@]}"} "${PROFILES[@]}"); fi
 
 for nb in "${NBS[@]}"; do
   printf '== %s ==\n' "$nb"

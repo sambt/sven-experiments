@@ -1,0 +1,16 @@
+| display | config | wall_s | wall_s_std | epoch_s | sync_train_s | ms_per_step | peak_gpu_mem_mb | steps | examples | wall_vs_sven | scan_wall_s | scan_inflation | gpu_timing | gpu_scan | gpu_scan_frac | fin_timing | att_timing |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SGD | lr=0.1 | 26.59 | 0.05899 | 1.329 | 14.8 | 0.9475 | 31.48 | 1.562e+04 | 9.997e+05 | 0.3557 | 75.27 | 2.83 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| SGD + momentum | lr=0.01 | 27.07 | 0.1599 | 1.353 | 15.34 | 0.9823 | 31.59 | 1.562e+04 | 9.997e+05 | 0.3621 | 79.08 | 2.922 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| RMSprop | lr=0.001 | 28.2 | 0.1152 | 1.41 | 16.67 | 1.067 | 31.59 | 1.562e+04 | 9.997e+05 | 0.3773 | 81.34 | 2.884 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| AdamW | lr=0.001, weight_decay=0.01 | 29.29 | 0.06209 | 1.464 | 17.51 | 1.121 | 31.7 | 1.562e+04 | 9.997e+05 | 0.3917 | 75.77 | 2.587 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| Adam | lr=0.001 | 29.58 | 0.449 | 1.478 | 17.68 | 1.132 | 31.7 | 1.562e+04 | 9.997e+05 | 0.3956 | 79.71 | 2.695 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| Polyak SGD | f_star=0, max_lr=1, eps=1e-08 | 31.05 | 0.0848 | 1.552 | 18.87 | 1.208 | 31.48 | 1.562e+04 | 9.997e+05 | 0.4153 | 91.32 | 2.941 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| Muon | lr=0.001 | 46.86 | 0.2283 | 2.343 | 35.24 | 2.256 | 31.59 | 1.562e+04 | 9.997e+05 | 0.6268 | 96.66 | 2.063 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| MuonW | lr=0.001, weight_decay=0.1 | 47.96 | 0.3308 | 2.398 | 35.96 | 2.302 | 31.59 | 1.562e+04 | 9.997e+05 | 0.6416 | 96.42 | 2.01 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| SOAP | lr=0.01 | 66.74 | 2.456 | 3.336 | 54.33 | 3.478 | 41.83 | 1.562e+04 | 9.997e+05 | 0.8927 | 111.6 | 1.673 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 4 | 5 |
+| Sven | k=64, lr=0.5, rtol=0.001 | 74.76 | 0.2465 | 3.738 | 62.92 | 4.028 | 31.36 | 1.562e+04 | 9.997e+05 | 1 | 234.7 | 3.14 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| Stochastic L-BFGS | lr=0.1, max_iter=3, history_size=2 | 81.44 | 0.8235 | 4.072 | 68.93 | 4.413 | 32.14 | 1.562e+04 | 9.997e+05 | 1.089 | 372.6 | 4.575 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| JD (UPGrad) | lr=0.001, aggregator=UPGrad, inner_optimizer=Adam | 670.7 | 21.18 | 33.53 | 658.2 | 42.14 | 32.74 | 1.562e+04 | 9.997e+05 | 8.972 | 690.6 | 1.03 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |
+| HIG | lr=0.05, tau=0.03 | 1165 | 16.13 | 58.26 | 1152 | 73.75 | 404.3 | 1.562e+04 | 9.997e+05 | 15.59 | 6347 | 5.447 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 0.8 | 5 | 5 |
+| Shampoo | lr=0.1 | 2006 | 18.31 | 100.3 | 1992 | 127.5 | 36.58 | 1.562e+04 | 9.997e+05 | 26.83 | 2301 | 1.147 | NVIDIA A100-SXM4-80GB | NVIDIA A100-SXM4-40GB MIG 3g.20gb | 1 | 5 | 5 |

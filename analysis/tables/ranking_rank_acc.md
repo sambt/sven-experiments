@@ -1,0 +1,6 @@
+| title | Sven | Adam | AdamW | HIG | JD (UPGrad) | Muon | MuonW | Polyak SGD | RMSprop | SGD | SGD + momentum | SOAP | Shampoo | Stochastic L-BFGS |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| MNIST (label reg.) | 4 | 9 | 6 | 8 | 11 | 4 | 1 | 9 | 12 | 3 | 2 | 14 | 13 | 7 |
+| MNIST (CE) | 5 | 11 | 6 | 4 | 12 | 2 | 1 | 3 | 13 | 8 | 9 | 14 | 10 | 7 |
+| CIFAR-10 (label reg.) | 9 | 5 | 6 |  |  | 2 | 3 | 8 | 4 | 11 | 10 | 1 |  | 7 |
+| CIFAR-10 (CE) | 11 | 4 | 7 |  |  | 1 | 3 | 9 | 5 | 8 | 10 | 2 |  | 6 |

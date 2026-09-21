@@ -1,0 +1,13 @@
+| label | n_runs | n_seeds | n_diverged | grid_points | grid_per_group | distinct_per_group | distinct | distinct_frac |
+|---|---|---|---|---|---|---|---|---|
+| Stochastic L-BFGS | 225 | 5 | 0 | 45 | 9 | 9 | 45 | 1 |
+| Sven | 90 | 5 | 5 | 18 | 6 | 6 | 18 | 1 |
+| AdamW | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| MuonW | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| Adam | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| Muon | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| RMSprop | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| SGD + momentum | 35 | 5 | 15 | 7 | 1 | 1 | 7 | 1 |
+| SGD | 35 | 5 | 13 | 7 | 1 | 1 | 7 | 1 |
+| SOAP | 35 | 5 | 0 | 7 | 1 | 1 | 7 | 1 |
+| Polyak SGD | 5 | 5 | 0 | 1 | 1 | 1 | 1 | 1 |

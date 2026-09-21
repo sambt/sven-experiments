@@ -1,0 +1,55 @@
+{
+ "findings": [
+  {
+   "severity": "high",
+   "file": "analysis/scan_analysis.py",
+   "line": 620,
+   "issue": "Task item 2 / plan 1.3 / C-A6 (\"seed-band legends use analysis/paired.SEED_SPREAD_LABEL\") is NOT implemented, but the report presents it as done (\"paired.SEED_SPREAD_LABEL already existed; pinned by test\"). grep over the WP1-owned code and all 20 notebooks: SEED_SPREAD_LABEL is referenced ONLY by analysis/headline.py (WP2's new module, not WP1) and by two tests. Every seed band drawn by the WP1-owned helpers is unlabelled -- scan_analysis.py:620/667/782/832 call ax.fill_between(...) with no label= at all, and clipped_yerr bars carry no legend entry either. cifar_analysis c4, finetune_analysis c7 and nanogpt_analysis c5 print the phrase as a hard-coded literal \"mean \u00b1 std over seeds\" instead of the constant, which is exactly the duplication C-A6 removes. The orchestrator's final gate (spot-checking table numbers) cannot catch this, so C-A6 will be recorded as satisfied while no figure in the paper says what its band is.",
+   "suggested_fix": "Either wire it or retract the claim. Minimal wiring: import paired.SEED_SPREAD_LABEL in scan_analysis and pass label=SEED_SPREAD_LABEL on the first fill_between of each axes (or add a one-line helper style.band_legend(ax) that appends a single grey patch with that text), and replace the three hard-coded literals with the constant. Extend the existing test to assert the legend of a plot_best_curves axes contains it, instead of only pinning the string."
+  },
+  {
+   "severity": "medium",
+   "file": "analysis/analysis_helpers.py",
+   "line": 118,
+   "issue": "expected_run_ids() resolves the manifest root from the process default ($SV3_RESULTS_ROOT / the fresh root), never from the root the frame was loaded with, so config_table/missing_configs on a legacy frame silently read the FRESH manifest. WP1's item-3 change makes explicit foreign-root loading a standard pattern (critbatch_analysis/finetune_analysis now pass results_root=LEGACY_ROOT into add_derived -> best_per_method -> config_table), and WP5's phase-B legacy_vs_fresh notebook will load the legacy copies of scans that exist in BOTH roots. Demonstrated: ah.config_table(load_results('mnist_scan_ce', results_root=LEGACY)) prints \"[config_table] 122 configuration(s) with no result file at all (610 runs)\" -- those 122 configs are fresh-campaign grid points (e.g. hig_bs64_mlp_width32_lr0.005_tau*) that the legacy scan never intended; expected_run_ids sees 1610 run_ids for a 1040-run legacy frame (the legacy root's own manifest is empty). Today's two notebooks escape it only because exp_critbatch_* / exp_finetune_* do not exist in the fresh root; attempted/eligibility happen to coincide here only because expected_runs falls back to seed_count per key.",
+   "suggested_fix": "Record the load root on the frame in style.load_results (e.g. a _results_root column or df.attrs) and have expected_run_ids prefer it over resolve_results_root(None); or make config_table/missing_configs require results_root whenever df carries a root that differs from the default. Add a unit test: a frame loaded from root A must not read root B's manifest."
+  },
+  {
+   "severity": "medium",
+   "file": "analysis/analysis_helpers.py",
+   "line": 18,
+   "issue": "C-B7 display names reach only the five scan_analysis plot helpers and summary_table; the notebooks still show machine keys, so the same notebook now shows both spellings and the gap is not in the report's open issues. method_label is re-exported here but called by NO notebook: mnist_analysis/polynomial_analysis/toy_1d_analysis/mnist_analysis_labelRegression outputs contain both \"Stochastic L-BFGS\" (from summary_table) and raw \"LBFGS\"/\"JD_UPGrad\"; the figure legends of overparam_analysis c4, batchsize_analysis c4, critbatch_analysis c5 and finetune_analysis c5 pass label=m (raw keys) to errorbar_seeds, and cifar_analysis c4 / finetune_analysis c7 print r.method raw -- i.e. plots and tables that C-B7 names still say \"LBFGS\".",
+   "suggested_fix": "Either apply method_label at the remaining reader-facing sites (label=method_label(m) in the four notebooks' errorbar_seeds calls and r.method -> method_label(r.method) in the two printed tables), or list this explicitly as an open item for WP4a/WP4b/WP2 in the handoff. Note also that bench/best_configs.json carries its own label field that still says \"LBFGS\" (and keys Sven as \"SVD\"), so a phase-B package reading \"label\" from the selection file gets the pre-C-B7 name -- worth one line in the report."
+  },
+  {
+   "severity": "medium",
+   "file": "analysis/cifar_analysis.ipynb",
+   "line": 1,
+   "issue": "cifar_analysis was executed and left in place against a scan that is still being written, and its committed output reads as final: the load line says 742 runs, the scan held 745 when I started and 749 twenty minutes later (5 P2.a100.*_cifar_* jobs running). The decision-5 rtol extension is already beating the selected config: at 1/5 seeds, k=128 lr=0.5 rtol=0.3 gives seed-mean val 1.3262 vs the current pick's 1.4028 (k=128, lr=0.1, rtol=0.01, flagged EDGE-HIGH on both k and rtol in best_configs.json), so the committed Sven CIFAR-CE table (val 1.4028, val acc 0.533) and decision-3's \"Sven 53.0%\" will very likely move once the 5 seeds land. The header cell carries no provisional marker, and bench/best_configs.json was generated at 03:58, before the extension.",
+   "suggested_fix": "Add one sentence to the notebook's header cell (\"CIFAR-CE numbers are provisional: the decision-5 rtol extension was in flight at execution time; re-run after tools/select_best.py\"), and state in the handoff that the CIFAR-CE Sven pick is expected to CHANGE (with the 1.326-vs-1.403 evidence) rather than only that the scan grew."
+  },
+  {
+   "severity": "low",
+   "file": "analysis/scan_analysis.py",
+   "line": 1221,
+   "issue": "summary_table (via best_per_method/config_table eligibility) omits a method that has no eligible configuration entirely, so an optimizer that failed everywhere leaves no row: KFAC has 40 runs in mnist_scan_ce, all status=diverged, and appears in neither the summary table nor best_configs.json, although the notebook passes it in BASELINES. Only load_scan's census line (\"131 diverged run(s) ... {'KFAC': 40}\") records it. The plan's \"every table shows finished/attempted\" is then satisfied row-wise but a whole attempted method is invisible in the table a reader takes to the paper.",
+   "suggested_fix": "Either add a zero-row for a method whose every config is ineligible (finished=0, attempted from the manifest, n_diverged filled) or print the excluded methods under the table; WP2's headline_tables already mentions KFAC, so at minimum note the behaviour for the table owners."
+  },
+  {
+   "severity": "low",
+   "file": "analysis/style.py",
+   "line": 459,
+   "issue": "The new registry comment claims the schema-2 provenance block was \"found empirically by loading every fresh scan and collecting the AVERAGED OVER warnings, 2026-09-20\", but 6 of the 10 names cannot ever have warned: ckpt_error, train_eval_size and eval_every_steps are constant in all 43 dirs, and svd_spectra_schedule / svd_summary are dicts (skipped by the _SCALAR check) while muon_rule has one non-null value per dir. Only effective_loader_seed, checkpoint_policy and ckpt_init_file came from warnings. The additions are correct and harmless, but the provenance story in a binding registry should not overstate its evidence.",
+   "suggested_fix": "Split the comment into \"observed warning\" and \"registered pre-emptively (recorded fact, never a knob)\" groups, matching the same split in the report."
+  },
+  {
+   "severity": "low",
+   "file": "tests/test_analysis_core.py",
+   "line": 262,
+   "issue": "test_schema2_columns_are_registered pins 9 of the 10 new PROVENANCE names; svd_summary is registered in style.PROVENANCE_COLUMNS but absent from the test's prov tuple, so a later edit could drop it from the registry without any test failing (it is also missing from the schema2_outcomes fixture, unlike the other nine).",
+   "suggested_fix": "Add 'svd_summary' to the prov tuple and exclude it from the columns-present assertion the same way svd_spectra_schedule is."
+  }
+ ],
+ "tests_run": "campaign/run_cpu_tests.sh .venv/bin/python -m pytest tests/ -q -> 1015 passed, 33 skipped, 27 warnings in 117.53s, exit 0 (report claimed 1000/33; the extra 15 are WP2/WP3 tests already in the tree). SV3_CHECK_REAL_SCANS=1 .venv/bin/python -m pytest tests/test_analysis_core.py -q -k real -s -> 6 passed, printed counts (734/148, 1040/208, 1770/354, 1610/322, 745/153, 70/14) identical to my own jsonl counts. Own harness: 46-dir load sweep (load_results -> add_derived -> config_columns -> config_table -> method_color -> average_over_seeds) -> 0 AVERAGED-OVER / 0 other [style] / 0 exceptions; same sweep with the new columns removed from style._NEVER_CONFIG -> exactly the 10 claimed warning counts. Headline-scan sweep incl. attach_standalone_times + summary_table on all 7 -> 0 style lines. Raw-jsonl audits: top-level key union + per-dir/per-config variation for all 18 new columns; independent re-derivation of the cifar10_resnet_scan_labelRegression 11-method table and of mnist_scan_ce_timing total_time / peak_gpu_mem_mb; pre-fix average_over_seeds TypeError reproduced; clipped_band round-off reproduced (198/322 configs affected). Notebook audit of all 20 .ipynb (error cells, stderr, [style] lines, execution_count monotonicity, source diff vs HEAD) plus sandbox re-execution of mnist_analysis and cifar_analysis (0 error cells).",
+ "verdict": "needs_fixes"
+}

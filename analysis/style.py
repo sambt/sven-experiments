@@ -90,7 +90,9 @@ def load_diagnostics(row, name=None, results_root=None):
 
     ``row`` is a record/Series from :func:`load_results`. New-format runs are
     read from ``{results_root}/{name}/diag/{run_id}.npz`` (``name`` defaults to
-    ``row['_scan']``, set by load_results); legacy inline runs are re-read from
+    ``row['_scan']`` and the root to ``row['_results_root']``, both set by
+    load_results, so a row from a FOREIGN root reads that root's diagnostics);
+    legacy inline runs are re-read from
     their JSONL. Keys (when present): train_batch, val_batch, batch_times_train,
     batch_times_val, num_nonzero_svs, sv_max, sv_min, sv_min_kept (new records
     only -- see :data:`SV_MIN_KEYS`), svs (2-D, NaN-padded), svs_step, utr (2-D,
@@ -99,6 +101,10 @@ def load_diagnostics(row, name=None, results_root=None):
     name = name or row.get('_scan')
     if name is None:
         raise ValueError("pass name= (scan directory name) or use a row from load_results")
+    if results_root is None:
+        stamped = row.get('_results_root')          # the root this row came from
+        if isinstance(stamped, str) and stamped:
+            results_root = stamped
     scan_dir = Path(resolve_results_root(results_root)) / name
     diag_file = row.get('diag_file')
     if diag_file:
@@ -208,6 +214,40 @@ def _write_cache(cache, payload):
                   f'loading uncached -- pass cache_dir= for a writable location')
 
 
+def _stamp_root(df, root):
+    """Record on every row WHICH results root the frame was loaded from.
+
+    A notebook may load a scan from a foreign root (``results_root=LEGACY_ROOT`` in
+    ``critbatch_analysis`` / ``finetune_analysis``, the legacy-vs-fresh diff, a scan
+    that exists in both roots), and the frame then travels through helpers that take
+    no root argument.  Without this column they fall back to the PROCESS default and
+    read the wrong scan directory: ``analysis_helpers.expected_run_ids`` on a legacy
+    ``mnist_scan_ce`` frame read the FRESH manifest and reported 1610 expected runs
+    and 122 "missing" configurations for a 1040-run legacy scan.
+
+    Provenance, never a configuration column (see :data:`PROVENANCE_COLUMNS`), and
+    stamped on the way OUT of the cache too, so the pickles stay compatible in both
+    directions.  Read it back with :func:`frame_results_root`.
+    """
+    df['_results_root'] = str(root)
+    return df
+
+
+def frame_results_root(df, scan=None):
+    """The results root ``df`` was loaded from (:func:`_stamp_root`), or None.
+
+    ``scan``: restrict to the rows of that ``_scan`` -- a frame concatenated from two
+    roots has one root per scan.  None when the frame carries no ``_results_root``
+    (a hand-built or pre-existing frame) or when the rows disagree, so the caller
+    falls back to :func:`resolve_results_root` exactly as before.
+    """
+    if getattr(df, 'columns', None) is None or '_results_root' not in df.columns:
+        return None
+    sub = df if scan is None or '_scan' not in df.columns else df[df['_scan'] == scan]
+    roots = [str(v) for v in pd.Series(sub['_results_root']).dropna().unique()]
+    return roots[0] if len(roots) == 1 else None
+
+
 def load_results(name, results_root=None, selection_fn=None,
                  slim=True, use_cache=True, cache_dir=None):
     """Load experiment results into a DataFrame (new per-run directory format,
@@ -224,7 +264,9 @@ def load_results(name, results_root=None, selection_fn=None,
         for the sv-spectra / batch-wise analyses that need them: for new-format
         (light + diag/*.npz) runs they are then read from the npz and attached in
         the old inline layout (see :func:`load_diagnostics`). Every record gets a
-        ``_scan`` column (the scan name) for :func:`load_diagnostics`.
+        ``_scan`` column (the scan name) for :func:`load_diagnostics`, and every
+        frame a ``_results_root`` column (the root it was loaded FROM) for the
+        helpers that take no root argument -- :func:`_stamp_root`.
     use_cache (default True): for a slim, unfiltered load, cache the result to
         ``{results_root}/_cache/{name}.slim.pkl`` and reuse it while the scan dir
         is unchanged. The cache key is content-sensitive (see :func:`_dir_signature`),
@@ -248,7 +290,7 @@ def load_results(name, results_root=None, selection_fn=None,
                 blob = pickle.loads(cache.read_bytes())
                 if blob.get('sig') == sig:
                     print(f"Loaded {len(blob['df'])} runs from {cache} (slim cache)")
-                    return blob['df']
+                    return _stamp_root(blob['df'], root)
             except Exception:
                 pass  # stale/corrupt cache -> rebuild
 
@@ -274,7 +316,7 @@ def load_results(name, results_root=None, selection_fn=None,
             if cacheable:
                 # Re-signature from the same `files` list (unchanged since the glob).
                 _write_cache(cache, {'sig': sig, 'df': df})
-            return df
+            return _stamp_root(df, root)
 
     # Old format: single JSONL file
     jsonl_path = root / f'{name}.jsonl'
@@ -286,7 +328,7 @@ def load_results(name, results_root=None, selection_fn=None,
                     rec = json.loads(line)
                     records.append(_slim_record(rec) if slim else rec)
         print(f"Loaded {len(records)} runs from {jsonl_path} (single-file format)")
-        return pd.DataFrame(records)
+        return _stamp_root(pd.DataFrame(records), root)
 
     raise FileNotFoundError(
         f"No results found for '{name}': tried {scan_dir}/ and {jsonl_path}"
@@ -455,8 +497,27 @@ BACKEND_COLUMNS = ('gram_capture', 'gram_chunk_numel')
 #: configuration; never warned about.  `n_train` is deliberately NOT here -- the
 #: overparam studies sweep it -- but `n_val` / `n_test` / `n_params` /
 #: `steps_per_epoch` are consequences of the config, not knobs.
+#:
+#: The schema-2 block at the end is what the campaign runner records ABOUT a run
+#: (found empirically by loading every fresh scan and collecting the
+#: "AVERAGED OVER" warnings, 2026-09-20):
+#:
+#: * ``effective_loader_seed`` -- the data-order seed actually used (derived from
+#:   ``loader_seed`` / ``data_seed``), not a knob;
+#: * ``checkpoint_policy`` / ``ckpt_init_file`` / ``ckpt_error`` -- which
+#:   checkpoints the run was asked to write, where its shared per-seed initial
+#:   state lives, and why a write failed (``checkpoints`` / ``ckpt_file`` were
+#:   already here);
+#: * ``train_eval_size`` / ``eval_every_steps`` -- the EVALUATION protocol (like
+#:   ``eval_batch_size``): they change what is measured, not what is optimised;
+#: * ``svd_spectra_schedule`` / ``svd_summary`` -- diagnostic logging cadence and
+#:   its per-epoch summary (siblings of ``svd_info``);
+#: * ``muon_variant`` / ``muon_rule`` -- the Muon parameter-grouping rule the run
+#:   actually built (C-B5): a recorded fact, while the CHOICE is ``optimizer``
+#:   (``Muon`` vs ``MuonW``).
 PROVENANCE_COLUMNS = (
-    'run_id', 'model_seed', 'loader_seed', '_scan', 'diag_file', 'ckpt_file',
+    'run_id', 'model_seed', 'loader_seed', '_scan', '_results_root',
+    'diag_file', 'ckpt_file',
     'status', 'error', 'diverged_at_step', 'run_hash', 'schema_version',
     'git_sha', 'git_dirty', 'git_source', 'sven_git_sha', 'sven_git_dirty',
     'sven_git_source', 'host', 'slurm_job_id', 'n_shards', 'shard_id',
@@ -464,16 +525,34 @@ PROVENANCE_COLUMNS = (
     'collected_at', 'start_time', 'start_unix', 'end_time', 'end_unix',
     'wall_time_s', 'n_params', 'n_val', 'n_test', 'steps_per_epoch',
     'actual_param_fraction', 'eval_batch_size', 'checkpoints', 'svd_info',
+    # schema 2 (campaign, 2026-09)
+    'effective_loader_seed', 'checkpoint_policy', 'ckpt_init_file', 'ckpt_error',
+    'train_eval_size', 'eval_every_steps', 'svd_spectra_schedule', 'svd_summary',
+    'muon_variant', 'muon_rule',
 )
 
 #: Scalar quantity columns added by the derived-column helpers -- outcomes, never
 #: configuration.  `final_test_*` are outcomes shown BESIDE a selected config
 #: (C-E1); no selector may rank on them (:func:`assert_selection_metric`).
+#:
+#: The second block is the schema-2 outcome summary the RUNNER writes onto every
+#: record (``generic_scan.summarize_curves`` + the three ``_final`` lines): these
+#: are the same quantities the derived columns recompute from the curves, so they
+#: are outcomes for exactly the same reason.  ``test`` / ``test_acc`` are matched
+#: by :func:`is_test_metric`, so no selector can rank on them either.  The third
+#: block is the standalone-timing join (:func:`scan_analysis.attach_standalone_times`).
 OUTCOME_COLUMNS = (
     'final_val_loss', 'final_train_loss', 'final_val_acc', 'final_train_acc',
     'final_test_loss', 'final_test_acc', 'val_ppl',
     'total_time', 'avg_epoch_time', 'avg_batch_time_train', 'avg_batch_time_val',
     'peak_gpu_mem_mb', 'effective_bs', 'diverged', 'failed', 'method',
+    # schema 2: the runner's own outcome summary (C-E5 / C-E1)
+    'val_final', 'val_best', 'val_best_index', 'val_last3_mean',
+    'test', 'test_acc', 'train_eval_final',
+    # the standalone timing join
+    'time_excl_first_epoch', 'standalone_total_time', 'standalone_avg_epoch_time',
+    'standalone_avg_batch_time_train', 'standalone_avg_batch_time_val',
+    'standalone_peak_gpu_mem_mb', 'standalone_time_excl_first_epoch',
 )
 # Back-compat alias (was the auto-detection denylist).
 _DERIVED_QUANTITY_COLS = set(OUTCOME_COLUMNS)
@@ -671,7 +750,14 @@ def average_over_seeds(df, seed_col='model_seed', config_cols=None):
 
         for col in quantity_cols:
             vals = group[col].tolist()
-            first_valid = next((v for v in vals if v is not None), None)
+            # NaN is not a value: a column that is a string for SOME optimizers and
+            # absent for the rest (`gram_capture`, `muon_variant` / `muon_rule`)
+            # comes back as NaN where it does not apply, and pandas puts those rows
+            # first.  Taking the NaN as `first_valid` sent such a column down the
+            # numeric branch, where `np.mean` then met the strings and raised
+            # "the resolved dtypes are not compatible with add.reduce".
+            first_valid = next((v for v in vals if v is not None
+                                and not (isinstance(v, float) and np.isnan(v))), None)
             if first_valid is None:
                 row[col] = None
                 row[f'{col}_std'] = None
@@ -682,7 +768,11 @@ def average_over_seeds(df, seed_col='model_seed', config_cols=None):
                 row[col] = _avg_arrays(vals)
                 row[f'{col}_std'] = _std_arrays(vals)
             elif isinstance(first_valid, (int, float, np.integer, np.floating)):
-                numeric = [v for v in vals if v is not None and not (isinstance(v, float) and np.isnan(v))]
+                # only the actual numbers: a mixed column (see above) must not drag
+                # a string into np.mean
+                numeric = [v for v in vals
+                           if isinstance(v, (int, float, np.integer, np.floating))
+                           and not (isinstance(v, float) and np.isnan(v))]
                 row[col] = float(np.mean(numeric)) if numeric else float('nan')
                 ddof = 1 if len(numeric) > 1 else 0
                 row[f'{col}_std'] = float(np.std(numeric, ddof=ddof)) if numeric else float('nan')
@@ -747,6 +837,7 @@ lr_labels[50.0] = "50"
 METHOD_COLORS = {
     'Sven':      '#000000',
     'SGD':       '#55A868',   # green
+    'SGDm':      '#8FC99C',   # light green (SGD at momentum 0.9, C-B2 -- as AdamW is to Adam)
     'PolyakSGD': '#CCB974',   # khaki
     'RMSprop':   '#C44E52',   # red
     'Adam':      '#4C72B0',   # blue
@@ -788,6 +879,38 @@ def method_color(name):
 
 
 method_color._warned = set()
+
+
+# ---------------------------------------------------------------------------
+# Optimizer DISPLAY names -- what a legend / table column shows (C-B7, C-B2)
+# ---------------------------------------------------------------------------
+# The record's `optimizer` is the machine key ('LBFGS', 'SGDm', 'JD_UPGrad') and
+# stays the key everywhere -- in `METHOD_COLORS`, in a `method` column, in a
+# groupby.  What a READER sees is this map, so the name in a figure says what was
+# actually run:
+#
+# * `LBFGS` is `torch.optim.LBFGS` on MINIBATCHES, not full-batch L-BFGS -- the
+#   single most misleading label in the old plots (C-B7 / F33);
+# * `SGDm` is `torch.optim.SGD(momentum=0.9)`, `SGD` is momentum 0 (C-B2);
+# * `AdamW` / `MuonW` are Adam / Muon at their own default weight decay.
+#
+# Look a name up with :func:`method_label`; a method with no entry displays as
+# itself, so adding an optimizer needs no change here.
+METHOD_LABELS = {
+    'LBFGS':     'Stochastic L-BFGS',
+    'SGDm':      'SGD + momentum',
+    'JD':        'JD (UPGrad)',
+    'PolyakSGD': 'Polyak SGD',
+}
+
+
+def method_label(name):
+    """The display name of an optimizer (:data:`METHOD_LABELS`), for legends,
+    tick labels and table columns.  Aliases are canonicalised first, so
+    ``'SVD'``/``'LBFGS1'``/``'JD_UPGrad'`` give the same answer as their
+    canonical spelling; an unregistered name displays unchanged."""
+    key = canonical_method(name)
+    return METHOD_LABELS.get(key, key)
 
 
 # ---------------------------------------------------------------------------
@@ -845,10 +968,19 @@ def config_eligible(n_ok, n_expected):
 def clipped_band(mean, std, lo):
     """``(lower, upper)`` of the seed band drawn everywhere: mean +/- 1 std (ddof=1),
     with the lower edge clipped at the lowest seed ``lo`` so it never reaches <= 0
-    on a log axis.  The line itself stays the arithmetic seed mean."""
+    on a log axis.  The line itself stays the arithmetic seed mean.
+
+    The edges are then pinned to the mean's own side of it: ``lo <= mean`` holds in
+    exact arithmetic, but not in floats when every seed recorded the SAME value --
+    ``peak_gpu_mem_mb`` is bit-identical across the seeds of a config, so
+    ``v.mean()`` lands ~4e-15 BELOW ``v.min()`` and the raw clip put the lower edge
+    above the mean.  :func:`clipped_yerr` then handed matplotlib a yerr of -3.6e-15
+    and ``ax.bar`` refused it ("'yerr' must not contain negative values") -- one
+    round-off bit killing the whole memory panel.
+    """
     mean, lo = np.asarray(mean, dtype=float), np.asarray(lo, dtype=float)
     std = np.nan_to_num(np.asarray(std, dtype=float))
-    return np.maximum(mean - std, lo), mean + std
+    return np.minimum(np.maximum(mean - std, lo), mean), np.maximum(mean + std, mean)
 
 
 def clipped_yerr(mean, std, lo):
@@ -856,6 +988,39 @@ def clipped_yerr(mean, std, lo):
     lower, upper = clipped_band(mean, std, lo)
     mean = np.asarray(mean, dtype=float)
     return np.vstack([mean - lower, upper - mean])
+
+
+def seed_spread_label(plain=False):
+    """THE words for the band / error bar :func:`clipped_band` draws (C-A6).
+
+    One spelling, from one constant: :data:`paired.SEED_SPREAD_LABEL`
+    (``'$\\pm$ 1 std over seeds'``).  It is the spread of the SEEDS, not a confidence
+    interval on their mean -- ``paired.interval_label`` is the label for that.
+    ``plain=True`` gives the same words without mathtext, for a printed table header
+    (``'± 1 std over seeds'``); a figure legend wants the default.
+
+    Imported lazily: :mod:`paired` imports this module, so a top-level import here
+    would be a cycle (``scan_analysis`` -> ``paired`` -> ``analysis_helpers`` ->
+    ``scan_analysis``).  The constant lives in :mod:`paired` because that is where
+    the seed-band-vs-interval distinction is documented.
+    """
+    from paired import SEED_SPREAD_LABEL
+    return SEED_SPREAD_LABEL.replace(r'$\pm$', '±') if plain else SEED_SPREAD_LABEL
+
+
+def band_legend(ax, color='0.45', alpha=0.25):
+    """Give ``ax`` ONE legend entry naming the seed band (C-A6), and return it.
+
+    Every helper that draws seed uncertainty calls this, so a figure legend says
+    what its shaded band / error bar means instead of leaving the reader to guess.
+    The entry is a neutral grey proxy patch with no data (it cannot move the axis
+    limits) and appears only if something calls ``ax.legend()``; calling this twice
+    on the same axes adds nothing the second time, so a loop over methods is safe.
+    """
+    label = seed_spread_label()
+    if label in ax.get_legend_handles_labels()[1]:
+        return None
+    return ax.fill_between([], [], color=color, alpha=alpha, lw=0, label=label)
 
 
 # ---------------------------------------------------------------------------
