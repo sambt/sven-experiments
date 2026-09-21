@@ -11,12 +11,12 @@
 # run_ids (and run hashes) of the configuration it names. After a grid extension: re-run
 # the two tools above, in that order, and relaunch.
 #
-# Generated 2026-09-20T03:58:29-0400
+# Generated 2026-09-20T22:07:24-0400
 # from      /n/home11/sambt/iaifi/sv3/bench/best_configs.json
 #   selection rule: full
 #   results root:   /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
 #   configs:        /n/home11/sambt/iaifi/sv3/experiments/configs
-#   selection made: 2026-09-20T03:58:14-0400
+#   selection made: 2026-09-20T22:06:52-0400
 # GENERATED FROM AN INCOMPLETE SELECTION (--allow-incomplete):
 #   cifar10_resnet_ce_scan: 100 run(s) of the grid unfinished
 #   cifar10_resnet_scan_labelRegression: 100 run(s) of the grid unfinished
@@ -68,7 +68,7 @@ work_lists:
     lane: timing
     n_jobs: 1
     note: "C-T1/C-T3: one selected configuration at a time, NPROC 1, svd_info none, checkpoints none. SUBMIT WITH bench/submit_timing_phase5.sh, not the launcher."
-    # 85 item(s), 425 run(s); ~43.4 process-h at the scans' own (sharded) step times
+    # 85 item(s), 425 run(s); ~43.5 process-h at the scans' own (sharded) step times
     items:
       - config: toy_1d_scan_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[Adam] lrs_standard=[0.001]"
@@ -387,9 +387,9 @@ work_lists:
         nproc: 1
         note: "SOAP: seed-mean val 1.14813, ~8.1 min/run sharded"
       - config: cifar10_resnet_ce_scan_timing
-        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]"
         nproc: 1
-        note: "Sven: seed-mean val 1.40281, ~22.0 min/run sharded"
+        note: "Sven: seed-mean val 1.35515, ~22.1 min/run sharded"
       - config: exp_nanogpt_speedrun_timing
         overrides: "++svd_info=none ++checkpoints=none ++checkpoints_svd=null mode=standard optimizers_standard=[AdamW] lrs_standard=[0.0003]"
         nproc: 1
@@ -983,7 +983,7 @@ work_lists:
         nproc: {a100: 2, mig: 1}
         note: "SOAP (heavy); checkpoints + dense spectra"
       - config: cifar10_resnet_ce_scan_diag
-        overrides: "mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 1, mig: 1}
         note: "Sven (sven); checkpoints + dense spectra"
       - config: exp_nanogpt_speedrun_diag
@@ -2059,7 +2059,7 @@ work_lists:
         nproc: {a100: 2, mig: 1}
         note: "SOAP (heavy); 5 fresh model seeds"
       - config: cifar10_resnet_ce_scan_confirm
-        overrides: "mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]"
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]"
         nproc: {a100: 1, mig: 1}
         note: "Sven (sven); 5 fresh model seeds"
       - config: exp_nanogpt_speedrun_confirm

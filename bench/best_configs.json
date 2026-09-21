@@ -1,7 +1,7 @@
 {
  "schema": 2,
- "generated_at": "2026-09-20T03:58:14-0400",
- "generated_by": "tools/select_best.py",
+ "generated_at": "2026-09-20T22:06:52-0400",
+ "generated_by": "tools/select_best.py (per-scan; see selection_provenance)",
  "results_root": "/n/home11/sambt/iaifi/sv3/experiment_results",
  "config_dir": "/n/home11/sambt/iaifi/sv3/experiments/configs",
  "rule_name": "full",
@@ -5518,11 +5518,12 @@
   },
   "cifar10_resnet_ce_scan": {
    "groups": [
-    "mode=all"
+    "mode=all",
+    "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"
    ],
    "scan_dir": "/n/home11/sambt/iaifi/sv3/experiment_results/cifar10_resnet_ce_scan",
-   "n_expected": 840,
-   "n_records": 740,
+   "n_expected": 885,
+   "n_records": 785,
    "n_missing": 100,
    "warnings": [],
    "errors": [],
@@ -6315,15 +6316,15 @@
      "method": "SVD",
      "label": "Sven",
      "family": "svd",
-     "config_key": "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_gram_bnbatch",
-     "overrides": "mode=svd k_values=[128] lrs=[0.1] rtol=[0.01]",
+     "config_key": "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_gram_bnbatch",
+     "overrides": "mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]",
      "verified": true,
      "verify_error": null,
-     "seed_mean_final_val": 1.4028116063578935,
+     "seed_mean_final_val": 1.3551502442261874,
      "n_ok": 5,
      "n_expected": 5,
      "n_diverged": 0,
-     "n_eligible_configs": 30,
+     "n_eligible_configs": 39,
      "tied_with": [],
      "edges": {
       "k": "EDGE-HIGH",
@@ -6331,16 +6332,16 @@
      },
      "batch_size": 128,
      "hash8": {
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4000_lseed4000_gram_bnbatch": "f9e688d6",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4001_lseed4000_gram_bnbatch": "14baff5b",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4002_lseed4000_gram_bnbatch": "74fc9d61",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4003_lseed4000_gram_bnbatch": "e13771e9",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4004_lseed4000_gram_bnbatch": "66f1585a"
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4000_lseed4000_gram_bnbatch": "228a04ca",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4001_lseed4000_gram_bnbatch": "0b256958",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4002_lseed4000_gram_bnbatch": "fdfdc3b8",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4003_lseed4000_gram_bnbatch": "cb8111e3",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4004_lseed4000_gram_bnbatch": "acd098d2"
      },
      "hparams": {
       "k": 128,
-      "lr": 0.1,
-      "rtol": 0.01,
+      "lr": 0.5,
+      "rtol": 0.3,
       "svd_mode": "torch",
       "microbatch_size": null,
       "param_fraction": null,
@@ -6355,45 +6356,45 @@
      ],
      "loader_seed": 4000,
      "run_ids": [
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4000_lseed4000_gram_bnbatch",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4001_lseed4000_gram_bnbatch",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4002_lseed4000_gram_bnbatch",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4003_lseed4000_gram_bnbatch",
-      "svd_bs128_k128_lr0.1_rtol0.01_svdtorch_mseed4004_lseed4000_gram_bnbatch"
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4000_lseed4000_gram_bnbatch",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4001_lseed4000_gram_bnbatch",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4002_lseed4000_gram_bnbatch",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4003_lseed4000_gram_bnbatch",
+      "svd_bs128_k128_lr0.5_rtol0.3_svdtorch_mseed4004_lseed4000_gram_bnbatch"
      ],
      "seed_values": {
       "4000": {
-       "final_val": 1.378851179750269,
+       "final_val": 1.3262402264854798,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 1349.522
+       "wall_time_s": 1384.135
       },
       "4001": {
-       "final_val": 1.423693743319103,
+       "final_val": 1.3725352085581275,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 1350.201
+       "wall_time_s": 1357.863
       },
       "4002": {
-       "final_val": 1.4089931102580724,
+       "final_val": 1.362380531906236,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 1262.252
+       "wall_time_s": 1261.275
       },
       "4003": {
-       "final_val": 1.4194336494149145,
+       "final_val": 1.3621419257959038,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 1258.042
+       "wall_time_s": 1259.473
       },
       "4004": {
-       "final_val": 1.3830863490471081,
+       "final_val": 1.352453328385189,
        "status": "ok",
        "diverged": false,
-       "wall_time_s": 1377.214
+       "wall_time_s": 1380.125
       }
      },
-     "mean_wall_time_s": 1319.4461999999999,
+     "mean_wall_time_s": 1328.5742,
      "n_records": 5
     }
    }
@@ -6806,5 +6807,33 @@
     }
    }
   }
- }
+ },
+ "selection_provenance": [
+  {
+   "scans": [
+    "cifar10_resnet_scan_labelRegression",
+    "exp_nanogpt_speedrun",
+    "mnist_scan_ce",
+    "mnist_scan_labelRegression",
+    "polynomial_scan",
+    "toy_1d_scan"
+   ],
+   "generated_at": "2026-09-20T03:58:14-0400",
+   "generated_by": "tools/select_best.py",
+   "groups": [
+    "mode=all"
+   ]
+  },
+  {
+   "scans": [
+    "cifar10_resnet_ce_scan"
+   ],
+   "generated_at": "2026-09-20T22:06:52-0400",
+   "generated_by": "tools/select_best.py",
+   "groups": [
+    "mode=all",
+    "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"
+   ]
+  }
+ ]
 }
