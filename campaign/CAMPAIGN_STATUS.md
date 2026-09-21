@@ -204,3 +204,10 @@ schema-2 analysis notebooks.
   integrate into `iclr_manuscript/iclr2026_conference_v2.tex` -> compile -> 3-lens review -> fix. AFTER BOTH workflows
   finish: re-run `cd analysis && ../.venv/bin/python -m paper_assets`, recompile, check the refreshed CIFAR-CE / Fig-5 /
   profile-v3 numbers flow into the PDF, final read-through.
+* 09-21 07:35 EDT — The compute node FAILED overnight (interactive job 47390824 NODE_FAIL after 5 h 18 min); both workflows
+  died mid-flight. All GPU work had finished first: CIFAR-CE rtol extension, re-selection (6e7fc72: Sven -> k=128, lr=0.5,
+  rtol=0.3), CIFAR-CE Sven timing/diag/confirm reruns, Fig-5 rerun at the selected config (1b7b61d, 15 runs), profile v3.
+  Session resumed on a LOGIN node (heavy work only via campaign/run_cpu_tests.sh). Relaunched: `sven-analysis-phaseC-resume`
+  (w1nq68ygk: notebook refresh + profile v3 switch -> final gate -> fixer) and the paper workflow resumed from its cache
+  (wc9dsdk4f, script now at campaign/workflows/sven-paper-update.js; plan + Gram appendix + experiment-details drafts were
+  cached, the 4 asset agents rerun, then integrate -> review -> fix). Blueprint: campaign/PAPER_PLAN.md.
