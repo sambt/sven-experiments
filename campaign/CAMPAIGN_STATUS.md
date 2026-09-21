@@ -167,3 +167,15 @@ schema-2 analysis notebooks.
 * Phase B (after A, one owner per notebook set): WP2 headline notebooks, WP3 spectrum figures, WP4a reviewer MLP
   notebooks, WP4b CIFAR/nanoGPT/new GPT-2 notebook, WP5 legacy-vs-fresh diff. Phase C: make_plots.sh clean, tests green,
   10-number spot check; after the GPU items: re-select, phase-5 reruns for CIFAR-CE Sven if its pick changed, profile v3 notebooks.
+* 09-20 ~20:15 EDT — **Analysis phase A committed (94ee715)**; reports in `campaign/analysis_reports/A.*`. Reviews recomputed
+  numbers from raw records and caught real errors (accuracy sign in paired tables, pooled-vs-same-instance optimism, dataset
+  cache collision across data seeds in ckpt_tools, stale doc facts). Corrections to the plan's numbers: CIFAR-CE Sven 53.0% vs
+  56.8-77.9% (9th/11 on val, 11th/11 on test acc), 63 s/epoch vs 2.7-12.4 s; Sven diverges on 688/7,825 on-grid runs (low
+  rtol); MNIST Sven is NOT bit-reproducible across MIG-40GB vs A100-80GB; timing calibration clean (max drift 3.6%);
+  checkpoints total 243 GB. GPU items: CIFAR-CE rtol extension jobs 47394881-85 running from snapshot f0f89b24 (partial
+  seeds already beat the old pick: rtol 0.3 -> 1.33 vs 1.40); re-profile job 47396284 pending (exclusive) -> profile_results_v3/.
+  After the rtol jobs: `tools/select_best.py cifar10_resnet_ce_scan --out <side file>` and SPLICE the one key into
+  bench/best_configs.json (running it plainly would overwrite the 7-scan file), then gen_phase5_plan + rerun CIFAR-CE Sven
+  timing/diag/confirm if the pick changed, then re-execute cifar_analysis + headline_tables.
+* 09-20 ~20:20 EDT — Phase B workflow `sven-analysis-phaseB` (wu7rezhmf): WP2 headline notebooks, WP3 spectrum figures,
+  WP4a reviewer MLP notebooks, WP4b CIFAR/nanoGPT/new GPT-2 notebook, WP5 legacy-vs-fresh diff (implement -> review -> fix).
