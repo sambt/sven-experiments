@@ -1015,6 +1015,21 @@ def _fig5_styles(opts):
     return [tuple(pair) for pair in (opts.get('styles') or FIG5_STYLES)]
 
 
+def _fig5_drawn(inp, opts):
+    """The Fig-5 configuration groups a figure draws.
+
+    ``configurations='selected'`` (the default) is the one the headline label-regression
+    scan selected; ``'all'`` adds every other configuration on disk, dashed and labelled
+    as not selected.  The extra one on disk is the legacy set point the sweep was first
+    launched at before the CIFAR re-selection landed -- a bookkeeping leftover, not a
+    comparison the paper makes, so the paper's figures do not draw it.
+    """
+    groups = list(inp.fig5_groups)
+    if opts.get('configurations', 'selected') == 'all':
+        return groups
+    return [g for g in groups if g['is_selected']] or groups[:1]
+
+
 def _fig5_quality(inp, opts):
     """Loss and accuracy against the ACTUAL parameter fraction, all configurations on disk.
 
@@ -1032,7 +1047,7 @@ def _fig5_quality(inp, opts):
     styles = _fig5_styles(opts)
     counts = {}
     target = inp.fig5_target_seeds
-    for i, (g, (ls, marker)) in enumerate(zip(inp.fig5_groups, styles)):
+    for i, (g, (ls, marker)) in enumerate(zip(_fig5_drawn(inp, opts), styles)):
         counts[g['cfg']['label']] = lf.plot_paramfrac_quality(
             axes, g['table'], ls=ls, marker=marker, label_suffix='',
             hollow_label=False, annotate_counts=False)
@@ -1064,13 +1079,18 @@ def _fig5_quality(inp, opts):
     ms = opts['legend_marker_size']
     handles = [(Line2D([], [], color='C0', lw=1.2), 'validation'),
                (Line2D([], [], color='C1', lw=1.2), 'test')]
-    for g, (ls, marker) in zip(inp.fig5_groups, styles):
+    drawn = _fig5_drawn(inp, opts)
+    for g, (ls, marker) in zip(drawn, styles):
+        # with one configuration its role needs no saying
+        role = f' ({g["role"]})' if len(drawn) > 1 else ''
         handles.append((Line2D([], [], color='0.35', lw=1.2, ls=ls, marker=marker,
-                               ms=ms),
-                        f'{g["cfg"]["label"]} ({g["role"]})'))
-    handles += [(Line2D([], [], color='0.35', lw=0, marker='o', ms=4.5, mfc='none',
-                        mew=1.2), 'some seeds diverged'),
-                (Line2D([], [], color='0.55', lw=0.8, ls=':'), 'chance (10 classes)')]
+                               ms=ms), f'{g["cfg"]["label"]}{role}'))
+    # the hollow-marker entry only when some drawn point IS hollow
+    if any((_num(r['finished']) < _num(r['attempted'])) for g in drawn
+           for _, r in g['table'].iterrows()):
+        handles.append((Line2D([], [], color='0.35', lw=0, marker='o', ms=4.5, mfc='none',
+                               mew=1.2), 'some seeds diverged'))
+    handles.append((Line2D([], [], color='0.55', lw=0.8, ls=':'), 'chance (10 classes)'))
     C.legend_below(fig, [h for h, _l in handles], [l for _h, l in handles],
                    bbox_to_anchor=None, **_legend_kw(opts))
     return fig, {'axes': axes, 'counts': {k: v.to_dict('records')
@@ -1094,9 +1114,11 @@ def _fig5_cost(inp, opts):
     step_times = is_v3 if opts['profile_step_times'] is None \
         else bool(opts['profile_step_times'])
     prof = inp.fig5_profiles if opts['profile_overlay'] else pd.DataFrame()
-    for i, (g, (ls, marker)) in enumerate(zip(inp.fig5_groups, _fig5_styles(opts))):
+    for i, (g, (ls, marker)) in enumerate(zip(_fig5_drawn(inp, opts), _fig5_styles(opts))):
         lf.plot_paramfrac_cost(axes, g['table'], ls=ls, marker=marker,
-                               record_label=f'records, {g["role"]} ({g["cfg"]["label"]})',
+                               record_label=(f'records, {g["role"]} ({g["cfg"]["label"]})'
+                                             if len(_fig5_drawn(inp, opts)) > 1
+                                             else f'records ({g["cfg"]["label"]})'),
                                profiles=prof if (i == 0 and len(prof)) else None,
                                profile_step_times=step_times)
     for ax in axes:
@@ -1105,7 +1127,12 @@ def _fig5_cost(inp, opts):
             leg.remove()
     axes[0].set_title('Peak GPU memory', fontsize=fs)
     axes[1].set_title('Time per step', fontsize=fs)
-    _shared_legend(fig, **_legend_kw(opts))
+    # one series needs no key -- the configuration is the caption's -- and the seed
+    # spread is drawn as error bars on the points, not as a band, so the band entry
+    # the shared legend would print does not describe this figure.  The key comes
+    # back with a second configuration or the profile overlay.
+    if len(_fig5_drawn(inp, opts)) > 1 or len(prof):
+        _shared_legend(fig, **_legend_kw(opts))
     return fig, {'axes': axes, 'profile_overlay': int(len(prof)),
                  'overlay_is_v3': is_v3}
 
@@ -1190,13 +1217,16 @@ def _gpt2(inp, opts):
     optimum is INTERIOR to its sweep: the level is not an lr failure.
     """
     C.set_paper_style(_style_fraction(opts))
-    fig, axes = plt.subplots(1, 2, figsize=C.figsize(2, 1, fraction=opts['fraction'],
-                                                     aspect=opts['aspect'],
-                                                     extra_h=opts['extra_h']))
+    ncol = 3 if opts['lr_panel'] else 2
+    fig, axes = plt.subplots(1, ncol, figsize=C.figsize(ncol, 1, fraction=opts['fraction'],
+                                                        aspect=opts['aspect'],
+                                                        extra_h=opts['extra_h']))
     fs = _title_fs(opts)
     best = inp.gpt2[inp.gpt2['run_id'].isin(inp.gpt2_best['run_id'])]
+    # the method key is shared under the row (panels 1 and 3 use the same colours), so
+    # the curves carry the bare method name; the best lr per method is the right panel
     lf.plot_gpt2_curves(axes[0], best, 'val_step', lw_sven=opts['lw_sven'],
-                        lw=opts['lw'])
+                        lw=opts['lw'], label_fn=lambda r: style.method_label(r['method']))
     sven = inp.gpt2[inp.gpt2['method'] == 'Sven'].sort_values('lr')
     lrs = sorted(sven['lr'].unique())
     cmap = plt.get_cmap(opts['cmap'])
@@ -1209,9 +1239,42 @@ def _gpt2(inp, opts):
     axes[1].set_title(f'Sven, all {len(lrs)} learning rates '
                       f'($k=B={int(_num(sven["k"].iloc[0]))}$)',
                       fontsize=fs)
-    for ax in axes:
+    for ax in axes[:2]:
         ax.set_yscale('log')
-        ax.legend(fontsize=opts['legend_fontsize'], ncol=opts['legend_ncol'])
+    axes[1].set_ylabel('')                  # the row shares one y label, on the left
+    if opts['lr_panel']:
+        # the third panel is the final loss against the learning rate: the evidence
+        # that every method's optimum, Sven's included, is interior to its own sweep
+        ax = axes[2]
+        for method, sub in inp.gpt2_lr.groupby('method', sort=False):
+            sub = sub.sort_values('lr')
+            ax.plot(sub['lr'], pd.to_numeric(sub['val'], errors='coerce'), 'o-',
+                    ms=opts['lr_marker_size'], color=style.method_color(method),
+                    lw=opts['lw_sven'] if method == 'Sven' else opts['lw'],
+                    label=style.method_label(method))
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Learning rate')
+        ax.set_title('Final loss per learning rate', fontsize=fs)   # "final" is here
+    # No key inside any panel: at this size every corner has a curve through it.  Two
+    # strips under the row instead -- the methods (panels 1 and 3) and the lr ramp
+    # (panel 2), the second one titled so the reader knows which panel it belongs to.
+    order = [m for m in style.METHOD_COLORS if m in set(inp.gpt2_lr['method'])]
+    handles, labels = C.method_handles(order)
+    lr_handles, lr_labels = axes[1].get_legend_handles_labels()
+    # ONE figure legend, two rows: two 'outside lower center' legends land on the same
+    # strip.  Legends fill column-major, so interleaving the two lists puts the methods
+    # on the first row and the lr ramp on the second.
+    ncol = max(len(handles), len(lr_handles))
+    handles += [plt.Line2D([], [], ls='')] * (ncol - len(handles))
+    labels += [''] * (ncol - len(labels))
+    lr_handles += [plt.Line2D([], [], ls='')] * (ncol - len(lr_handles))
+    lr_labels += [''] * (ncol - len(lr_labels))
+    pairs = [x for pair in zip(zip(handles, labels), zip(lr_handles, lr_labels))
+             for x in pair]
+    fig.legend([h for h, _ in pairs], [l for _, l in pairs], ncol=ncol,
+               loc='outside lower center', frameon=False,
+               fontsize=opts['legend_fontsize'], columnspacing=1.2)
     return fig, {'axes': axes, 'n_lrs': len(lrs)}
 
 
@@ -1391,10 +1454,18 @@ def _profile_phases(inp, opts):
     archs = list(opts['archs'] or inp.profile_archs)
     fig, ax = plt.subplots(figsize=C.figsize(1, 1, fraction=opts['fraction'],
                                              aspect=opts['aspect']))
-    ph.plot_phase_bars(inp.profiles, ax, archs=archs)
+    ph.plot_phase_bars(inp.profiles, ax, archs=archs, fractions=opts['fractions'],
+                       total_fontsize=opts['total_fontsize'])
     for text in ax.get_xticklabels():
         text.set_fontsize(opts['xtick_fontsize'])
-    ax.set_ylabel('Step time (ms)')
+    if opts['fractions']:
+        # the shares stack to 1; leave room over the bars for the total-ms labels and
+        # the architecture names, and let the legend sit in that band
+        ax.set_ylim(0, opts['fractions_ymax'])
+        ax.set_yticks(np.linspace(0, 1, 6))
+        ax.set_ylabel('Fraction of step time\n(total ms above each bar)')
+    else:
+        ax.set_ylabel('Step time (ms)')
     ax.legend(fontsize=opts['legend_fontsize'], ncol=opts['legend_ncol'],
               loc=opts['legend_loc'])
     # which group is which architecture: plot_phase_bars advances x by 1 per drawn bar
@@ -1408,7 +1479,7 @@ def _profile_phases(inp, opts):
         n = sum(1 for m in ph.SVEN
                 if len(d[(d.arch == arch) & (d.method == m)]))
         if n and opts['arch_labels']:
-            ax.text(x + (n - 1) / 2.0, 1.02, ph.ARCH_TITLES.get(arch, arch),
+            ax.text(x + (n - 1) / 2.0, opts['arch_label_y'], ph.ARCH_TITLES.get(arch, arch),
                     transform=ax.get_xaxis_transform(), ha='center', va='bottom',
                     fontsize=opts['arch_label_fontsize'])
         x += n + opts['group_gap']
@@ -1559,10 +1630,12 @@ FIGURE_SPECS = figspec.check_defaults({
     ),
     'cifar_cost': figspec.FigureSpec(
         draw=_cifar_cost,
-        doc='F7: seconds per epoch and peak GPU memory from the standalone timing pass, '
-            'one row per objective.',
+        doc='F7: seconds per epoch and peak GPU memory from the standalone timing pass. '
+            'Label regression only: the cost is set by the model and the capture, not '
+            'the loss, and the cross-entropy row was the same picture.',
         defaults={
-            'scans': None, 'log': True,              # log axes (Sven is 10x+ away)
+            'scans': ['cifar10_resnet_scan_labelRegression'],   # None = both objectives
+            'log': True,                             # log axes (Sven is 10x+ away)
             'xtick_fontsize': 5.6,
             'fraction': 0.49, 'aspect': 0.95, 'style_fraction': None,
             'title_fontsize': None,
@@ -1588,6 +1661,7 @@ FIGURE_SPECS = figspec.check_defaults({
             'configuration on disk (``styles`` is one [linestyle, marker] per '
             'configuration, the selected one first).',
         defaults={
+            'configurations': 'selected',            # or 'all': every one on disk, dashed
             'styles': [list(p) for p in FIG5_STYLES],
             'chance_line': True,                     # the 10-class chance accuracy
             'seed_note': True, 'note_fontsize': 5.2,
@@ -1605,9 +1679,12 @@ FIGURE_SPECS = figspec.check_defaults({
             "``profile_overlay`` overlays the profile's own param_fraction study and "
             "``profile_step_times`` (None = only when the root is v3) its step times.",
         defaults={
+            'configurations': 'selected',            # or 'all': every one on disk, dashed
             'styles': [list(p) for p in FIG5_STYLES],
-            'profile_overlay': True, 'profile_step_times': None,
-            'fraction': 0.49, 'aspect': 0.9, 'extra_h': 0.42, 'style_fraction': None,
+            # the profiling pass's own param-fraction sweep is a cross-check, not the
+            # measurement of record, and the profiling appendix carries it; off here
+            'profile_overlay': False, 'profile_step_times': None,
+            'fraction': 0.49, 'aspect': 0.9, 'extra_h': 0.0, 'style_fraction': None,
             'title_fontsize': None,
             'legend_ncol': 2, 'legend_loc': 'outside lower center',
             'legend_fontsize': None,
@@ -1629,14 +1706,18 @@ FIGURE_SPECS = figspec.check_defaults({
     ),
     'gpt2': figspec.FigureSpec(
         draw=_gpt2,
-        doc='F11: GPT-2 small, validation loss vs optimisation step -- the best lr per '
-            "method, and all of Sven's lrs on the ``cmap`` ramp.  One seed, no band.",
+        doc='F11: GPT-2 small in one row -- validation loss vs optimisation step for the '
+            "best lr per method, the same for all of Sven's lrs on the ``cmap`` ramp, and "
+            '(``lr_panel``) the final validation loss against the learning rate, one line '
+            'per method.  One seed, no band.',
         defaults={
+            'lr_panel': True,                # the third panel (was the gpt2_lr figure)
+            'lr_marker_size': 2.6,
             'lw': 0.9, 'lw_sven': 1.4, 'lr_lw': 1.1,
             'cmap': 'viridis', 'cmap_lo': 0.08, 'cmap_span': 0.82,
-            'fraction': 0.49, 'aspect': 0.9, 'extra_h': 0.30, 'style_fraction': None,
+            'fraction': 0.32, 'aspect': 0.78, 'extra_h': 0.55, 'style_fraction': None,
             'title_fontsize': None,
-            'legend_fontsize': 5.4, 'legend_ncol': 1,   # per panel, not a shared legend
+            'legend_fontsize': 5.6,                     # the two-row key under the row
         },
     ),
     'gpt2_lr': figspec.FigureSpec(
@@ -1644,7 +1725,10 @@ FIGURE_SPECS = figspec.check_defaults({
         doc='F11: GPT-2 final loss against the learning rate, one line per method; '
             '``panels`` is [column, axis label] per panel.',
         defaults={
-            'panels': [['val', 'Validation loss'], ['test', 'Test loss']],
+            # validation only: on one pass over unrepeated data the test loss is the
+            # validation loss shifted by ~0.1 at every point, and the lr was selected
+            # on validation.  Add ['test', 'Test loss'] to draw both.
+            'panels': [['val', 'Validation loss']],
             'marker_size': 2.6, 'lw': 0.9, 'lw_sven': 1.4,
             'fraction': 0.49, 'aspect': 0.9, 'extra_h': 0.26, 'style_fraction': None,
             'legend_ncol': 5, 'legend_loc': 'outside lower center',
@@ -1711,7 +1795,11 @@ FIGURE_SPECS = figspec.check_defaults({
             'the architecture names above their bar groups (``arch_labels``).',
         defaults={
             'archs': None, 'xtick_fontsize': 5.6,
+            'fractions': True,               # share of the step on [0, 1], not ms
+            'fractions_ymax': 1.32,          # headroom above the bars for the labels
+            'total_fontsize': 5.2,           # the total ms printed above each bar
             'arch_labels': True, 'arch_label_fontsize': 6.4, 'group_gap': 0.8,
+            'arch_label_y': 1.02,            # axis-fraction height of the arch names
             'fraction': 1.0, 'aspect': 0.46, 'style_fraction': None,
             'title_fontsize': None,
             'legend_ncol': 2, 'legend_loc': 'upper left', 'legend_fontsize': 6.5,
@@ -1812,22 +1900,20 @@ def context(root=None, reload=False):
 # T16: CIFAR-10 / ResNet18, both objectives
 # ---------------------------------------------------------------------------
 def table_cifar(inp):
-    """Both CIFAR scans, 11 methods: quality, the train-eval diagnosis and the cost.
+    """Both CIFAR scans, 11 methods: quality and the train-eval diagnosis.
 
-    Quality is the confirmation pass (5 fresh seeds); the cost columns are the standalone
-    timing pass, which is the only honest wall clock.  ``fin/att`` is printed for both, so
-    a row that rests on fewer runs than the scan intended says so.
+    Quality is the confirmation pass (5 fresh seeds).  The cost columns (s/epoch,
+    ms/step, peak MB) are the cost figure's job and the finished/attempted count is in
+    the per-scan confirmation tables, so neither is repeated here.
     """
     rows, midrules = [], set()
     for scan, title in CIFAR.items():
         tbl = inp.conf[scan]
-        eff = inp.eff[scan].set_index('method')
         runs = inp.runs_conf[scan]
         if rows:
             midrules.add(len(rows))
         for i, r in tbl.iterrows():
             method = r['method']
-            e = eff.loc[method] if method in eff.index else None
             # the validation accuracy is a per-epoch curve, not a column of the
             # confirmation table: take the last entry of the same runs' seed mean
             val_acc = np.nan
@@ -1844,20 +1930,15 @@ def table_cifar(inp):
                 'Val acc': C.fmt_pct(val_acc),
                 'Test acc': C.fmt_pct(r.get('acc_conf')),
                 'Train (eval)': C.fmt_sig(r.get('treval_conf'), 4),
-                's/epoch': C.fmt_sig(_num(e['epoch_s']) if e is not None else np.nan),
-                'ms/step': C.fmt_sig(_num(e['ms_per_step']) if e is not None else np.nan),
-                'Peak MB': C.fmt_int(_num(e['peak_gpu_mem_mb'])
-                                     if e is not None else np.nan),
-                'fin/att': C.fmt_counts(r['fin_conf'], r['att_conf']),
             })
-    notes = ['quality: 5 fresh confirmation seeds of the selected configuration; cost: '
-             'the standalone timing pass (one run per GPU, logging off), which re-runs '
-             'the tuning seeds',
+    notes = ['5 fresh confirmation seeds of the selected configuration; the cost of each '
+             'configuration is in the cost figure and finished/attempted in the per-scan '
+             'confirmation tables',
              'every optimizer ran with batch-statistics BatchNorm']
     if inp.scan_provisional('cifar10_resnet_ce_scan'):
         notes.append('PROVISIONAL: the cross-entropy re-selection is still landing')
     return rows, {'midrules': sorted(midrules), 'notes': notes,
-                  'functions': ('headline.confirmation_table', 'headline.efficiency_table',
+                  'functions': ('headline.confirmation_table',
                                 'large_figs.optimisation_view', 'large_figs.curve_band')}
 
 
@@ -2001,25 +2082,18 @@ def table_gpt2(inp):
     labelled that way and no spread is printed for it.
     """
     best = inp.gpt2_best.sort_values('val')
-    wall = pd.to_numeric(best['wall_h'], errors='coerce')
-    fastest = float(np.nanmin(wall)) if np.isfinite(wall).any() else np.nan
-    leader = _num(best['val'].min())
     rows = []
+    # No perplexity (a function of Val), no "vs best" or "x fastest" (the prose quotes
+    # both as macros), no lrs fin/att (every method finished every learning rate).
     for _, r in best.iterrows():
-        val = _num(r['val'])
         rows.append({
             'Method': r['display'],
             'Best lr': C.fmt_sig(r['lr'], 2),
-            'Val': C.fmt_sig(val, 4),
-            'Val ppl': C.fmt_sig(r['val_ppl'], 4),
+            'Val': C.fmt_sig(r['val'], 4),
             'Test': C.fmt_sig(r['test'], 4),
-            'vs best': C.fmt_pct((val / leader - 1) if np.isfinite(leader) and leader
-                                 else np.nan, signed=True),
             'Wall (h)': C.fmt_sig(r['wall_h'], 3),
-            'x fastest': C.fmt_sig(_num(r['wall_h']) / fastest, 3),
             'ms/step': C.fmt_int(r['ms_per_step']),
             'Peak MB': C.fmt_int(r['peak_gpu_mem_mb']),
-            'lrs (fin/att)': C.fmt_counts(r['finished'], r['attempted']),
         })
     facts = inp.gpt2.iloc[0]
     notes = [f'one model seed, one epoch of {int(_num(facts["steps_per_epoch"])):,} steps '
@@ -2740,6 +2814,11 @@ def macros(inp):
             if np.isfinite(capture) and step:
                 add(f'numProf{akey}{mkey}CaptureFrac', 100 * capture / step, source=msrc,
                     provisional=pprov, note='per cent of the step spent in the capture')
+                add(f'numProf{akey}{mkey}CaptureMs', capture, source=msrc, provisional=pprov)
+            solve = _num(r['solve_ms'])
+            if np.isfinite(solve):
+                add(f'numProf{akey}{mkey}SolveMs', solve, source=msrc, provisional=pprov,
+                    note='solve + apply phase of the step')
             ks = prof[(prof.arch == arch) & (prof.study == 'k')
                       & (prof.method == method) & prof.status.isin(ph.TIMED)]
             if len(ks) > 1:

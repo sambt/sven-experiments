@@ -14,7 +14,7 @@ Owns (``campaign/PAPER_PLAN.md`` section 5):
   top row) and the final-loss landscape over ``k`` and over ``rtol``.
 * **F13** ``figures_iclr/main/allseed_curves.pdf`` + ``allseed_curves_ce_lm.pdf`` --
   the all-methods / all-seeds appendix versions for every headline scan, 1D regression
-  and MNIST-CE included.
+  and MNIST-CE included, each with a ``_nosoap`` twin that drops SOAP.
 * **T1--T5, T10, T18, T20** in ``tables_v2/``, and the **G1** macro group in
   ``numbers_v2_main.tex``.
 
@@ -56,7 +56,12 @@ HEADLINE_MAIN = ('polynomial_scan', 'mnist_scan_labelRegression', 'exp_nanogpt_s
 SWEEP_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
                'mnist_scan_ce')
 
-#: App. E's all-seed figure: three scans x three axes
+#: the seven scans the ranking figures span -- the same field as T4 (`_t4_ranking`)
+RANK_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
+              'mnist_scan_ce', 'cifar10_resnet_scan_labelRegression',
+              'cifar10_resnet_ce_scan', 'exp_nanogpt_speedrun')
+
+#: App. E's all-seed figure: three scans x two axes
 ALLSEED_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression')
 #: and the two the second all-seed figure covers, so every headline scan has one
 ALLSEED_SCANS_B = ('mnist_scan_ce', 'exp_nanogpt_speedrun')
@@ -213,14 +218,30 @@ def _in_columns(j, ncol, where):
             'middle': j == ncol // 2, 'last': j == ncol - 1}[str(where)]
 
 
-def _resolve_methods(ctx, scan, methods, top_n=MAIN_PANEL_TOP_N):
+def _exclude_for(exclude, scan):
+    """The methods ``exclude`` drops from ``scan``.
+
+    A flat list applies to every scan (``exclude=['SOAP']``); a dict applies per scan
+    (``exclude={'mnist_scan_labelRegression': ['SOAP']}``), where the key ``'*'`` means
+    every scan and a scan the dict does not name loses nothing.
+    """
+    if isinstance(exclude, dict):
+        return list(exclude.get('*', ())) + list(exclude.get(scan, ()))
+    return list(exclude)
+
+
+def _resolve_methods(ctx, scan, methods, top_n=MAIN_PANEL_TOP_N, exclude=()):
     """Which methods a panel draws: ``'top'``, ``'all'``, or an explicit list.
 
     ``'top'`` is the front of the field plus Sven (the main-text panels of F1),
     ``'all'`` is every method with a selected configuration, best first.  Whatever comes
     out, a method with no confirmation runs on this scan is dropped -- asking for one is
-    not an error, there is simply nothing to draw.
+    not an error, there is simply nothing to draw.  ``exclude`` then drops named methods
+    (any spelling :func:`style.canonical_method` knows, flat or per scan -- see
+    :func:`_exclude_for`), which is how the SOAP-free variants of F13 are drawn without
+    listing the other fifteen.
     """
+    drop = {style.canonical_method(m) for m in _exclude_for(exclude, scan)}
     if isinstance(methods, str):
         if methods == 'top':
             wanted = ctx.main_panel_methods(scan, top_n=top_n)
@@ -230,7 +251,8 @@ def _resolve_methods(ctx, scan, methods, top_n=MAIN_PANEL_TOP_N):
             raise ValueError(f"methods must be 'top', 'all' or a list, not {methods!r}")
     else:
         wanted = list(methods)
-    return [m for m in wanted if m in ctx.runs(scan)]
+    return [m for m in wanted
+            if m in ctx.runs(scan) and style.canonical_method(m) not in drop]
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +432,53 @@ def _counts_cell(row, prefix='conf'):
     return cell
 
 
+def _val_cell(mean, std, best=False, sig=4):
+    """The confirmation-seed validation cell, bold when the block's lowest is within
+    reach of it.
+
+    The WHOLE value goes bold, band included.  ``\\textbf`` does not reach into math
+    mode, so the ``\\pm`` -- the one math-mode token in the cell -- is emboldened on
+    its own with ``\\boldsymbol`` (amsmath, already loaded by the manuscript);
+    without that the symbol would sit at the normal weight between two bold numbers.
+    """
+    cell = C.fmt_pm(mean, std, sig)
+    if not best:
+        return cell
+    head, sep, tail = str(cell).partition(' $\\pm$ ')
+    if not sep:                                   # no band: just the mean
+        return C.Raw(f'\\textbf{{{head}}}')
+    return C.Raw(f'\\textbf{{{head} $\\boldsymbol{{\\pm}}$ {tail}}}')
+
+
+def _best_val_methods(ctx, scan, methods):
+    """Every method of one block whose validation loss is the lowest or ties it.
+
+    "Ties" means the gap to the block's lowest mean is no larger than the two rows'
+    seed bands added in quadrature, ``sqrt(s_best^2 + s_i^2)`` -- a DISPLAY rule over
+    the two numbers the row already prints, not a test: the paper's significance claim
+    is the paired, per-seed comparison of ``headline.paired_vs_sven`` (C6), and this
+    convention exists so the table does not silently award a win the text calls a tie.
+
+    A method whose confirmation pass is NOT eligible (the dagger: more than half its
+    runs failed, so the mean beside it is a mean over the survivors) cannot win the
+    block -- comparing a 2-seed survivor mean against a 5-seed one would be the
+    selection bug this table exists to expose.
+    """
+    vals = {}
+    for m in methods:
+        c = ctx.row(scan, m)
+        if c.get('elig_conf', True) and C.finite(c['val_conf']):
+            std = c.get('val_conf_std')
+            vals[m] = (float(c['val_conf']),
+                       float(std) if C.finite(std) else 0.0)
+    if not vals:
+        return set()
+    best = min(vals, key=lambda m: vals[m][0])
+    low, low_std = vals[best]
+    return {m for m, (v, sd) in vals.items()
+            if v - low <= math.sqrt(low_std ** 2 + sd ** 2)}
+
+
 def _epochs_cell(ctx, scan, method):
     """Epochs to the median-method target, with the reach count when it is not all runs."""
     r = ctx.target_row(scan, method)
@@ -479,7 +548,8 @@ def _headline_curves(ctx, opts):
                              squeeze=False)
     used, per_scan = [], {}
     for j, scan in enumerate(scans):
-        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'])
+        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'],
+                                   exclude=opts['exclude'])
         per_scan[scan] = methods
         for i, versus in enumerate(rows):
             # the x label goes on the MIDDLE column only: "Synchronised training time
@@ -841,17 +911,19 @@ def _hparam_landscape(ctx, opts):
 # ---------------------------------------------------------------------------
 # F13 -- the all-methods / all-seeds appendix figures
 # ---------------------------------------------------------------------------
-#: F13's three axes, per ``PAPER_PLAN`` section 5.1 (``curve_figure`` "(epoch, time,
-#: train)").  The x axis is the EPOCH index, not the optimizer step: the batch size
-#: differs between scans, the paper's time-to-target claim (C7) is quoted in epochs, and
+#: F13's two axes, per ``PAPER_PLAN`` section 5.1 (``curve_figure`` "(epoch, time)").
+#: The x axis is the EPOCH index, not the optimizer step: the batch size differs between
+#: scans, the paper's time-to-target claim (C7) is quoted in epochs, and
 #: ``PAPER_CONTRACTS.md`` names "log-y validation loss vs epoch and vs wall time" as the
 #: manuscript's visual language.  ``versus='step'`` is available from
 #: :func:`headline_figs.plot_curves` for a per-scan notebook, but no paper figure uses it.
-_ALLSEED_COLS = (('val', 'epoch'), ('val', 'time'), ('train', 'epoch'))
+#: The training-loss column is a knob away -- ``columns=[['val', 'epoch'],
+#: ['val', 'time'], ['train', 'epoch']]`` puts it back.
+_ALLSEED_COLS = (('val', 'epoch'), ('val', 'time'))
 
 
 def _allseed_curves(ctx, opts):
-    """Every method's selected configuration, confirmation seeds, on three axes.
+    """Every method's selected configuration, confirmation seeds, on two axes.
 
     One row per scan, one column per ``(which, versus)`` pair.  This is the figure that
     retires every single-seed curve in the current manuscript (X15): the line is the seed
@@ -870,7 +942,8 @@ def _allseed_curves(ctx, opts):
                              squeeze=False)
     used, clipped = [], []
     for i, scan in enumerate(scans):
-        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'])
+        methods = _resolve_methods(ctx, scan, opts['methods'], opts['top_n'],
+                                   exclude=opts['exclude'])
         used.extend(methods)
         for j, (which, versus) in enumerate(columns):
             ax = axes[i][j]
@@ -891,6 +964,10 @@ def _allseed_curves(ctx, opts):
                 clipped.append((scan, which, versus))
             if j == 0:
                 ax.set_ylabel(f'{_short_title(scan)}\n' + ax.get_ylabel())
+            elif which == columns[0][0]:
+                # the same quantity as column 0, already named there: repeating the
+                # label only steals width from the panels
+                ax.set_ylabel('')
             if i < nrow - 1:
                 ax.set_xlabel('')
     order = [m for m in hl.method_order(dict.fromkeys(used)) if m in set(used)]
@@ -903,11 +980,363 @@ def _allseed_curves(ctx, opts):
                    'headline_figs.standalone_epoch_times', 'scan_analysis.seed_band'],
         scans=[hl.dir_name(s, k) for s in scans for k in ('confirm', 'timing')],
         note=('all methods with a selected configuration, confirmation seeds, '
-              'mean +/- 1 std; validation loss vs epoch, vs standalone synchronised '
-              'training time, and training loss vs epoch'),
+              'mean +/- 1 std; validation loss vs epoch and vs standalone '
+              'synchronised training time'
+              + (f"; {', '.join(opts['exclude'])} excluded" if opts['exclude'] else '')),
         axis_truncated=[list(c) for c in clipped],
         provisional=sorted(ctx.provisional.intersection(scans)))
     return fig, {'axes': axes, 'provenance': rec, 'order': order}
+
+
+# ---------------------------------------------------------------------------
+# F14/F15 -- the ranking summary (T4) as a picture
+# ---------------------------------------------------------------------------
+#: which family each headline scan belongs to, for the strip plot's marker shapes.
+#: Three shapes is what a 1.76 in panel can tell apart; seven would need colour, and
+#: colour is already spent on the method.
+RANK_FAMILY = {
+    'toy_1d_scan': 'MLP', 'polynomial_scan': 'MLP',
+    'mnist_scan_labelRegression': 'MLP', 'mnist_scan_ce': 'MLP',
+    'cifar10_resnet_scan_labelRegression': 'ResNet18',
+    'cifar10_resnet_ce_scan': 'ResNet18', 'exp_nanogpt_speedrun': 'transformer',
+}
+RANK_FAMILY_MARKER = {'MLP': 'o', 'ResNet18': 's', 'transformer': '^'}
+
+#: the two rankings T4 prints in one cell, as separate panels
+_RANK_COLS = ('val', 'test')
+_RANK_TITLE = {'val': 'Validation loss', 'test': 'Test loss'}
+
+
+def _rank_frame(ctx, scans, which):
+    """``{(method, scan): (rank, n)}`` plus the field size of each scan.
+
+    ``which`` is ``'val'`` or ``'test'``; a method with no finite rank on a scan is
+    simply absent, which is the dash of T4 (not run there, or no finite confirmation
+    value).
+    """
+    col = f'rank_{which}'
+    r = ctx.ranking
+    out, n_by = {}, {}
+    for scan in scans:
+        sub = r[r['scan'] == scan]
+        if not len(sub):
+            continue
+        n_by[scan] = int(sub['n_methods'].max())
+        for _, row in sub.iterrows():
+            if C.finite(row[col]):
+                out[(row['method'], scan)] = int(row[col])
+    return out, n_by
+
+
+def _rank_norm(rank, n):
+    """Rank on a 0 (best of the field) to 1 (worst) scale.
+
+    The field size runs from 5 (nanoGPT) to 15 (the synthetics), so a raw rank is not
+    comparable across scans -- 9th of 11 is worse than 4th of 14 -- and every figure
+    here colours and positions by this instead, keeping the raw rank as the annotation.
+    """
+    return 0.0 if n <= 1 else (float(rank) - 1.0) / (float(n) - 1.0)
+
+
+def _rank_methods(ctx, scans, methods, sort, which='val'):
+    """The row order both panels share: best median normalised rank at the top.
+
+    A shared order is the point -- the val and test panels are read against each other,
+    and a panel that sorted itself would move a method between them for no reason.
+    """
+    ranks, n_by = _rank_frame(ctx, scans, which)
+    present = {m for m, _ in ranks}
+    if isinstance(methods, str):
+        if methods != 'all':
+            raise ValueError(f"methods must be 'all' or a list, not {methods!r}")
+        wanted = [m for m in hl.method_order(dict.fromkeys(present)) if m in present]
+    else:
+        wanted = [m for m in methods if m in present]
+    if sort == 'median':
+        def key(m):
+            vals = [_rank_norm(ranks[(m, s)], n_by[s]) for s in scans
+                    if (m, s) in ranks]
+            return (float(np.median(vals)) if vals else 2.0, m)
+    elif sort == 'sven':                    # Sven first, then the paper's method order
+        key = lambda m: (style.canonical_method(m) != 'Sven', wanted.index(m))
+    elif sort == 'field':                   # the order the rest of the paper uses
+        key = wanted.index
+    else:
+        raise ValueError(f"sort must be 'median', 'sven' or 'field', not {sort!r}")
+    return sorted(wanted, key=key)
+
+
+def _rank_panel_axes(opts, ncol, nrow=1):
+    import matplotlib.pyplot as plt
+
+    figspec.paper_style(opts['font_fraction'])
+    fig, axes = plt.subplots(nrow, ncol,
+                             figsize=C.figsize(ncol, nrow, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
+                             squeeze=False)
+    return fig, axes
+
+
+def _rank_heatmap(ctx, opts):
+    """F14: T4 as a grid -- methods down, scans across, colour = normalised rank.
+
+    One panel per ranking (validation, test), the same row order in both.  The raw rank
+    stays printed in the cell, so this carries everything the table does; what it adds
+    is that a row can be read at a glance and that the colour is comparable between
+    columns of different field size.
+    """
+    import matplotlib.pyplot as plt
+
+    scans = list(opts['scans'])
+    columns = list(opts['columns'])
+    order = _rank_methods(ctx, scans, opts['methods'], opts['sort'])
+    fig, axes = _rank_panel_axes(opts, len(columns))
+    # the dash of T4 (not run on that scan, or no finite confirmation value)
+    cmap = plt.get_cmap(opts['cmap']).with_extremes(bad=opts['missing_color'])
+    info = {}
+    for j, which in enumerate(columns):
+        ax = axes[0][j]
+        ranks, n_by = _rank_frame(ctx, scans, which)
+        grid = np.full((len(order), len(scans)), np.nan)
+        for i, m in enumerate(order):
+            for k, s in enumerate(scans):
+                if (m, s) in ranks:
+                    grid[i, k] = _rank_norm(ranks[(m, s)], n_by[s])
+        ax.imshow(np.ma.masked_invalid(grid), cmap=cmap, vmin=0.0, vmax=1.0,
+                  aspect='auto', interpolation='nearest')
+        for i, m in enumerate(order):
+            for k, s in enumerate(scans):
+                if (m, s) not in ranks:
+                    ax.text(k, i, '--', ha='center', va='center',
+                            fontsize=opts['annot_fontsize'], color='0.45')
+                    continue
+                v = grid[i, k]
+                # the label has to stay legible at both ends of the colormap
+                ax.text(k, i, f'{ranks[(m, s)]:d}', ha='center', va='center',
+                        fontsize=opts['annot_fontsize'],
+                        color=('white' if v < opts['dark_below'] else 'black'))
+        ax.set_xticks(range(len(scans)))
+        # the field size goes INLINE, not on a second line: rotated two-line ticks
+        # overlap their neighbours at this panel width
+        ax.set_xticklabels([TABLE_SCAN_SHORT.get(s, _short_title(s))
+                            + (f' ({n_by[s]})' if opts['show_field_size'] else '')
+                            for s in scans], rotation=opts['xtick_rotation'],
+                           ha=('right' if opts['xtick_rotation'] else 'center'),
+                           rotation_mode=('anchor' if opts['xtick_rotation'] else None))
+        ax.set_yticks(range(len(order)))
+        ax.set_yticklabels([style.method_label(m) for m in order] if j == 0 else [])
+        if j == 0:
+            for lab, m in zip(ax.get_yticklabels(), order):
+                if style.canonical_method(m) == 'Sven':
+                    lab.set_fontweight('bold')
+        ax.set_title(_RANK_TITLE.get(which, which))
+        ax.tick_params(length=0)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        info[which] = {'n_cells': int(np.isfinite(grid).sum()),
+                       'n_missing': int(np.isnan(grid).sum())}
+    if opts['colorbar']:
+        cb = fig.colorbar(plt.cm.ScalarMappable(cmap=cmap), ax=axes[0].tolist(),
+                          **opts['colorbar_kw'])
+        cb.set_ticks([0.0, 1.0])
+        cb.set_ticklabels(['best', 'worst'])
+        cb.outline.set_visible(False)
+    rec = C.provenance(
+        functions=['headline.ranking_summary', 'headline.rank_matrix'],
+        scans=[hl.dir_name(s, 'confirm') for s in scans],
+        note=('T4 as a heatmap: colour is the rank normalised by the field size of its '
+              'own scan (0 = best, 1 = worst), the printed number is the raw rank'),
+        panels=list(columns), order=list(order), cells=info,
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return fig, {'axes': axes, 'provenance': rec, 'order': order, 'info': info}
+
+
+def _rank_strip(ctx, opts):
+    """F15: one row per method, one marker per scan, x = normalised rank.
+
+    What the grid cannot show: how TIGHT a method is.  Sven's markers sit together at
+    the good end on the four MLP scans and on nanoGPT and then jump to the bad end on
+    the two ResNet18 scans, which is the paper's own account of where the method stands
+    and is invisible in a table of ranks.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    scans = list(opts['scans'])
+    columns = list(opts['columns'])
+    order = _rank_methods(ctx, scans, opts['methods'], opts['sort'])
+    fig, axes = _rank_panel_axes(opts, len(columns))
+    fams = []
+    for j, which in enumerate(columns):
+        ax = axes[0][j]
+        ranks, n_by = _rank_frame(ctx, scans, which)
+        for i, m in enumerate(order):
+            y = len(order) - 1 - i          # best method at the TOP
+            ax.axhline(y, color='0.9', lw=0.5, zorder=0)
+            vals = []
+            for s in scans:
+                if (m, s) not in ranks:
+                    continue
+                v = _rank_norm(ranks[(m, s)], n_by[s])
+                vals.append(v)
+                fam = RANK_FAMILY.get(s, 'MLP')
+                fams.append(fam)
+                ax.plot(v, y, RANK_FAMILY_MARKER.get(fam, 'o'),
+                        color=style.method_color(m),
+                        ms=opts['marker_size'],
+                        mew=opts['marker_edge_lw'], mec='white', zorder=3,
+                        alpha=opts['marker_alpha'])
+            if vals and opts['median_tick']:
+                ax.plot([float(np.median(vals))] * 2,
+                        [y - opts['median_half_height'], y + opts['median_half_height']],
+                        color='0.25', lw=opts['median_lw'], zorder=4)
+        ax.set_ylim(-0.6, len(order) - 0.4)
+        ax.set_xlim(*opts['xlim_norm'])
+        ax.set_yticks(range(len(order)))
+        ax.set_yticklabels([style.method_label(m) for m in reversed(order)]
+                           if j == 0 else [])
+        if j == 0:
+            for lab, m in zip(ax.get_yticklabels(), reversed(order)):
+                if style.canonical_method(m) == 'Sven':
+                    lab.set_fontweight('bold')
+        ax.set_xlabel(opts['xlabel_text'])
+        ax.set_title(_RANK_TITLE.get(which, which))
+        ax.grid(axis='x', ls=':', alpha=0.4)
+        ax.tick_params(axis='y', length=0)
+        for side in ('top', 'right', 'left'):
+            ax.spines[side].set_visible(False)
+    if opts['figure_legend']:
+        seen = [f for f in dict.fromkeys(fams)]
+        handles = [Line2D([], [], ls='', marker=RANK_FAMILY_MARKER.get(f, 'o'),
+                          color='0.35', ms=opts['marker_size']) for f in seen]
+        fig.legend(handles, seen, **opts['figure_legend_kw'])
+    rec = C.provenance(
+        functions=['headline.ranking_summary', 'headline.rank_matrix'],
+        scans=[hl.dir_name(s, 'confirm') for s in scans],
+        note=('T4 as a strip plot: one marker per scan at the rank normalised by that '
+              "scan's field size (0 = best, 1 = worst), the tick is the method's median"),
+        panels=list(columns), order=list(order),
+        provisional=sorted(ctx.provisional.intersection(scans)))
+    return fig, {'axes': axes, 'provenance': rec, 'order': order}
+
+
+def _rank_defaults(**over):
+    """The knobs F14 and F15 share: both read the same matrix and differ in how they
+    draw a cell of it."""
+    out = dict(
+        # -- content ----------------------------------------------------------
+        scans=list(RANK_SCANS),         # one column (heatmap) / marker (strip) per scan
+        methods='all',                  # 'all' or an explicit list
+        columns=list(_RANK_COLS),       # one panel per ranking: 'val' and/or 'test'
+        sort='median',                  # 'median' (best median first), 'sven', 'field'
+        # -- geometry ---------------------------------------------------------
+        fraction=0.40,
+        aspect=1.05,
+        extra_h=0.30,
+        font_fraction=0.32,
+    )
+    out.update(over)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# F16 -- the paired per-seed differences against Sven, as a figure (T5b's rows)
+# ---------------------------------------------------------------------------
+def _paired_diffs(ctx, opts):
+    """One panel per scan: every baseline's paired difference against Sven.
+
+    x is the baseline, sorted so Sven's largest win is leftmost; y is the mean
+    within-pair difference ``Sven - method`` in final validation loss (negative = Sven
+    lower) with its 95 % t-interval as the bar.  A filled marker is a resolved
+    difference (the interval excludes zero), a hollow one a tie.  The fraction of
+    pairs Sven won is printed at each point: it carries the pairing count too, since
+    every scan attempted the same seeds, so ``2/2`` on a 15-seed scan says that only
+    two pairs finished.  An interval wider than the panel is clipped and its end drawn
+    as an arrow, so one diverging baseline cannot flatten the others.
+    """
+    import matplotlib.pyplot as plt
+
+    figspec.paper_style(opts['font_fraction'])
+    scans = list(opts['scans'])
+    ncol = int(opts['ncol'])
+    nrow = int(math.ceil(len(scans) / ncol))
+    fig, axes = plt.subplots(nrow, ncol,
+                             figsize=C.figsize(ncol, nrow, opts['fraction'],
+                                               aspect=opts['aspect'],
+                                               extra_h=opts['extra_h']),
+                             squeeze=False)
+    flat = axes.ravel()
+    for ax in flat[len(scans):]:
+        ax.remove()
+    info = {}
+    for j, scan in enumerate(scans):
+        ax = flat[j]
+        pv = ctx.paired(scan).sort_values('mean').reset_index(drop=True)
+        n_pairs_max = int(pv['n'].max()) if len(pv) else 0
+        # the visible range follows the TYPICAL difference, not the largest: on the
+        # MNIST scans one SOAP at -0.5 would otherwise flatten thirteen methods within
+        # +/- 0.05 into a line.  Whatever falls outside is clipped and arrowed.
+        reach = (pv['mean'].abs() + pv['half_width']).to_numpy(dtype=float)
+        span = float(np.nanpercentile(reach, opts['clip_percentile'])) if len(pv) else 1.0
+        lim = max(span * float(opts['clip_factor']), 1e-12)
+        ax.axhspan(-lim, 0, color=opts['win_shade'], lw=0, zorder=0)
+        ax.axhline(0, color='0.3', lw=0.7, zorder=1)
+        clipped = []
+        for x, r in pv.iterrows():
+            color = style.method_color(r['method'])
+            lo, hi = float(r['ci_low']), float(r['ci_high'])
+            lo_c, hi_c = max(lo, -lim), min(hi, lim)
+            ax.plot([x, x], [lo_c, hi_c], color=color, lw=opts['ci_lw'], zorder=2,
+                    solid_capstyle='butt')
+            for end, y, clip in ((lo, lo_c, lo < -lim), (hi, hi_c, hi > lim)):
+                if clip:
+                    ax.plot(x, y, marker='v' if end < 0 else '^', ms=opts['arrow_ms'],
+                            color=color, zorder=3, clip_on=False)
+                    clipped.append((r['method'], end))
+            resolved = bool(r.get('significant'))
+            ax.plot(x, float(r['mean']), 'o', ms=opts['marker_ms'], color=color,
+                    mfc=color if resolved else 'white', mew=opts['marker_mew'],
+                    zorder=4)
+        ax.set_ylim(-lim * opts['ylim_pad'], lim * opts['ylim_pad'])
+        ax.set_xlim(-0.6, len(pv) - 0.4)
+        ax.set_xticks(range(len(pv)))
+        # the pairs-won count rides on the tick label ("SGD 15/15"): at fourteen
+        # methods per 1.4 in panel there is no room beside the points
+        labels = [hl.display_name(m) + (f"  {int(w)}/{int(n)}" if opts['show_ratio']
+                                        else '')
+                  for m, w, n in zip(pv['method'], pv['sven_better'], pv['n'])]
+        ax.set_xticklabels(labels, rotation=opts['xtick_rotation'], ha='right',
+                           rotation_mode='anchor', fontsize=opts['xtick_fontsize'])
+        ax.tick_params(axis='x', length=0)
+        ax.set_title(_short_title(scan))
+        if j % ncol == 0:
+            ax.set_ylabel(opts['ylabel_text'])
+        ax.grid(axis='y', ls=':', alpha=0.35)
+        for side in ('top', 'right'):
+            ax.spines[side].set_visible(False)
+        info[scan] = {'n_methods': int(len(pv)), 'pairs_max': n_pairs_max,
+                      'clipped': [[m, float(v)] for m, v in clipped]}
+    if opts['figure_legend']:
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+        handles = [Line2D([], [], ls='', marker='o', color='0.3', ms=opts['marker_ms']),
+                   Line2D([], [], ls='', marker='o', color='0.3', mfc='white',
+                          ms=opts['marker_ms'], mew=opts['marker_mew']),
+                   Line2D([], [], color='0.3', lw=opts['ci_lw']),
+                   Patch(color=opts['win_shade'])]
+        labels = ['resolved (95% interval excludes 0)', 'not resolved',
+                  '95% t-interval', 'Sven lower']
+        fig.legend(handles, labels, **opts['figure_legend_kw'])
+    rec = C.provenance(
+        functions=['headline.paired_vs_sven', 'paired.paired_table'],
+        scans=[hl.dir_name(s, 'confirm') for s in scans],
+        note=('paired per-seed differences Sven - method in final validation loss, '
+              'mean with 95% t-interval; a filled marker is an interval excluding zero; '
+              'the label is pairs Sven won / pairs finished; intervals wider than '
+              'clip_factor x the largest |mean| are clipped and arrowed'),
+        panels=info, provisional=sorted(ctx.provisional.intersection(scans)))
+    return fig, {'axes': axes, 'provenance': rec, 'info': info}
 
 
 # ---------------------------------------------------------------------------
@@ -916,7 +1345,7 @@ def _allseed_curves(ctx, opts):
 #: the per-panel key of F1's main-text version.  Kept out of the rcParams defaults
 #: because at 4.3 pt it is smaller than anything else on the page and is a deliberate
 #: choice, not a style.
-_F1_PANEL_LEGEND = dict(loc='lower left', fontsize=4.3, handlelength=1.0,
+_F1_PANEL_LEGEND = dict(loc='upper right', fontsize=4.3, handlelength=1.0,
                         handletextpad=0.4, borderpad=0.25, labelspacing=0.18,
                         borderaxespad=0.3, framealpha=0.82, fancybox=False,
                         edgecolor='0.8')
@@ -936,6 +1365,9 @@ def _headline_defaults(**over):
         methods='top',                  # 'top' (front of the field + Sven), 'all', or
                                         # an explicit list of method names
         top_n=MAIN_PANEL_TOP_N,         # how many the 'top' field holds, Sven aside
+        exclude=[],                     # methods to drop from whatever that chose: a
+                                        # list for every panel, or {scan: [names]} for
+                                        # one panel ('*' = every panel)
         versus=['epoch', 'time'],       # one panel row per x axis
         # -- geometry ---------------------------------------------------------
         fraction=0.32,                  # panel width as a fraction of \linewidth
@@ -961,15 +1393,20 @@ def _headline_defaults(**over):
     return out
 
 
-def _allseed_defaults(scans):
-    """F13's knobs.  One spec per scan group, everything else shared."""
-    return dict(
+def _allseed_defaults(scans, **over):
+    """F13's knobs.  One spec per scan group, everything else shared; the SOAP-free
+    variants are this with ``exclude``."""
+    out = dict(
         scans=list(scans),              # one panel row per scan
         columns=[list(c) for c in _ALLSEED_COLS],   # [which, versus] per column
         methods='all',                  # 'all' / 'top' / an explicit list
         top_n=MAIN_PANEL_TOP_N,         # only consulted when methods == 'top'
-        fraction=0.32,
-        aspect=0.82,
+        exclude=[],                     # method names to drop from whatever that chose:
+                                        # a list for every row, or {scan: [names]}
+        # two columns across the same \linewidth as the old three: wider panels at
+        # (very nearly) the row height they had, so each one is rectangular
+        fraction=0.48,
+        aspect=0.55,
         extra_h=0.70,
         lw=0.85,
         sven_lw=1.8,
@@ -984,6 +1421,8 @@ def _allseed_defaults(scans):
         figure_legend_kw=dict(_LEGEND_STRIP, ncol=5),
         font_fraction=0.32,
     )
+    out.update(over)
+    return out
 
 
 FIGURE_SPECS = figspec.check_defaults({
@@ -1084,15 +1523,115 @@ FIGURE_SPECS = figspec.check_defaults({
     ),
     'allseed_curves': figspec.FigureSpec(
         draw=_allseed_curves,
-        doc=('F13: every method, confirmation seeds, on three axes (val vs epoch, val vs '
-             'standalone time, train vs epoch) for 1D regression, the polynomial and '
-             'MNIST label regression.'),
+        doc=('F13: every method, confirmation seeds, on two axes (val vs epoch, val vs '
+             'standalone time) for 1D regression, the polynomial and MNIST label '
+             'regression.'),
         defaults=_allseed_defaults(ALLSEED_SCANS),
     ),
     'allseed_curves_ce_lm': figspec.FigureSpec(
         draw=_allseed_curves,
-        doc='F13, continued: the same three axes for MNIST-CE and nanoGPT.',
+        doc='F13, continued: the same two axes for MNIST-CE and nanoGPT.',
         defaults=_allseed_defaults(ALLSEED_SCANS_B),
+    ),
+    'allseed_curves_ce': figspec.FigureSpec(
+        draw=_allseed_curves,
+        doc=('App. I: the MNIST cross-entropy all-seed trajectories alone. '
+             '`allseed_curves_ce_lm` paired this row with nanoGPT so that every headline '
+             'scan had an all-seed figure, but nanoGPT has its own in the transformers '
+             'appendix and the MNIST-CE appendix is about MNIST-CE.'),
+        defaults=_allseed_defaults(('mnist_scan_ce',), extra_h=0.62, exclude=['SOAP']),
+    ),
+    'allseed_curves_nosoap': figspec.FigureSpec(
+        draw=_allseed_curves,
+        doc=('F13 without SOAP: the same panels as `allseed_curves`, minus the one '
+             'method whose seed spread sets the y range of the MNIST label-regression '
+             'row. Everything else is drawn identically, so the two are comparable.'),
+        defaults=_allseed_defaults(ALLSEED_SCANS, exclude=['SOAP']),
+    ),
+    'allseed_curves_ce_lm_nosoap': figspec.FigureSpec(
+        draw=_allseed_curves,
+        doc='F13 continued, without SOAP: `allseed_curves_ce_lm` minus SOAP.',
+        defaults=_allseed_defaults(ALLSEED_SCANS_B, exclude=['SOAP']),
+    ),
+    'rank_heatmap': figspec.FigureSpec(
+        draw=_rank_heatmap,
+        doc=('F14: T4 (`tables_v2/ranking.tex`) as a grid -- every method on every '
+             'scan, validation (left) and test (right). Colour is the rank normalised '
+             'by its own scan\'s field size, so the columns are comparable; the '
+             'printed number is the raw rank, so nothing the table says is lost.'),
+        defaults=_rank_defaults(
+            # two panels at half the linewidth each = a figure exactly \linewidth wide,
+            # so \includegraphics[width=\linewidth] shows it 1:1 and the type is the
+            # size paper_style drew it at
+            fraction=0.5,
+            aspect=0.95,
+            # -- cells ------------------------------------------------------
+            cmap='viridis_r',           # dark = best; reversed so good reads heavy
+            missing_color='0.93',       # the dash cells (not run / no finite value)
+            dark_below=0.45,            # normalised rank under this gets white text
+            annot_fontsize=5.0,
+            show_field_size=True,       # "MNIST-LR (14)": the field size of that scan
+            xtick_rotation=45,          # seven task names do not fit a 2.2 in panel flat
+            # -- key --------------------------------------------------------
+            colorbar=True,
+            colorbar_kw=dict(fraction=0.045, pad=0.03, aspect=28),
+        ),
+    ),
+    'paired_diffs': figspec.FigureSpec(
+        draw=_paired_diffs,
+        doc=('F16, App. G: the paired per-seed differences against Sven (T5b) as one '
+             'panel per scan -- mean and 95% interval per baseline, filled when '
+             'resolved, with the pairs-won count at each point.'),
+        defaults=dict(
+            scans=list(RANK_SCANS),         # one panel per scan
+            ncol=4,
+            fraction=0.25,
+            aspect=1.25,                    # the rotated tick labels take ~a third of
+                                            # the cell, so the panel needs the height
+            extra_h=0.30,                   # the legend strip
+            font_fraction=0.32,
+            # -- the y range ------------------------------------------------
+            clip_percentile=75,             # visible range = clip_factor x this
+            clip_factor=2.0,                # percentile of |mean| + half-width
+            ylim_pad=1.08,
+            # -- marks --------------------------------------------------------
+            marker_ms=3.6,
+            marker_mew=0.9,
+            ci_lw=1.1,
+            arrow_ms=3.0,
+            show_ratio=True,                # "pairs Sven won / pairs finished", on
+                                            # the tick label
+            xtick_rotation=60,
+            xtick_fontsize=4.8,
+            win_shade='0.94',               # the y < 0 half-plane: Sven lower
+            ylabel_text='Sven $-$ method',  # ... in final validation loss (caption)
+            figure_legend=True,
+            figure_legend_kw=dict(_LEGEND_STRIP, ncol=4),
+        ),
+    ),
+    'rank_strip': figspec.FigureSpec(
+        draw=_rank_strip,
+        doc=('F15: the same ranking as a strip plot -- one row per method, one marker '
+             'per scan at its normalised rank, the tick at the method\'s median. This '
+             'is the one that shows how tight or spread a method is across tasks, '
+             'which the grid and the table cannot.'),
+        defaults=_rank_defaults(
+            aspect=1.15,
+            extra_h=0.42,
+            # -- markers ----------------------------------------------------
+            marker_size=3.4,
+            marker_alpha=0.95,
+            marker_edge_lw=0.4,
+            median_tick=True,           # the black tick at the method's median
+            median_lw=1.1,
+            median_half_height=0.32,
+            # -- axes -------------------------------------------------------
+            xlim_norm=[-0.06, 1.06],
+            xlabel_text='Normalised rank  (0 = best of field)',
+            # -- key --------------------------------------------------------
+            figure_legend=True,         # the three model-family marker shapes
+            figure_legend_kw=dict(_LEGEND_STRIP, ncol=3),
+        ),
     ),
 })
 
@@ -1132,22 +1671,27 @@ def _draw_and_save(name, ctx):
 def _t1_headline(ctx, name='headline_confirm', compact=False):
     """T1: the main-text results table -- Sven and seven baselines on the three
     headline tasks, on the confirmation seeds with the tuning seeds beside."""
-    rows, groups_of = [], []
+    rows, groups_of, midrules = [], [], []
     for scan in HEADLINE_MAIN:
         conf, eff = ctx.conf(scan), ctx.eff(scan)
         present = [m for m in MAIN_TABLE_METHODS if m in set(conf['method'])]
         groups_of.append((scan, len(present)))
         # the task names a BLOCK, not a column: a repeated 26-character task name is
-        # 1 in of a 5.5 in text block spent on nothing
+        # 1 in of a 5.5 in text block spent on nothing.  Every block but the first is
+        # ruled off from the one above it; the first already sits under the header rule.
+        if rows:
+            midrules.append(len(rows))
         rows.append(C.span_row(hl.scan_title(scan)))
         eff_by = {r['method']: r for _, r in eff.iterrows()}
+        best = _best_val_methods(ctx, scan, present)
         for m in present:
             c = ctx.row(scan, m)
             e = eff_by.get(m)
             row = {
                 'Method': hl.display_name(m),
                 'Configuration': _short_config(c['config']),
-                'Val. loss': C.fmt_pm(c['val_conf'], c['val_conf_std'], 4),
+                'Val. loss': _val_cell(c['val_conf'], c['val_conf_std'],
+                                       best=(m in best)),
                 'Val. (tune)': C.fmt_sig(c['val_tune'], 4),
                 'Test loss': C.fmt_pm(c['test_conf'], c.get('test_conf_std'), 4),
                 'Test acc.': (C.fmt_pct(c.get('acc_conf'), 1)
@@ -1169,6 +1713,10 @@ def _t1_headline(ctx, name='headline_confirm', compact=False):
         's/epoch and peak memory come from the standalone timing pass, one run per GPU',
         'dagger on fin./att. = more than half the confirmation runs failed, so the mean '
         'beside it is a mean over the survivors',
+        'bold = the lowest confirmation-seed validation loss of that task block, and '
+        'every method within sqrt(s_best^2 + s_i^2) of it -- a display convention over '
+        'the printed mean and band, not a significance test (that is the paired '
+        'comparison of T4); a daggered row is not eligible to win a block',
     ]
     rec = C.provenance(
         functions=['headline.confirmation_table', 'headline.confirmation_view',
@@ -1181,7 +1729,7 @@ def _t1_headline(ctx, name='headline_confirm', compact=False):
         provisional=sorted(ctx.provisional.intersection(HEADLINE_MAIN)))
     return C.write_table(name, rows, provenance_record=rec, fit=True,
                          align=['l', 'p{0.95in}'] + ['r'] * (6 if compact else 8),
-                         notes=notes,
+                         midrules=midrules, notes=notes,
                          caption=('Headline results on the confirmation seeds. Sven is '
                                   'second on the polynomial scan, third on MNIST and '
                                   'tied with AdamW on nanoGPT.'),
@@ -1255,9 +1803,7 @@ def _t3_protocol(ctx, name='protocol'):
                      'ce': 'cross-entropy', 'lm_ce': 'token cross-entropy'}.get(
                          str(df['loss'].dropna().iloc[0]) if 'loss' in df.columns
                          else '', '--'),
-            'Train/val/test': C.Raw('/'.join(
-                str(C.fmt_int(_scalar(ctx, scan, c)))
-                for c in ('n_train', 'n_val', 'n_test'))),
+            # the split sizes live in App. C's "Datasets and Splits" table, not here
             C.Raw('$P$'): C.fmt_int(_scalar(ctx, scan, 'n_params')),
             C.Raw('$B$'): C.fmt_int(_scalar(ctx, scan, 'batch_size')),
             'Epochs': C.fmt_int(_n_epochs(ctx, scan)),
@@ -1287,7 +1833,7 @@ def _t3_protocol(ctx, name='protocol'):
                                                          scans=ctx.scans),
         provisional=sorted(ctx.provisional))
     return C.write_table(name, rows, provenance_record=rec, notes=notes, fit=True,
-                         align=['l', 'l'] + ['r'] * 8,
+                         align=['l', 'l'] + ['c'] * 7,
                          caption='The protocol, as run.', label='tab:protocol')
 
 
@@ -1663,11 +2209,13 @@ def _t18_reproducibility(ctx, name='reproducibility'):
 
 def _t20_data_seeds(ctx, name='data_seeds'):
     """T20: between-instance against within-instance spread on the two synthetics."""
-    rows, detail = [], {}
+    rows, detail, midrules = [], {}, []
     for scan in ('toy_1d_scan', 'polynomial_scan'):
         spread = hf.instance_spread(scan, table=ctx.conf(scan))
         if spread.empty:
             continue
+        if rows:                        # rule off every block but the first
+            midrules.append(len(rows))
         rows.append(C.span_row(hl.scan_title(scan)))
         for _, r in spread.iterrows():
             rows.append({
@@ -1677,7 +2225,8 @@ def _t20_data_seeds(ctx, name='data_seeds'):
                 'Betw.-inst. std': C.fmt_sig(r['val_conf_dsspread'], 3),
                 'Within-inst. std': C.fmt_sig(r['val_conf_seedspread'], 3),
                 'Ratio': C.fmt_sig(r['ratio_instance_over_seed'], 3),
-                'Tuning inst.': C.fmt_sig(r['val_conf_ds0'], 4),
+                # the tuning-instance value is read against the tuning seeds, which
+                # this table does not carry: it lives in the optimism table instead
             })
         sven = spread[spread['method'] == hl.SVEN_LABEL]
         detail[scan] = {
@@ -1691,8 +2240,6 @@ def _t20_data_seeds(ctx, name='data_seeds'):
         'per-instance means is variation of the target, not of the optimizer\'s luck',
         'a ratio above 1 says the choice of instance moves the answer more than the seed '
         'does, and no single-instance number should then be quoted without it',
-        '"Tuning instance" is the replicate the tuning scan itself ran on -- the only '
-        'one whose gap against the tuning seeds is a statement about the seeds',
     ]
     rec = C.provenance(
         functions=['headline.data_seed_table', 'headline_figs.instance_spread',
@@ -1700,7 +2247,7 @@ def _t20_data_seeds(ctx, name='data_seeds'):
         scans=[hl.dir_name(s, 'confirm') for s in ('toy_1d_scan', 'polynomial_scan')],
         note='T20, the data-seed replicate table', detail=detail)
     return C.write_table(name, rows, provenance_record=rec, fit=True,
-                         align=['l'] + ['r'] * 6, notes=notes,
+                         align=['l'] + ['r'] * 5, midrules=midrules, notes=notes,
                          caption='Data-seed replicates on the two synthetic tasks.',
                          label='tab:dataseeds'), detail
 
@@ -1771,6 +2318,26 @@ def _macros(ctx, figure_info=None):
           hl.assert_no_test_selection(payload=ctx.payload, scans=ctx.scans),
           source='headline.assert_no_test_selection')
     M.add('numNScans', len(ctx.scans), source='headline.HEADLINE_SCANS')
+
+    # --- the ranking figure's caption (F14) ------------------------------
+    # The caption states how far the validation and test rankings agree, which is what
+    # licenses reading the two panels as one result; it is a count over the same frame
+    # the figure draws, not a number typed into the caption.
+    rk = ctx.ranking.dropna(subset=['rank_val', 'rank_test'])
+    agree = rk['rank_val'] == rk['rank_test']
+    gap = (rk['rank_val'] - rk['rank_test']).abs()
+    M.add('numRankCells', int(len(rk)), source='headline.ranking_summary')
+    M.add('numRankCellsAgree', int(agree.sum()),
+          source='headline.ranking_summary (rank_val == rank_test)')
+    M.add('numRankCellsDiffer', int((~agree).sum()),
+          source='headline.ranking_summary (rank_val != rank_test)')
+    M.add('numRankCellsAdjacent', int(((~agree) & (gap == 1)).sum()),
+          source='headline.ranking_summary (|rank_val - rank_test| == 1)')
+    M.add('numRankCellsWide', int(((~agree) & (gap > 1)).sum()),
+          source='headline.ranking_summary (|rank_val - rank_test| > 1)')
+    M.add('numRankCellsDifferNanogpt',
+          int((~agree & (rk['scan'] == 'exp_nanogpt_speedrun')).sum()),
+          source='headline.ranking_summary (nanoGPT disagreements)')
     # --- the extent of F3 (fig:cost_memory), so its caption cannot drift --------------
     # The caption used to claim the figure spans up to "163 million" parameters, which is
     # GPT-2-small: that model has no standalone timing pass (one epoch, one seed, no

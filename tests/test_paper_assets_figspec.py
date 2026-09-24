@@ -29,8 +29,10 @@ from paper_assets import figspec as F    # noqa: E402
 #: four modules declare their specs.  Taken from figures_iclr/ as committed.
 PAPER_FIGURES = {
     'main': ('headline_curves', 'headline_curves_all', 'cost_memory', 'k_sweeps',
-             'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm'),
-    'reviewer': ('overparam', 'overparam_outcomes', 'batchsize', 'kappa', 'knobs',
+             'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm',
+             'allseed_curves_ce', 'allseed_curves_nosoap', 'allseed_curves_ce_lm_nosoap',
+             'rank_heatmap', 'rank_strip', 'paired_diffs'),
+    'reviewer': ('overparam', 'overparam_losses', 'batchsize', 'batchsize_loss', 'kappa', 'knobs',
                  'budget', 'divergence', 'divergence_grids'),
     'large': ('cifar_curves_epoch', 'cifar_curves_time', 'cifar_cost', 'cifar_gap',
               'cifar_landscape', 'cifar_rank_used', 'fig5_quality', 'fig5_cost',

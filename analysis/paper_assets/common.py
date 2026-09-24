@@ -700,7 +700,7 @@ def _ragged(cell):
 
 def booktabs(rows, columns=None, align=None, caption=None, label=None,
              groups=None, notes=(), env='tabular', column_format=None,
-             midrules=(), fit=False):
+             midrules=(), double_midrules=(), fit=False):
     """A ``booktabs`` table body as a string, ready to ``\\input``.
 
     ``rows`` is a list of dicts or a DataFrame.  Cells are escaped
@@ -714,7 +714,9 @@ def booktabs(rows, columns=None, align=None, caption=None, label=None,
     integrator can see the intended wording.
 
     ``groups`` is an optional list of ``(span, title)`` for a ``\\cmidrule`` header row;
-    ``midrules`` a set of row indices to draw a ``\\midrule`` BEFORE.
+    ``midrules`` a set of row indices to draw a ``\\midrule`` BEFORE, and
+    ``double_midrules`` the same with a doubled rule (a heavier break between blocks
+    of a table that also has lighter breaks inside them).
 
     ``align`` takes ``'l'``/``'r'``/``'c'`` and also a full column spec of more than one
     character, which is passed through verbatim -- ``'p{1.4in}'`` for a free-text column
@@ -784,7 +786,9 @@ def booktabs(rows, columns=None, align=None, caption=None, label=None,
                           for i, h in enumerate(head)) + r' \\')
     out.append('\\midrule')
     for i, rec in enumerate(records):
-        if i in set(midrules):
+        if i in set(double_midrules):
+            out.append('\\midrule\\midrule')
+        elif i in set(midrules):
             out.append('\\midrule')
         if SPAN_KEY in rec:
             title = rec[SPAN_KEY]

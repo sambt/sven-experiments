@@ -7,7 +7,7 @@ asset  file                                        appendix
 =====  ==========================================  ==========================
 F4     ``figures_iclr/reviewer/budget.pdf``         F  (tuning budget)
 F5     ``figures_iclr/reviewer/overparam.pdf``      G  (P > N)
-F5b    ``figures_iclr/reviewer/overparam_outcomes.pdf``  G (test / train loss)
+F5     ``figures_iclr/reviewer/overparam_losses.pdf``   G (train / val / test, as carried)
 F6     ``figures_iclr/reviewer/batchsize.pdf``      H  (batch size)
 F8     ``figures_iclr/reviewer/kappa.pdf``          M  (kappa)
 F10    ``figures_iclr/reviewer/divergence.pdf``     P  (robustness)
@@ -87,6 +87,10 @@ OVERPARAM_SCANS = (('toy_1d', 'rebuttal_overparam_toy_1d_scan'),
                    ('mnist_labelreg', 'rebuttal_overparam_mnist_scan'))
 #: App. H -- batch-size sensitivity (R2's Q1), on the polynomial task
 BATCHSIZE_SCAN = 'rebuttal_batchsize_polynomial_scan'
+#: App. P -- the sweeps whose Sven grids F10/F10b show beside the headline grids: their
+#: shared learning-rate axes reach values that break several methods, so they are where
+#: the diverged fraction gets high
+DIVERGENCE_SWEEP_SCANS = tuple(s for _, s in OVERPARAM_SCANS) + (BATCHSIZE_SCAN,)
 #: App. M -- kappa at matched effective step
 KAPPA_SCAN = 'mnist_kappaScan_labelRegression'
 #: App. N -- the two memory knobs, four MLP scans each
@@ -103,8 +107,6 @@ BUDGET_SCANS = ('toy_1d_scan', 'polynomial_scan', 'mnist_scan_labelRegression',
                 'mnist_scan_ce')
 #: App. F -- the two panels of F4 (the scans whose best-of-n curves are drawn)
 BUDGET_PANELS = ('polynomial_scan', 'mnist_scan_labelRegression')
-#: App. P -- how many of Sven's grids the per-grid divergence maps show
-N_DIVERGENCE_GRIDS = 6
 
 #: ``rtol`` is a code identifier, and the manuscript sets it as ``\texttt{rtol}`` in every
 #: one of its 14 mentions.  In a matplotlib label LaTeX is not available, so the same name
@@ -646,7 +648,7 @@ def _reach_ratio(d):
 _OUTCOME_LABELS = {
     'final_val_loss': 'Final val. loss',
     'final_test_loss': 'Final test loss',
-    'final_train_eval': 'Final train loss (full set)',
+    'final_train_eval': 'Final train loss (subset)',
 }
 
 
@@ -743,17 +745,25 @@ def _fig_overparam_outcomes(ctx, opts):
     over = ctx.overparam()
     fig, axes = _subplots(opts)
     keys = _overparam_keys(over, opts)
+    exclude = opts.get('exclude') or {}
     for i, q in enumerate(opts['metrics']):
         for j, key in enumerate(keys):
             d = over[key]
             ax = axes[i][j]
-            rf.plot_arm(ax, d['best'], 'P_over_N', q, logx=True, logy=True)
+            # a method dropped from one task's panels (a list, or {task: [methods]}):
+            # SOAP on MNIST sits a decade above the field and would set the y range
+            drop = set(exclude if isinstance(exclude, (list, tuple))
+                       else list(exclude.get('*', ())) + list(exclude.get(key, ())))
+            methods = [m for m in ah.method_order(d['best']['method'].unique())
+                       if m not in drop] if drop else None
+            rf.plot_arm(ax, d['best'], 'P_over_N', q, methods=methods, logx=True,
+                        logy=True)
             _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'],
                   ms=opts['thin_ms'])
             _pn_marker(ax, opts)
             rf.arm_ticks(ax, d['pn'], fmt=opts['arm_tick_fmt'],
                          min_log_sep=opts['min_log_sep'])
-            ax.set_xlabel('$P/N$')
+            ax.set_xlabel('$P/N$' if i == len(opts['metrics']) - 1 else '')
             ax.set_ylabel(_OUTCOME_LABELS.get(q, q) if j == 0 else '')
             if i == 0:
                 ax.set_title(_task_title(key))
@@ -1031,6 +1041,32 @@ def _batchsize_frames(data):
     out['piv_step'] = out['step'].pivot(index='rtol', columns='batch_size', values='value')
     out['piv_mem'] = out['mem'].pivot(index='rtol', columns='batch_size', values='value')
     return out
+
+
+def _fig_batchsize_loss(ctx, opts):
+    """F6 as carried: the batch-size sweep on validation loss alone, one panel.
+
+    The used-rank, cost and divergence panels of `batchsize` are retired from the
+    paper -- the rank law, the profiling appendix and the robustness appendix each
+    already say what those panels said -- and stay available on that figure.
+    """
+    b = ctx.batchsize()
+    fig, axes = _subplots(opts)
+    Bs = [B for B in b['Bs'] if not opts['batch_sizes'] or B in opts['batch_sizes']]
+    best = b['best'][b['best']['batch_size'].isin(Bs)] if opts['batch_sizes'] \
+        else b['best']
+    ax = axes[0][0]
+    rf.plot_arm(ax, best, 'batch_size', 'final_val_loss', logy=True)
+    _thin(ax, sven_lw=opts['sven_lw'], other_lw=opts['other_lw'], ms=opts['thin_ms'])
+    ax.set_xscale('log', base=2)
+    rf.arm_ticks(ax, Bs, fmt=opts['arm_tick_fmt'])
+    ax.set_xlabel('batch size $B$')
+    ax.set_ylabel('Final validation loss')
+    _grid(ax)
+    handles, labels = _axes_handles([ax])
+    _figure_legend(fig, handles, labels, opts['legend_below'])
+    return fig, {'axes': axes, 'provenance': ctx.prov('batchsize'), 'Bs': Bs,
+                 'style_fraction': opts['style_fraction']}
 
 
 def _fig_batchsize(ctx, opts):
@@ -1685,50 +1721,62 @@ def _fig_knobs(ctx, opts):
         ax.set_title(f'Quality vs {"micro-batching" if j == 0 else "parameter masking"}')
         _grid(ax)
 
-    ax = axes[1][0]
-    for key, _name in MICROBATCH_SCANS:
-        d = knobs['microbatch_size'].get(key)
-        if d is None or d['rank_cap'] is None or d['rank_cap'].empty or key not in tasks:
-            continue
-        chk = d['rank_cap'].sort_values('microbatch_size')
-        ax.plot(chk['microbatch_size'], chk['rank_used'], '-o', lw=opts['lw'],
-                ms=opts['ms'], color=SCAN_COLORS[key], label=_task_title(key))
-        if opts['cap_line']:
-            ax.plot(chk['microbatch_size'], chk['cap'], ':', lw=opts['cap_lw'],
-                    color=SCAN_COLORS[key])
-    ax.set_xscale('log', base=2)
-    ax.set_yscale('log')
-    rf.arm_ticks(ax, _knob_levels(knobs['microbatch_size'], 'microbatch_size'),
-                 fmt=opts['arm_tick_fmt'])
-    ax.set_xlabel(xlab['microbatch_size'])
-    ax.set_ylabel('singular values kept / step')
-    ax.set_title(r'Used rank vs the cap $B/\mu B$ (dotted)')
-    _grid(ax)
+    def cost_panel(ax, col, ylabel, title):
+        # both knobs on one axis, each scaled to its own maximum, relative to the
+        # reference setting: solid = micro-batching, dashed = parameter masking
+        for knob, ref, scans, _ in KNOBS:
+            ls = '-' if knob == 'microbatch_size' else '--'
+            for key, _name in scans:
+                d = knobs[knob].get(key)
+                if d is None or d['at_lr'].empty or key not in tasks:
+                    continue
+                r0 = _knob_ref_row(d, knob, ref)
+                if r0 is None or col not in d['at_lr']:
+                    continue
+                base = _num(r0[col])
+                s = d['at_lr']
+                x = pd.to_numeric(s[knob], errors='coerce')
+                x = x / x.max() if knob == 'microbatch_size' else x
+                ax.plot(x, _rel(s[col], base), ls=ls, marker='o', lw=opts['time_lw'],
+                        ms=opts['time_ms'], color=SCAN_COLORS[key])
+        if opts['reference_line']:
+            ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
+        ax.set_xscale('log')
+        # a linear ratio axis: everything sits between ~0.9 and ~2.4, where a log
+        # axis only makes the ticks harder to read
+        if opts['cost_logy']:
+            ax.set_yscale('log')
+        ax.set_xlabel(r'knob / its maximum ($\mu B/B$ or $f$)')
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        _grid(ax)
 
-    ax = axes[1][1]
-    for knob, ref, scans, _ in KNOBS:
-        ls = '-' if knob == 'microbatch_size' else '--'
-        for key, _name in scans:
-            d = knobs[knob].get(key)
-            if d is None or d['at_lr'].empty or key not in tasks:
+    if opts['bottom_left'] == 'memory':
+        cost_panel(axes[1][0], 'peak_mem_mb', 'peak memory / reference',
+                   'Peak memory: neither knob saves much')
+    else:                                   # the used-rank panel, kept as an option
+        ax = axes[1][0]
+        for key, _name in MICROBATCH_SCANS:
+            d = knobs['microbatch_size'].get(key)
+            if d is None or d['rank_cap'] is None or d['rank_cap'].empty \
+                    or key not in tasks:
                 continue
-            r0 = _knob_ref_row(d, knob, ref)
-            if r0 is None:
-                continue
-            base = _num(r0['step_s'])
-            s = d['at_lr']
-            x = pd.to_numeric(s[knob], errors='coerce')
-            x = x / x.max() if knob == 'microbatch_size' else x
-            ax.plot(x, _rel(s['step_s'], base), ls=ls, marker='o', lw=opts['time_lw'],
-                    ms=opts['time_ms'], color=SCAN_COLORS[key])
-    if opts['reference_line']:
-        ax.axhline(1.0, ls='-', c='0.6', lw=0.5, zorder=0)
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlabel(r'knob / its maximum ($\mu B/B$ or $f$)')
-    ax.set_ylabel('ms per step / reference')
-    ax.set_title('Neither knob buys time')
-    _grid(ax)
+            chk = d['rank_cap'].sort_values('microbatch_size')
+            ax.plot(chk['microbatch_size'], chk['rank_used'], '-o', lw=opts['lw'],
+                    ms=opts['ms'], color=SCAN_COLORS[key], label=_task_title(key))
+            if opts['cap_line']:
+                ax.plot(chk['microbatch_size'], chk['cap'], ':', lw=opts['cap_lw'],
+                        color=SCAN_COLORS[key])
+        ax.set_xscale('log', base=2)
+        ax.set_yscale('log')
+        rf.arm_ticks(ax, _knob_levels(knobs['microbatch_size'], 'microbatch_size'),
+                     fmt=opts['arm_tick_fmt'])
+        ax.set_xlabel(xlab['microbatch_size'])
+        ax.set_ylabel('singular values kept / step')
+        ax.set_title(r'Used rank vs the cap $B/\mu B$ (dotted)')
+        _grid(ax)
+
+    cost_panel(axes[1][1], 'step_s', 'ms per step / reference', 'Neither knob buys time')
 
     handles, labels = _axes_handles([axes[0][0], axes[0][1]])
     if opts['family_proxies']:
@@ -2142,37 +2190,29 @@ def build_budget(data, M, want, report):
 # F10 / F10b / T11 / macros -- App. P, robustness and divergence accounting
 # ---------------------------------------------------------------------------
 def _divergence_frames(root=None):
+    """The campaign-wide count (macros and the parked T11); the per-method counts on the
+    four headline grids; and Sven's (rtol, eta) maps on those plus the sweeps."""
     camp = hf.campaign_divergence(results_root=root)
-    per_method, patterns = {}, {}
+    per_method, patterns, grids = {}, {}, {}
     for scan in BUDGET_SCANS:
         df = hl.load(scan, '', results_root=root)
         per_method[scan] = hf.divergence_by_method(df)
         patterns[scan] = hf.divergence_pattern(df, index='rtol', columns='lr')
-    # the swept rtol axis, so a grid with NO divergence can still print its grid
-    for scan, pat in patterns.items():
-        if not pat.get('rtol_grid'):
-            df = hl.load(scan, '', results_root=root)
+        # a grid with NO divergence still draws (all zeros) and still prints its axis
+        grids[scan] = hf.sven_divergence_grid(df, index='rtol', columns='lr')
+        if not patterns[scan].get('rtol_grid'):
             sv = df[df['method'] == SVEN]
-            pat['rtol_grid'] = _sorted_unique(sv['rtol']) if len(sv) else []
-    top = list(camp[camp['n_diverged'] > 0]['scan'])[:N_DIVERGENCE_GRIDS]
-    grids = {}
-    for scan in top:
+            patterns[scan]['rtol_grid'] = _sorted_unique(sv['rtol']) if len(sv) else []
+    for scan in DIVERGENCE_SWEEP_SCANS:
         df = hl.load(scan, '', results_root=root)
-        frac, counts = hf.sven_divergence_grid(df, index='rtol', columns='lr')
-        grids[scan] = (frac, counts)
-        if scan not in patterns:
-            patterns[scan] = hf.divergence_pattern(df, index='rtol', columns='lr')
+        grids[scan] = hf.sven_divergence_grid(df, index='rtol', columns='lr')
     return {'campaign': camp, 'per_method': per_method, 'patterns': patterns,
-            'grids': grids, 'top': top}
+            'grids': grids}
 
 
-def _divergence_grids(dv, opts):
-    """The grids the App. P maps show: at most ``max_grids`` of what the data layer read.
-
-    :func:`_divergence_frames` already stops at :data:`N_DIVERGENCE_GRIDS` scans (each is
-    a full scan load), so this can only narrow that list, never widen it.
-    """
-    return list(dv['top'])[:int(opts['max_grids'])]
+def _divergence_grids(dv, opts, key='scans'):
+    """The grids a figure draws: the ``key`` knob, in its order, of what was read."""
+    return [s for s in opts[key] if dv['grids'].get(s, (None,))[0] is not None]
 
 
 def _fig_divergence(ctx, opts):
@@ -2180,16 +2220,17 @@ def _fig_divergence(ctx, opts):
     fig, axes = _subplots(opts)
 
     ax = axes[0][0]
-    for i, scan in enumerate(_divergence_grids(dv, opts)):
+    for i, scan in enumerate(_divergence_grids(dv, opts, 'rtol_scans')):
         frac, counts = dv['grids'][scan]
-        if frac is None:
-            continue
         n = np.nan_to_num(counts.values.astype(float))
         bad = np.nan_to_num(frac.values.astype(float)) * n
         by_rtol = pd.Series(bad.sum(axis=1) / np.where(n.sum(axis=1) > 0, n.sum(axis=1), 1),
                             index=[float(v) for v in frac.index]).sort_index()
-        ax.plot(by_rtol.index, by_rtol.to_numpy(), '-o', lw=opts['lw'], ms=opts['ms'],
-                color=_grid_color(scan, i), label=_scan_label(scan))
+        # the sweeps (P/N, batch size) are dashed: their lr axes are shared with the
+        # baselines and reach values that break everything, unlike the tuning grids
+        ls = opts['sweep_ls'] if scan in DIVERGENCE_SWEEP_SCANS else '-'
+        ax.plot(by_rtol.index, by_rtol.to_numpy(), ls, marker='o', lw=opts['lw'],
+                ms=opts['ms'], color=_grid_color(scan, i), label=_scan_label(scan))
     ax.set_xscale('log')
     ax.set_xlabel(f'{RTOL_FIG} (the relative singular-value cut)')
     ax.set_ylabel('fraction of Sven runs diverged')
@@ -2224,7 +2265,8 @@ def _fig_divergence(ctx, opts):
     handles, labels = _axes_handles([axes[0][0]])
     _figure_legend(fig, handles, labels, opts['legend_below'])
     return fig, {'axes': axes, 'provenance': ctx.prov('divergence'),
-                 'scans': scans, 'methods': order,
+                 'scans': scans, 'grids': _divergence_grids(dv, opts, 'rtol_scans'),
+                 'methods': order,
                  'style_fraction': opts['style_fraction']}
 
 
@@ -2499,21 +2541,38 @@ FIGURE_SPECS = figspec.check_defaults({
             'panel_legend': {'fontsize': 5.0, 'loc': 'upper left', 'handlelength': 1.1},
             'legend_below': dict(_LEGEND, ncol=5, height=0.50, fontsize=5.2),
         }),
-    'overparam_outcomes': figspec.FigureSpec(
+    'overparam_losses': figspec.FigureSpec(
         draw=_fig_overparam_outcomes,
-        doc='F5b: the same sweep read on test loss and on full-set train loss',
+        doc=('F5, as carried: the P/N sweep on the training subset, validation and '
+             'test loss, one row each and one column per task. Replaces the two-row '
+             '`overparam` (whose summary row -- rank, reach, divergence -- is retired '
+             'from the paper) and the former test/train `overparam_outcomes`.'),
         defaults={
             'tasks': [k for k, _ in OVERPARAM_SCANS],
-            'metrics': ['final_test_loss', 'final_train_eval'],   # one row each
-            'nrow': 2, 'ncol': 3,
+            'metrics': ['final_train_eval', 'final_val_loss', 'final_test_loss'],
+            'exclude': {'mnist_labelreg': ['SOAP']},   # per task, or a flat list
+            'nrow': 3, 'ncol': 3,
             'fraction': 1 / 3, 'style_fraction': 0.32,
-            'aspect': 0.86, 'extra_h': 0.50,
+            'aspect': 0.80, 'extra_h': 0.50,
             'sven_lw': 1.25, 'other_lw': 0.75, 'thin_ms': 2.2,
             'arm_tick_fmt': '{:.2g}', 'min_log_sep': 0.12,
             'mark_pn_one': True,
             'legend_below': dict(_LEGEND, ncol=5, height=0.50, fontsize=5.2),
         }),
     # ---------------- App. H ----------------
+    'batchsize_loss': figspec.FigureSpec(
+        draw=_fig_batchsize_loss,
+        doc=('F6, as carried: selected validation loss against batch size, every method '
+             'tuned inside its arm -- the first panel of `batchsize`.'),
+        defaults={
+            'batch_sizes': [],
+            'nrow': 1, 'ncol': 1,
+            'fraction': 0.55, 'style_fraction': 0.49,
+            'aspect': 0.66, 'extra_h': 0.55,
+            'sven_lw': 1.25, 'other_lw': 0.75, 'thin_ms': 2.2,
+            'arm_tick_fmt': '{:.0f}',
+            'legend_below': dict(_LEGEND, ncol=4, height=0.55, fontsize=5.2),
+        }),
     'batchsize': figspec.FigureSpec(
         draw=_fig_batchsize,
         doc='F6: batch-size sweep -- selection, used rank vs the cap, cost, divergence',
@@ -2562,9 +2621,13 @@ FIGURE_SPECS = figspec.check_defaults({
     # ---------------- App. N ----------------
     'knobs': figspec.FigureSpec(
         draw=_fig_knobs,
-        doc='F14: micro-batching and parameter masking -- quality, used rank, step time',
+        doc='F14: micro-batching and parameter masking -- quality (top), and peak '
+            'memory and step time relative to the reference setting (bottom); '
+            "``bottom_left='rank'`` restores the used-rank-vs-cap panel.",
         defaults={
             'tasks': [k for k, _ in MICROBATCH_SCANS],   # which scans of each family
+            'bottom_left': 'memory',         # or 'rank'
+            'cost_logy': False,              # the two ratio panels: linear y
             'nrow': 2, 'ncol': 2,
             'fraction': 0.49, 'style_fraction': 0.49,
             'aspect': 0.80, 'extra_h': 0.50,
@@ -2579,10 +2642,12 @@ FIGURE_SPECS = figspec.check_defaults({
     # ---------------- App. P ----------------
     'divergence': figspec.FigureSpec(
         draw=_fig_divergence,
-        doc='F10: where Sven diverges -- by rtol on the worst grids, and by method',
+        doc='F10: where Sven diverges -- by rtol on the headline grids and the sweeps, '
+            'and by method on the headline grids',
         defaults={
-            'max_grids': N_DIVERGENCE_GRIDS,  # grids in the left panel (<= what was read)
-            'scans': list(BUDGET_SCANS),      # the grids of the right panel
+            'rtol_scans': list(BUDGET_SCANS) + list(DIVERGENCE_SWEEP_SCANS),  # left panel
+            'scans': list(BUDGET_SCANS),      # right panel (per method)
+            'sweep_ls': '--',                 # line style of the sweeps in the left panel
             'nrow': 1, 'ncol': 2,
             'fraction': 0.49, 'style_fraction': 0.49,
             'aspect': 0.86, 'extra_h': 0.62,
@@ -2590,18 +2655,19 @@ FIGURE_SPECS = figspec.check_defaults({
             'dot_ms': 2.6,                    # the per-method dots
             'scan_offset': 0.16,              # how far apart a method's four grids sit
             'method_labelsize': 5.2,
-            'panel_legend': {'fontsize': 4.8, 'loc': 'lower right', 'handlelength': 0.8,
-                             'markerscale': 1.2},
-            'legend_below': dict(_LEGEND, ncol=3, height=0.62, fontsize=5.2),
+            'panel_legend': {},               # the shared strip names every scan
+            'legend_below': dict(_LEGEND, ncol=4, height=0.62, fontsize=5.2),
         }),
     'divergence_grids': figspec.FigureSpec(
         draw=_fig_divergence_grids,
-        doc='F10b: the per-grid (rtol, eta) divergence maps, one panel per grid',
+        doc='F10b: Sven\'s (rtol, eta) divergence maps on the headline grids, one panel each',
         defaults={
-            'max_grids': N_DIVERGENCE_GRIDS,  # panels (rows follow from `ncol`)
+            # panels, in this order (rows follow `ncol`): the headline grids, then the
+            # sweeps (P/N, batch size), where the diverged fraction gets high
+            'scans': list(BUDGET_SCANS) + list(DIVERGENCE_SWEEP_SCANS),
             'ncol': 3,
             'fraction': 1 / 3, 'style_fraction': 0.32,
-            'aspect': 1.02, 'extra_h': 0.0,   # no legend strip: the maps are annotated
+            'aspect': 0.95, 'extra_h': 0.0,   # no legend strip: the maps are annotated
             'counts_only': True,              # keep the counts, drop the helper's percent
             'cell_fontsize': 4.4,
             'panel_ticksize': 4.6,
@@ -2613,8 +2679,8 @@ FIGURE_SPECS = figspec.check_defaults({
 #: which figures each section owns, in the order ``build()`` writes them
 SECTION_FIGURES = {
     'budget': ('budget',),
-    'overparam': ('overparam', 'overparam_outcomes'),
-    'batchsize': ('batchsize',),
+    'overparam': ('overparam', 'overparam_losses'),
+    'batchsize': ('batchsize', 'batchsize_loss'),
     'kappa': ('kappa',),
     'knobs': ('knobs',),
     'divergence': ('divergence', 'divergence_grids'),

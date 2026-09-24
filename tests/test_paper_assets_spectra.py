@@ -384,15 +384,17 @@ def test_the_mechanism_table_prints_finished_over_attempted(data, paper_dirs):
 
 
 def test_the_low4_table_reports_a_tie_as_a_tie(data, paper_dirs):
+    import re
     _path, rows = S.table_low4(data)
-    assert rows
-    for r in rows:
-        assert 'Verdict' in r and r['Verdict']
-        if 'not resolved' in r['Verdict']:
-            assert 'smallest' in r['Verdict'] or 'larger' in r['Verdict']
+    body = [r for r in rows if C.SPAN_KEY not in r]
+    assert body and len(rows) - len(body) == 2        # one block per quantity
     # every row carries both the rank and the paired interval; a rank alone is not a win
-    assert all(str(r['Rank']).endswith('of 4') for r in rows)
-    assert all('$[' in str(r['95% interval']) for r in rows)
+    assert all(str(r['Rank']).endswith('of 4') for r in body)
+    assert all('$[' in str(r['95\\% interval']) for r in body)
+    # ... and the difference is bold exactly when the interval excludes zero
+    for r in body:
+        lo, hi = map(float, re.findall(r'[-\d.]+', str(r['95\\% interval']))[:2])
+        assert (r'\textbf' in str(r['Paired diff.'])) == (lo > 0 or hi < 0), r
 
 
 def test_a_table_writes_its_provenance_outside_the_manuscript(data, paper_dirs):

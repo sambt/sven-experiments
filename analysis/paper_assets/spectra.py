@@ -619,8 +619,25 @@ def _panel_title(d, scan=None, short=True, rtol=False, lines=1):
     return f'{name}{sep}$k/B = {d.k}/{d.B}${tail}'
 
 
+def _title_with_subtitle(ax, name, sub, sub_scale=0.8, gap_pt=1.5):
+    """``name`` as the title with ``sub`` beneath it at ``sub_scale`` of the size.
+
+    One ``set_title`` cannot mix sizes, so the subtitle is its own text just above the
+    axes and the title is padded up over it; both are axes children, so
+    ``constrained_layout`` makes room for them.
+    """
+    import matplotlib.pyplot as plt
+
+    size = plt.rcParams['axes.titlesize']
+    sub_size = float(size) * sub_scale
+    ax.annotate(sub, xy=(0.5, 1.0), xycoords='axes fraction', xytext=(0, gap_pt),
+                textcoords='offset points', ha='center', va='bottom',
+                fontsize=sub_size, clip_on=False)
+    ax.set_title(name, pad=gap_pt + sub_size * 1.25 + 1.0)
+
+
 def _annotate_cuts(ax, d, arrays, width, show_k=True, color='0.30', k_loc='bottom',
-                   avoid=None):
+                   avoid=None, rtol_at=None):
     """Label the rtol line, the recorded Gram float32 floor and the ``k`` cut in place.
 
     A legend for the three reference lines needs ~1.6 in of width and these panels are
@@ -640,10 +657,13 @@ def _annotate_cuts(ax, d, arrays, width, show_k=True, color='0.30', k_loc='botto
     """
     floor = float(np.nanmedian(np.concatenate([a['noise_rel'] for a in arrays])))
     x_rtol = (d.k / max(width, 1) + 0.04) if d.truncates else 0.26
+    rtol_dy = 1.5
+    if rtol_at is not None:           # a per-panel override: (x as a fraction, dy in pt)
+        x_rtol, rtol_dy = float(rtol_at[0]), float(rtol_at[1])
     # the floor label sits opposite the step labels: right-aligned at the panel edge when
     # they are on the left, left-aligned in from the middle when they are on the right
     floor_right = 'left' in (avoid or '')
-    for xf, y, va, dy, ha, text in ((x_rtol, d.rtol, 'bottom', 1.5, 'left',
+    for xf, y, va, dy, ha, text in ((x_rtol, d.rtol, 'bottom', rtol_dy, 'left',
                                      r'rtol$\,\sigma_{\max}$'),
                                     (0.99 if floor_right else 0.34, floor, 'top', -1.5,
                                      'right' if floor_right else 'left',
@@ -729,26 +749,12 @@ def _require_probe(data, name, scans=None):
 # ---------------------------------------------------------------------------
 # F2 -- main text, section 4.2
 # ---------------------------------------------------------------------------
-def _spectrum_truncation(data, opts):
-    """F2: the singular-value story in three panels at ``0.32\\linewidth``.
-
-    (a) the full-width batch spectrum of the polynomial scan over training, with the ``k``
-    cut, the ``rtol`` line and the RECORDED Gram float32 floor -- everything below that
-    floor is round-off, not structure; (b) the fraction of the batch residual the cut
-    keeps, against training progress, for the three headline scans and MNIST-CE; (c) the
-    number of directions actually inverted, ``min(k, rtol-rank)``, for all seven scans.
-    """
-    scan = (opts['spectrum_scan'] if opts['spectrum_scan'] in data.diags
-            else data.scans[0])
-    scans = _scans_drawn(data, opts)
-    floor = float(opts['discard_floor'])
-    fig, axes = _panels_for(opts, 3)
-    a, b, cc = axes
-
-    # (a) spectrum evolution, one seed (a seed mean would draw a matrix no step ever had)
+def _spectrum_over_training(a, data, scan, opts):
+    """Panel (a), ``spectrum_panel='training'``: one scan's batch spectrum over training,
+    one seed (a seed mean would draw a matrix no step ever had), with its cuts."""
     d = data.diags[scan]
     arr = data.arrays[scan][:1]
-    norm, handles = sf.plot_spectra_over_training(
+    sf.plot_spectra_over_training(
         a, d, arrays=arr, limit=int(opts['limit']), lw=float(opts['lw']),
         cmap=opts['cmap'], show_rtol=bool(opts['show_rtol']),
         show_noise=bool(opts['show_noise']), show_k=bool(opts['show_k']))
@@ -772,6 +778,66 @@ def _spectrum_truncation(data, opts):
                    transform=a.transAxes, clip_on=False, zorder=8)
             a.annotate(f'step {int(step):,}', xy=(0.065, frac), xycoords='axes fraction',
                        color='0.15', ha='left', va='bottom')
+
+
+def _spectra_across_scans(a, data, scans, opts):
+    """Panel (a), ``spectrum_panel='scans'``: every scan's batch spectrum at the LAST
+    logged step, one seed each, overlaid on a shared ``i / B`` axis.
+
+    This is the cross-dataset picture -- how steeply the spectrum decays is what
+    decides whether ``rtol`` bites (1D) or is inert (MNIST-LR, nanoGPT) -- and the
+    batch sizes differ (32 to 128), so the index is drawn as a fraction of the batch.
+    The float32 floor is drawn once, at the median of the scans' recorded floors: it is
+    a property of the arithmetic, not of a scan, and the per-scan values agree to the
+    width of the line.
+    """
+    floors = []
+    for s in scans:
+        arr = data.arrays[s][:1]
+        if not arr:
+            continue
+        a0 = arr[0]
+        y = np.asarray(a0['svs_rel'][int(opts['scans_step_index'])], dtype=float)
+        ok = np.isfinite(y) & (y > 0)
+        x = np.arange(int(a0['width'])) / float(a0['width'])
+        _scan_line(a, s, x[ok], y[ok], lw=opts['scan_lw'])
+        floors.append(float(np.nanmedian(a0['noise_rel'])))
+    if opts['show_noise'] and floors:
+        fl = float(np.median(floors))
+        a.axhline(fl, color='0.35', lw=1.1, ls='--', zorder=0)
+        a.annotate(r'$\sqrt{\epsilon}\,\sigma_{\max}$', xy=(0.03, fl),
+                   xycoords=('axes fraction', 'data'), ha='left', va='bottom',
+                   color='0.35', fontsize=5.5)
+    a.set_yscale('log')
+    lo, hi = a.get_ylim()
+    pad_lo, pad_hi = opts['spectrum_headroom']
+    a.set_ylim(max(lo / pad_lo, float(opts['scans_ymin'])), hi * pad_hi)
+    a.set_xlim(0, 1)
+    a.set_xlabel(r'SV index $i\,/\,B$')
+    a.set_ylabel(r'$\sigma_i / \sigma_{\max}$')
+    a.set_title('(a) spectra, end of training')
+
+
+def _spectrum_truncation(data, opts):
+    """F2: the singular-value story in three panels at ``0.32\\linewidth``.
+
+    (a) the full-width batch spectrum of the polynomial scan over training, with the ``k``
+    cut, the ``rtol`` line and the RECORDED Gram float32 floor -- everything below that
+    floor is round-off, not structure; (b) the fraction of the batch residual the cut
+    keeps, against training progress, for the three headline scans and MNIST-CE; (c) the
+    number of directions actually inverted, ``min(k, rtol-rank)``, for all seven scans.
+    """
+    scan = (opts['spectrum_scan'] if opts['spectrum_scan'] in data.diags
+            else data.scans[0])
+    scans = _scans_drawn(data, opts)
+    floor = float(opts['discard_floor'])
+    fig, axes = _panels_for(opts, 3)
+    a, b, cc = axes
+
+    if opts['spectrum_panel'] == 'scans':
+        _spectra_across_scans(a, data, scans, opts)
+    else:
+        _spectrum_over_training(a, data, scan, opts)
 
     # (b) residual energy DISCARDED by the cut (k AND rtol), vs training progress.  Every
     # scan is drawn: on a linear "kept" axis the five scans that keep ~100% lay on top of
@@ -814,7 +880,10 @@ def _spectrum_truncation(data, opts):
                    'spectra_figs.used_rank'],
         scans=[hl.dir_name(s, 'diag') for s in scans],
         reads=[c.results_root()], provisional=data.is_provisional(scans),
-        note=(f'(a) {scan} one seed, online per-batch Gram spectra; (b) frac_used = '
+        note=((f'(a) every scan, one seed, online Gram spectrum at the last logged '
+               f'step on an i/B axis; ' if opts['spectrum_panel'] == 'scans' else
+               f'(a) {scan} one seed, online per-batch Gram spectra; ')
+              + f'(b) frac_used = '
               f'energy in min(k, rtol-rank) directions of THIS batch; (c) all '
               f'{len(scans)} scans, seed mean, {opts["smooth"]}-step moving average'))
     return fig, {'axes': axes, 'provenance': prov, 'scan': scan, 'scans': scans}
@@ -823,12 +892,76 @@ def _spectrum_truncation(data, opts):
 # ---------------------------------------------------------------------------
 # F9 -- appendix O
 # ---------------------------------------------------------------------------
+def _progress_bar(fig, axes, n, ncol, opts):
+    """An ABSTRACT training-progress key in the grid's empty last slot.
+
+    Every panel builds its own ``LogNorm`` from its own step range (5,400 to 15,620
+    steps across the seven scans), so a numeric colourbar would be wrong for six of
+    seven panels; what is shared is the direction, dark = first steps, light = end of
+    training, and that is all this draws.  The slot is re-created in the figure's own
+    grid so ``constrained_layout`` places it like any other panel.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+
+    base = plt.get_cmap(opts['cmap'])
+    lo, hi = opts['progress_bar_range']  # the clip progress_colors applies to the lines
+    cmap = LinearSegmentedColormap.from_list(
+        f'{base.name}_progress', base(np.linspace(lo, hi, 256)))
+    sm = ScalarMappable(cmap=cmap, norm=Normalize(0, 1))
+    nrow = int(math.ceil(n / ncol))
+    if nrow * ncol > n:                  # an empty slot: a horizontal key inside it
+        slot = fig.add_subplot(nrow, ncol, n + 1)
+        slot.set_axis_off()
+        x0, y0, w, h = opts['progress_bar_box']
+        cb = fig.colorbar(sm, cax=slot.inset_axes([x0, y0, w, h]),
+                          orientation='horizontal')
+        cb.set_ticks([0.0, 1.0])
+        cb.set_ticklabels(['first step', 'end of training'])
+        cb.ax.tick_params(length=0, labelsize=plt.rcParams['xtick.labelsize'])
+    else:                                # a full grid: a vertical key on the right,
+        cb = fig.colorbar(sm, ax=list(axes), orientation='vertical',   # layout-managed
+                          fraction=opts.get('progress_bar_fraction', 0.035), pad=0.02,
+                          aspect=28)
+        cb.set_ticks([0.0, 1.0])
+        cb.set_ticklabels(['start', 'end'])
+        cb.ax.tick_params(length=0, labelsize=plt.rcParams['ytick.labelsize'])
+    cb.outline.set_linewidth(0.5)
+    cb.set_label(opts['progress_bar_label'], labelpad=3)
+    return cb
+
+
+def _dress_index_panel(ax, j, n, ncol, d, scan, width, opts, ylabel):
+    """The per-panel dressing the per-scan index grids share (spectra, |u_i.r|).
+
+    The scan name is the title with the configuration as a smaller line under it; the
+    y label sits on the leftmost column only and its tick labels are small and angled;
+    the index axis is NOT numerical -- B differs per panel (32 to 128) and the panels are
+    read for shape -- so it runs from 0 to B with no ticks between, and the bottom row
+    alone carries the end labels and the axis name.  All of it is what buys plot area.
+    """
+    bottom_row = j >= (math.ceil(n / ncol) - 1) * ncol
+    _title_with_subtitle(ax, SCAN_SHORT.get(scan, d.title) if opts['short_titles']
+                         else d.title, f'$k/B = {d.k}/{d.B}$',
+                         sub_scale=opts['subtitle_scale'])
+    ax.set_ylabel(ylabel if j % ncol == 0 else '')
+    ax.tick_params(axis='y', labelsize=opts['ytick_labelsize'],
+                   labelrotation=opts['ytick_rotation'])
+    ax.set_xlim(0, width - 1)
+    ax.set_xticks([0, width - 1])
+    ax.set_xticklabels(['0', '$B$'] if bottom_row else [])
+    ax.tick_params(axis='x', length=0)
+    ax.set_xlabel('SV index $i$' if bottom_row else '')
+
+
 def _online_spectra(data, opts):
     """Full-width online spectra over training for every scan, with the three cuts."""
     scans = _scans_drawn(data, opts)
-    fig, axes = _panels_for(opts, len(scans))
+    n, ncol = len(scans), int(opts['ncol'])
+    fig, axes = _panels_for(opts, n)
     norm = None
-    for ax, scan in zip(axes, scans):
+    for j, (ax, scan) in enumerate(zip(axes, scans)):
         d, arr = data.diags[scan], data.arrays[scan][:1]
         norm, _ = sf.plot_spectra_over_training(
             ax, d, arrays=arr, limit=int(opts['limit']), lw=float(opts['lw']),
@@ -840,11 +973,9 @@ def _online_spectra(data, opts):
         # selected rtol is 0.3
         pad_lo, pad_hi = opts['spectrum_headroom']
         ax.set_ylim(lo / pad_lo, hi * pad_hi)
-        ax.set_title(_panel_title(d, scan, short=opts['short_titles'],
-                                  lines=opts['title_lines']))
-        ax.set_xlabel('SV index $i$')
-        ax.set_ylabel(r'$\sigma_i / \sigma_{\max}$')
         width = int(arr[0]['width'])
+        _dress_index_panel(ax, j, n, ncol, d, scan, width, opts,
+                           ylabel=r'$\sigma_i / \sigma_{\max}$')
         # deterministic, and collision-free by construction on all seven scans: the two
         # step labels own the lower LEFT, the round-off-floor label the right-hand edge,
         # the rtol label the space just right of the k line at its own height, and the k
@@ -852,9 +983,11 @@ def _online_spectra(data, opts):
         # "step 15,600" is half a panel wide and the k line stands at k/B = 0.5.
         loc = _step_label_loc(ax, opts)
         _annotate_cuts(ax, d, arr, width, show_k=bool(opts['show_k']), avoid=loc,
-                       k_loc=opts['k_loc'])
+                       k_loc=opts['k_loc'], rtol_at=opts['rtol_label'].get(scan))
         if opts['annotate_steps']:
             _step_endpoints(ax, arr[0]['step'], loc=loc, cmap=opts['cmap'])
+    if opts['progress_bar']:
+        _progress_bar(fig, axes, n, ncol, opts)
     prov = c.provenance(
         functions=['spectra_figs.plot_spectra_over_training', 'spectra_figs.diag_arrays',
                    'spectra_figs.noise_floor_rel'],
@@ -868,9 +1001,10 @@ def _online_spectra(data, opts):
 def _online_utr(data, opts):
     """``|u_i.r| / ||U^T r||`` over training: where the batch residual actually sits."""
     scans = _scans_drawn(data, opts)
-    fig, axes = _panels_for(opts, len(scans))
+    n, ncol = len(scans), int(opts['ncol'])
+    fig, axes = _panels_for(opts, n)
     norm = None
-    for ax, scan in zip(axes, scans):
+    for j, (ax, scan) in enumerate(zip(axes, scans)):
         d, arr = data.diags[scan], data.arrays[scan][:1]
         norm = sf.plot_utr_over_training(ax, d, arrays=arr, limit=int(opts['limit']),
                                          lw=float(opts['lw']), cmap=opts['cmap'],
@@ -878,10 +1012,8 @@ def _online_utr(data, opts):
         lo, hi = ax.get_ylim()
         pad_lo, pad_hi = opts['spectrum_headroom']
         ax.set_ylim(lo / pad_lo, hi * pad_hi)
-        ax.set_title(_panel_title(d, scan, short=opts['short_titles'],
-                                  lines=opts['title_lines']))
-        ax.set_xlabel('SV index $i$')
-        ax.set_ylabel(r'$|u_i^{\top} r| / \|U^{\top} r\|$')
+        _dress_index_panel(ax, j, n, ncol, d, scan, int(arr[0]['width']), opts,
+                           ylabel=r'$|u_i^{\top} r| / \|U^{\top} r\|$')
         if opts['show_k'] and d.truncates:
             ax.annotate(f'$k={d.k}$', xy=(d.k - 1, ax.get_ylim()[1]), xytext=(1.5, -1),
                         textcoords='offset points', ha='left', va='top',
@@ -889,6 +1021,8 @@ def _online_utr(data, opts):
         if opts['annotate_steps']:
             _step_endpoints(ax, arr[0]['step'], loc=_step_label_loc(ax, opts),
                             cmap=opts['cmap'])
+    if opts['progress_bar']:
+        _progress_bar(fig, axes, n, ncol, opts)
     prov = c.provenance(
         functions=['spectra_figs.plot_utr_over_training', 'spectra_figs.diag_arrays'],
         scans=[hl.dir_name(s, 'diag') for s in scans], reads=[c.results_root()],
@@ -970,27 +1104,52 @@ def _online_mechanism(data, opts):
 def _online_norms(data, opts):
     """Applied update norm and batch residual norm over training, per scan."""
     scans = _scans_drawn(data, opts)
-    fig, axes = _panels_for(opts, len(scans))
-    for ax, scan in zip(axes, scans):
-        sf.plot_norms(ax, data.diags[scan], arrays=data.arrays[scan],
-                      smooth=int(opts['smooth']), band=bool(opts['band']))
-        ax.set_title(_panel_title(data.diags[scan], scan,
-                                  short=opts['short_titles'],
-                                  lines=opts['title_lines']))
+    n, ncol = len(scans), int(opts['ncol'])
+    fig, axes = _panels_for(opts, n)
+    for j, (ax, scan) in enumerate(zip(axes, scans)):
+        d, arrays = data.diags[scan], data.arrays[scan]
+        sf.plot_norms(ax, d, arrays=arrays, smooth=int(opts['smooth']),
+                      band=bool(opts['band']))
         leg = ax.get_legend()
         if leg is not None:
             leg.remove()
+        # the step axis runs to each scan's own step count (5,380 to 15,600), so it is
+        # drawn as start-to-end rather than numbered, like the index axis of the
+        # spectrum grids: the panels are compared for shape, not for step
+        n_steps = float(d.n_steps or max(float(np.max(a['step'])) for a in arrays))
+        bottom_row = j >= (math.ceil(n / ncol) - 1) * ncol
+        _title_with_subtitle(ax, SCAN_SHORT.get(scan, d.title) if opts['short_titles']
+                             else d.title, f'$k/B = {d.k}/{d.B}$',
+                             sub_scale=opts['subtitle_scale'])
+        ax.set_ylabel('Norm' if j % ncol == 0 else '')
+        ax.tick_params(axis='y', labelsize=opts['ytick_labelsize'],
+                       labelrotation=opts['ytick_rotation'])
+        ax.set_xlim(0, n_steps)
+        ax.set_xticks([0, n_steps])
+        ax.set_xticklabels(['start', 'end'] if bottom_row else [])
+        ax.tick_params(axis='x', length=0)
+        ax.set_xlabel('Training progress' if bottom_row else '')
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     lw = float(opts['legend_lw'])
     if opts['show_legend']:
-        _legend_below(fig, [Line2D([], [], color=style.method_color('Sven'), lw=lw),
-                            Line2D([], [], color='#DD8452', lw=lw),
-                            Patch(color='0.45', alpha=0.25)],
-                      [r'$\|\Delta\theta\|$ (applied, incl. $\eta$)', r'$\|r\|$',
-                       style.seed_spread_label()],
-                      **figspec.merge_kw(opts['legend_kw'],
-                                         ncol=opts['legend_ncol']))
+        handles = [Line2D([], [], color=style.method_color('Sven'), lw=lw),
+                   Line2D([], [], color='#DD8452', lw=lw),
+                   Patch(color='0.45', alpha=0.25)]
+        labels = [r'$\|\Delta\theta\|$ (applied, incl. $\eta$)', r'$\|r\|$',
+                  style.seed_spread_label()]
+        nrow = int(math.ceil(n / ncol))
+        if opts['legend_loc'] == 'slot' and nrow * ncol > n:
+            # the grid's empty last slot holds the key, so the figure needs no strip
+            # under the panels and the panels get that height back
+            slot = fig.add_subplot(nrow, ncol, n + 1)
+            slot.set_axis_off()
+            slot.legend(handles, labels, loc='center', frameon=False,
+                        **figspec.merge_kw(opts['legend_kw'], ncol=1))
+        else:
+            _legend_below(fig, handles, labels,
+                          **figspec.merge_kw(opts['legend_kw'],
+                                             ncol=opts['legend_ncol']))
     prov = c.provenance(
         functions=['spectra_figs.plot_norms', 'spectra_figs.seed_stack'],
         scans=[hl.dir_name(s, 'diag') for s in scans], reads=[c.results_root()],
@@ -1244,18 +1403,25 @@ def _probe_spectra_all(data, opts):
     ncol = int(opts['ncol']) or max(len(data.probe_methods[s]) for s in scans)
     fig, axes = _panels_for(opts, len(scans) * ncol, ncol=ncol)
     seeds = {}
+    n = len(scans) * ncol
     for i, scan in enumerate(scans):
         seeds[scan] = _probe_seed(scan)
         d = data.diags.get(scan)
+        bottom_row = i == len(scans) - 1
         for j, method in enumerate(data.probe_methods[scan]):
             ax = axes[i * ncol + j]
             sf.plot_probe_spectra(ax, scan, method, seed=seeds[scan],
                                   limit=int(opts['limit']), lw=float(opts['lw']),
                                   cmap=opts['cmap'], annotate_seed=False)
-            ax.set_title(f'{SCAN_SHORT.get(scan, scan)} / {style.method_label(method)}')
-            ax.set_xlabel('SV index $i$')
-            if j:
-                ax.set_ylabel('')
+            # a grid of scans x optimizers is labelled once per row and once per
+            # column, not once per panel: the optimizer is the top row's title and the
+            # scan is folded into the left column's y label, as the all-seed figures do
+            ax.set_title(style.method_label(method) if i == 0 else '')
+            ax.set_ylabel((f'{SCAN_SHORT.get(scan, scan)}\n' + r'$\sigma_i / \sigma_1$')
+                          if j == 0 else '')
+            ax.set_xlabel('SV index $i$' if bottom_row else '')
+            if not bottom_row:
+                ax.tick_params(axis='x', labelbottom=False)
             if (d is not None and opts['show_k']
                     and style.canonical_method(method) == 'Sven'):
                 ax.axvline(d.k, color='#C44E52', lw=float(opts['k_lw']), zorder=0)
@@ -1265,6 +1431,8 @@ def _probe_spectra_all(data, opts):
                 if ents:
                     _step_endpoints(ax, np.asarray(ents[0]['step']),
                                     loc=_step_label_loc(ax, opts), cmap=opts['cmap'])
+    if opts['progress_bar']:
+        _progress_bar(fig, axes, n, ncol, opts)
     prov = c.provenance(
         functions=['spectra_figs.plot_probe_spectra', 'ckpt_tools.load_spectra'],
         scans=[sf.probe_scan_name(s) for s in scans],
@@ -1319,6 +1487,13 @@ def _probe_metric_grid(data, opts, scans, metrics, prov, transpose=False, logy=N
             _probe_panel(ax, data, scan, metric, logy=logy, marker=opts['marker'],
                          band=bool(opts['band']), cond_pad=float(opts['cond_pad']),
                          title=SCAN_SHORT.get(scan, scan) if named else None)
+            # the step axis is the same in every panel: name it on the bottom row only.
+            # Transposed, a row is one metric, so its y label goes on the left column
+            # only; untransposed each column is a different metric and keeps its own.
+            if i < len(outer) - 1:
+                ax.set_xlabel('')
+            if transpose and j > 0:
+                ax.set_ylabel('')
     if opts['show_legend']:
         _axes_legend(fig, **figspec.merge_kw(opts['legend_kw'],
                                             ncol=opts['legend_ncol']))
@@ -1355,7 +1530,8 @@ def _probe_metrics_all(data, opts):
         note='"Resolved rank" counts sigma_i above floor*sigma_max: on toy it is 14 of '
              '593 at initialisation, which is why that scan\'s condition number and '
              'sigma_B/sigma_1 are threshold artefacts and are marked as such')
-    return _probe_metric_grid(data, opts, scans, metrics, prov)
+    return _probe_metric_grid(data, opts, scans, metrics, prov,
+                              transpose=bool(opts['transpose']))
 
 
 def _probe_norms(data, opts):
@@ -1382,16 +1558,44 @@ def _probe_energy(data, opts):
                          pool=[s for s in data.probe_methods
                                if 'Sven' in data.probe_methods[s]])
     _require_probe(data, 'probe_energy', scans)
-    fig, axes = _panels_for(opts, len(scans))
-    for ax, scan in zip(axes, scans):
+    n, ncol = len(scans), int(opts['ncol'])
+    fig, axes = _panels_for(opts, n)
+    for j, (ax, scan) in enumerate(zip(axes, scans)):
         d = data.diags.get(scan)
         k = int(d.k) if d is not None else None
         seed = _probe_seed(scan)
         sf.plot_probe_energy_profile(ax, scan, k=(k if opts['show_k'] else None),
                                      limit=int(opts['limit']), seed=seed,
                                      cmap=opts['cmap'])
-        ax.set_title(f'{SCAN_SHORT.get(scan, scan)}' + (f' ($k={k}$)' if k else ''))
-        ax.set_ylabel('Probe residual kept')
+        # Two cuts, not one: k is the rank the step inverts, B the row space the step
+        # lives in, so even k = B reaches no more than the curve's value at B.  Where
+        # they coincide one line carries both names.
+        B = int(d.B) if d is not None else None
+        if k and B and opts['show_k']:
+            same = B == k
+            if not same:
+                ax.axvline(B, color=opts['b_line_color'], lw=1.2, ls='--', zorder=0)
+            # labels at the FOOT of the lines (the curves crowd the top at these x), k
+            # to the left of its line and B to the right so they cannot collide when
+            # the two are a factor of two apart on a log axis
+            marks = (((k, '$k,B$', '#C44E52', 'left'),) if same else
+                     ((k, '$k$', '#C44E52', 'right'), (B, '$B$', opts['b_line_color'], 'left')))
+            for x, text, color, ha in marks:
+                ax.annotate(text, xy=(x, 0.04), xycoords=('data', 'axes fraction'),
+                            xytext=(2.5 if ha == 'left' else -2.5, 0),
+                            textcoords='offset points', ha=ha, va='bottom',
+                            color=color, fontsize=6.0)
+            sub = f'$k = B = {k}$' if same else f'$k = {k}$, $B = {B}$'
+        else:
+            sub = f'$k = {k}$' if k else ''
+        # name over configuration, the configuration smaller: a one-line title with
+        # both is wider than a 1.4 in panel
+        _title_with_subtitle(ax, SCAN_SHORT.get(scan, scan), sub,
+                             sub_scale=opts['subtitle_scale'])
+        # every panel is a fraction on [0, 1]: one y axis on the left is enough, and
+        # the inner panels get the width their tick labels used to take
+        ax.set_ylabel('Probe residual kept' if j % ncol == 0 else '')
+        ax.tick_params(axis='y', labelleft=(j % ncol == 0))
         ax.set_xlabel('Directions kept $i$')
         leg = ax.get_legend()
         if leg is not None:
@@ -1404,6 +1608,8 @@ def _probe_energy(data, opts):
             _step_endpoints(ax, np.asarray(ents[0]['step']),
                             loc=_step_label_loc(ax, opts), cmap=opts['cmap'])
         # the k line needs no label here: the panel title carries the value
+    if opts['progress_bar']:
+        _progress_bar(fig, axes, n, ncol, opts)
     prov = c.provenance(
         functions=['spectra_figs.plot_probe_energy_profile', 'spectra_figs.probe_energy',
                    'spectra_figs.cumulative_energy'],
@@ -1436,8 +1642,15 @@ FIGURE_SPECS = figspec.check_defaults({
             'round-off cuts, (b) what the cut discards, (c) the rank inverted',
         defaults=dict(
             _geom(ncol=3, fraction=0.32, aspect=1.00, extra_h=0.30),
-            spectrum_scan=F2_SPECTRUM_SCAN,     # whose spectrum panel (a) draws
-            scans=[],                           # panels (b), (c); empty = every scan
+            spectrum_panel='scans',             # (a): 'scans' = every scan's spectrum at
+                                                # the end of training, overlaid; 'training'
+                                                # = one scan's spectrum over training
+            spectrum_scan=F2_SPECTRUM_SCAN,     # the scan 'training' draws
+            scans_step_index=-1,                # which logged step 'scans' draws
+            scans_ymin=1e-8,                    # 'scans': floor of the y axis (Toy 1D
+                                                # runs to 1e-10, which is round-off)
+            scans=[],                           # panels (a: 'scans'), (b), (c); empty =
+                                                # every scan
             limit=40,                           # steps drawn in panel (a)
             lw=0.55,                            # one spectrum line
             scan_lw=1.3,                        # one scan's curve in (b), (c)
@@ -1457,7 +1670,22 @@ FIGURE_SPECS = figspec.check_defaults({
             spectrum_headroom=[4.0, 6.0],
             show_k=True, show_rtol=True, show_noise=True,
             k_loc='top',                        # where the "k=" label sits on its line
-            annotate_steps=True, step_label_loc='lower left',
+            annotate_steps=False,               # the "step N" labels; off, the key below
+            step_label_loc='lower left',        # ... says the same thing once
+            progress_bar=True,                  # dark -> light = first -> last step, in
+                                                # the grid's empty last slot
+            progress_bar_range=[0.15, 1.0],     # progress_colors' clip of the colormap
+            progress_bar_box=[0.08, 0.62, 0.84, 0.13],   # inset box in that slot
+            progress_bar_fraction=0.035,        # ... or, with no free slot, a vertical
+                                                # key at right this wide
+            progress_bar_label='Training progress',
+            # the rtol label's (x as a fraction of B, dy in pt) where the default corner
+            # lands on the curves; every other scan keeps the default placement
+            rtol_label={'toy_1d_scan': [0.58, 4.0],
+                        'cifar10_resnet_scan_labelRegression': [0.03, 1.5]},
+            subtitle_scale=0.78,                # the k/B line, relative to the title
+            ytick_labelsize=4.8,
+            ytick_rotation=40,
             short_titles=True, title_lines=2)),
     'online_utr': figspec.FigureSpec(
         draw=_online_utr,
@@ -1467,7 +1695,15 @@ FIGURE_SPECS = figspec.check_defaults({
             scans=[], limit=40, lw=0.6, cmap='plasma',
             spectrum_headroom=[3.0, 1.5],
             show_k=True,
-            annotate_steps=True, step_label_loc='auto',
+            annotate_steps=False, step_label_loc='auto',   # the key below instead
+            progress_bar=True,
+            progress_bar_range=[0.15, 1.0],
+            progress_bar_box=[0.08, 0.62, 0.84, 0.13],
+            progress_bar_fraction=0.035,
+            progress_bar_label='Training progress',
+            subtitle_scale=0.78,
+            ytick_labelsize=4.8,
+            ytick_rotation=40,
             short_titles=True, title_lines=2)),
     'online_mechanism': figspec.FigureSpec(
         draw=_online_mechanism,
@@ -1485,10 +1721,15 @@ FIGURE_SPECS = figspec.check_defaults({
         draw=_online_norms,
         doc='F9, App. O: applied update norm and batch residual norm, one panel per scan',
         defaults=dict(
-            _geom(ncol=4, fraction=0.25, aspect=0.95),
+            _geom(ncol=4, fraction=0.25, aspect=0.95, extra_h=0.0),
             scans=[], smooth=25, band=True,     # band = the seed spread
             short_titles=True, title_lines=2,
-            show_legend=True, legend_ncol=3, legend_lw=1.4, legend_kw={})),
+            subtitle_scale=0.78,
+            ytick_labelsize=4.8,
+            ytick_rotation=40,
+            show_legend=True, legend_lw=1.4, legend_kw={},
+            legend_loc='slot',                  # 'slot' = the grid's empty last cell
+            legend_ncol=3)),                    # ... 'below' = a strip, this wide
     'mnist_lr_vs_ce': figspec.FigureSpec(
         draw=_lr_vs_ce,
         doc='F9, App. I: MNIST label regression against cross-entropy -- same model, '
@@ -1522,11 +1763,19 @@ FIGURE_SPECS = figspec.check_defaults({
         draw=_probe_spectra_all,
         doc='F9, App. O: the probe-spectrum figure over every cached scan x optimizer',
         defaults=dict(
-            _geom(ncol=0, fraction=0.25, aspect=0.92),
+            # 0.72 draws the AXES about square: the left column's two-line y label and
+            # the key at right take ~15 % of the width, and a nominal 0.92 came out
+            # tall and thin
+            _geom(ncol=0, fraction=0.25, aspect=0.72),
             scans=[],                           # empty = every scan with a probe cache
             limit=12, lw=1.3, cmap='plasma',
             show_k=True, k_lw=1.0,
-            annotate_steps=True, step_label_loc='lower left')),
+            annotate_steps=False, step_label_loc='lower left',   # the key instead
+            progress_bar=True,                  # vertical, at right: the grid is full
+            progress_bar_range=[0.15, 1.0],
+            progress_bar_fraction=0.03,
+            progress_bar_box=[0.08, 0.62, 0.84, 0.13],
+            progress_bar_label='Training progress')),
     'probe_metrics': figspec.FigureSpec(
         draw=_probe_metrics,
         doc='F9, App. O: effective rank, condition number and sigma_B/sigma_1 along the '
@@ -1542,6 +1791,9 @@ FIGURE_SPECS = figspec.check_defaults({
         defaults=dict(
             _geom(ncol=0, fraction=0.25, aspect=0.92, extra_h=0.24),
             scans=[], metrics=['rank'] + list(PROBE_METRICS),
+            transpose=True,                     # metrics down the rows, scans across:
+                                                # one y label per row, one title per
+                                                # column, and the panels get the rest
             marker='.', band=True, cond_pad=5.0,
             show_legend=True, legend_ncol=6, legend_kw={})),
     'probe_norms': figspec.FigureSpec(
@@ -1557,10 +1809,17 @@ FIGURE_SPECS = figspec.check_defaults({
         draw=_probe_energy,
         doc='F9, App. O: cumulative PROBE residual against directions kept, with k',
         defaults=dict(
-            _geom(ncol=4, fraction=0.25, aspect=1.0),
+            _geom(ncol=4, fraction=0.25, aspect=1.0, sharey=True),
             scans=[], limit=7, cmap='plasma', show_k=True,
-            annotate_steps=True, step_label_loc='auto',
-            step_label_fallback='lower right')),
+            annotate_steps=False, step_label_loc='auto',   # the key at right instead
+            step_label_fallback='lower right',
+            progress_bar=True,                  # vertical, right of the row: the grid
+            progress_bar_range=[0.15, 1.0],     # has no empty slot to put it in
+            progress_bar_fraction=0.035,        # of the row's width
+            progress_bar_box=[0.08, 0.62, 0.84, 0.13],   # (only used with a free slot)
+            progress_bar_label='Training progress',
+            b_line_color='0.35',                # the batch-size line, where B != k
+            subtitle_scale=0.78)),              # the k / B line under the scan name
 })
 
 
@@ -1797,30 +2056,46 @@ def table_mechanism_main(data, name='spectra_mechanism_main'):
         label='tab:spectra-mechanism-main'), rows
 
 
+def _pct_bare(value, digits=1):
+    """A fraction as a percentage WITHOUT the sign: for a column whose header carries it."""
+    if not c.finite(value):
+        return c.Raw('--')
+    return c.Raw(f'{100 * float(value):.{digits}f}')
+
+
 def table_probe_energy(data, name='spectra_probe_energy'):
     """T8 companion: probe-set top-``k`` energy at several ``k``, first and last checkpoint."""
     if not len(data.probe_energy):
         return None, []
     pe = data.probe_energy
-    rows = []
+    rows, single, double = [], [], []
     for scan in data.probe_methods:
         sub = pe[pe['scan'] == scan]
         if not len(sub):
             continue
+        if rows:
+            double.append(len(rows))        # a new scan: the heavier break
         d = data.diags.get(scan)
         sub = sub.assign(_when=sub['when'].map({'first': 0, 'last': 1}).fillna(2))
+        seen_when = None
         for _, r in sub.sort_values(['_when', 'k']).iterrows():
+            if seen_when is not None and r['when'] != seen_when:
+                single.append(len(rows))    # first -> last inside a scan: the lighter one
+            seen_when = r['when']
+            # no step column: the checkpoint is first-or-last and the step is that
+            # scan's step count; no seeds column: every row is the same 5 model seeds,
+            # which the caption says once
             rows.append({
                 'Scan': data.title(scan),
                 'Checkpoint': 'first' if r['when'] == 'first' else 'last',
-                'Step': c.fmt_int(r['step']),
                 '$k$': c.Raw(f'{int(r["k"])}' + (r'\,$^{\ast}$'
                                                  if d is not None and int(r['k']) == int(d.k)
                                                  else '')),
-                'Top-$k$ energy': c.fmt_pct(r['top_k'], 3),
-                'Seed std': c.fmt_pct(r['top_k_std'], 3),
-                'Reachable': c.fmt_pct(r['in_span'], 3),
-                'Seeds': c.fmt_int(r['n_seeds']),
+                # the unit is in the header, once; one decimal is the resolution the
+                # text quotes these at
+                'Top-$k$ energy (\\%)': _pct_bare(r['top_k']),
+                'Seed std (\\%)': _pct_bare(r['top_k_std']),
+                'Reachable (\\%)': _pct_bare(r['in_span']),
             })
     prov = c.provenance(
         functions=['spectra_figs.probe_energy', 'spectra_figs.cumulative_energy',
@@ -1828,54 +2103,76 @@ def table_probe_energy(data, name='spectra_probe_energy'):
         scans=[sf.probe_scan_name(s) for s in data.probe_methods],
         reads=[str(ct.SPECTRA_DIR)])
     return c.write_table(
-        name, rows, align=['l', 'l', 'r', 'r', 'r', 'r', 'r', 'c'],
-        provenance_record=prov,
-        caption=('Residual energy inside the top-k PROBE directions (offline, float64). '
-                 '"Reachable" is ||P_U r||^2/||r||^2, the part of the probe residual the '
-                 'Jacobian column space can reach at all -- below 1 only where the probe '
-                 'set has more rows than the model has parameters. An asterisk marks the '
-                 'selected k.'),
+        name, rows, align=['l', 'l', 'r', 'r', 'r', 'r'],
+        midrules=single, double_midrules=double, provenance_record=prov,
+        caption=('Residual energy inside the top-k PROBE directions (offline, float64), '
+                 'averaged over 5 model seeds. "Reachable" is ||P_U r||^2/||r||^2, the '
+                 'part of the probe residual the Jacobian column space can reach at all '
+                 '-- below 1 only where the probe set has more rows than the model has '
+                 'parameters. An asterisk marks the selected k.'),
         label='tab:spectra-probe-energy',
         notes=['offline float64 Jacobian on a fixed probe set: a different object from '
                'the per-batch online spectra']), rows
 
 
+def _bold_pm(cell):
+    """A ``fmt_pm`` cell in bold, the ``\\pm`` included (``\\textbf`` stops at math)."""
+    head, sep, tail = str(cell).partition(' $\\pm$ ')
+    return c.Raw(f'\\textbf{{{head}}}' if not sep
+                 else f'\\textbf{{{head} $\\boldsymbol{{\\pm}}$ {tail}}}')
+
+
 def table_low4(data, name='spectra_low4'):
-    """T9: distance from initialisation and parameter norm, paired, with the verdict."""
+    """T9: distance from initialisation and parameter norm, Sven against the best other
+    optimizer, paired by seed.
+
+    One block per quantity, one row per scan.  There is no verdict column: the rank says
+    whether Sven's mean is the smallest and the interval says whether the paired
+    difference is resolved, and a bold difference is the one whose interval excludes
+    zero -- the two facts a verdict word was restating.
+    """
     if not len(data.low4):
         return None, []
-    metric_name = {'dist_init': r'$\|\theta_t-\theta_0\|$', 'param_norm': r'$\|\theta_t\|$'}
-    rows = []
-    for _, r in data.low4.iterrows():
-        half = r['paired_half']
-        rows.append({
-            'Scan': r['scan'],
-            'Quantity': c.Raw(metric_name.get(r['metric'], r['metric'])),
-            'Sven': c.fmt_pm(r['Sven'], r['Sven_std'], sig=4),
-            'Best other': style.method_label(r['best_other']),
-            c.Raw('Its mean'): c.fmt_sig(r['best_other_mean'], 4),
-            'Rank': c.fmt_rank(r['rank'], r['n_methods']),
-            'Paired diff.': c.fmt_pm(r['paired_mean'], r['paired_std']),
-            '95% interval': (c.fmt_ci(r['paired_mean'] - half, r['paired_mean'] + half)
-                                if c.finite(half) else c.Raw('--')),
-            'Seeds lower': c.fmt_counts(r['n_ref_lower'], r['n_paired']),
-            'Verdict': str(r['verdict']),
-        })
+    metric_name = {'dist_init': r'$\|\theta_t-\theta_0\|$',
+                   'param_norm': r'$\|\theta_t\|$'}
+    rows, midrules = [], []
+    for metric in ('dist_init', 'param_norm'):
+        sub = data.low4[data.low4['metric'] == metric]
+        if not len(sub):
+            continue
+        if rows:
+            midrules.append(len(rows))
+        rows.append(c.span_row(c.Raw(metric_name.get(metric, metric))))
+        for _, r in sub.iterrows():
+            half = r['paired_half']
+            lo, hi = r['paired_mean'] - half, r['paired_mean'] + half
+            resolved = c.finite(half) and (lo > 0 or hi < 0)
+            diff = c.fmt_pm(r['paired_mean'], r['paired_std'])
+            rows.append({
+                'Scan': r['scan'],
+                'Sven': c.fmt_pm(r['Sven'], r['Sven_std'], sig=4),
+                'Best other mean': c.Raw(f"{c.fmt_sig(r['best_other_mean'], 4)} "
+                                         f"({style.method_label(r['best_other'])})"),
+                'Rank': c.fmt_rank(r['rank'], r['n_methods']),
+                'Paired diff.': _bold_pm(diff) if resolved else diff,
+                '95\\% interval': (c.fmt_ci(lo, hi) if c.finite(half) else c.Raw('--')),
+                'Seeds lower': c.fmt_counts(r['n_ref_lower'], r['n_paired']),
+            })
     prov = c.provenance(
         functions=['spectra_figs.low4_table', 'spectra_figs.low4_verdict',
                    'spectra_figs.probe_metrics', 'paired.paired_difference'],
         scans=[sf.probe_scan_name(s) for s in data.probe], reads=[str(ct.SPECTRA_DIR)])
     return c.write_table(
-        name, rows, align=['l', 'l', 'r', 'l', 'r', 'c', 'r', 'c', 'c', 'l'], fit=True,
+        name, rows, align=['l', 'r', 'l', 'c', 'r', 'c', 'c'], midrules=midrules,
         provenance_record=prov,
         caption=('Does Sven stay closer to its initialisation, or reach a smaller-norm '
                  'solution? At the last cached checkpoint, Sven against the best of the '
                  'other three optimizers, paired by model seed (same initialisation, same '
-                 'probe rows). A rank of 1 whose paired 95 \\% interval covers zero is not '
-                 'a win, and the verdict column says which is which.'),
+                 'probe rows). A bold paired difference is one whose 95 \\% interval '
+                 'excludes zero; a first place without one is not a win.'),
         label='tab:spectra-low4',
-        notes=['paired t-interval over 5 seeds; "not resolved" = the interval covers '
-               'zero']), rows
+        notes=['paired t-interval over 5 seeds; "Seeds lower" counts the seeds on which '
+               'Sven alone was the smaller']), rows
 
 
 def table_probe_widths(data, name='spectra_probe_widths'):
@@ -1883,8 +2180,10 @@ def table_probe_widths(data, name='spectra_probe_widths'):
     if not len(data.widths):
         return None, []
     ends = _probe_endpoints(data).set_index('scan')
-    step0 = _step0_spread(data).set_index('scan')
     rows = []
+    # No checkpoint / optimizer / seed / step-0-spread columns: the optimizers are
+    # listed in the text, the seeds are the caption's "5 model seeds", and the step-0
+    # agreement is a macro the prose quotes (numSpectraStepZeroSpread).
     for _, r in data.widths.iterrows():
         scan = r['scan']
         e = ends.loc[scan] if scan in ends.index else None
@@ -1894,13 +2193,8 @@ def table_probe_widths(data, name='spectra_probe_widths'):
             '$P$': _thousands(r['n_params']),
             'Spectrum width': _thousands(r['width'] if np.isscalar(r['width'])
                                          else min(r['width'])),
-            'Resolved rank, final': (_rank_cell(e['rank_final']) if e is not None
-                                     else c.Raw('--')),
-            'Checkpoints': c.fmt_int(r['n_ckpts']),
-            'Optimizers': c.fmt_int(r['methods']),
-            'Seeds': c.fmt_int(r['seeds']),
-            'Step-0 spread': (c.fmt_sig(float(step0.loc[scan, 'spread']), 2)
-                              if scan in step0.index else c.Raw('--')),
+            'Resolved rank, final step': (_rank_cell(e['rank_final']) if e is not None
+                                          else c.Raw('--')),
         })
     prov = c.provenance(
         functions=['spectra_figs.probe_widths', 'spectra_figs.probe_metrics',
@@ -1908,15 +2202,13 @@ def table_probe_widths(data, name='spectra_probe_widths'):
         scans=[sf.probe_scan_name(s) for s in data.probe_methods],
         reads=[str(ct.SPECTRA_DIR)])
     return c.write_table(
-        name, rows, align=['l', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r'], fit=True,
+        name, rows, align=['l', 'r', 'r', 'r', 'r'],
         provenance_record=prov,
         caption=('The cached probe sets. The spectrum width is min(probe rows, P) and only '
                  'one of the two bounds is ever active: on MNIST the probe set is 512 rows '
                  'against 27{,}562 parameters, so the spectrum resolves 512 directions, '
-                 'not 27k. "Resolved rank" counts sigma_i above the float64 threshold. '
-                 '"Step-0 spread" is the largest disagreement between the four optimizers '
-                 'at the shared initialisation, which must be zero for the trajectories '
-                 'to be comparable.'),
+                 'not 27k. "Resolved rank" counts sigma_i above the float64 threshold, '
+                 "on Sven's final checkpoint, averaged over 5 model seeds."),
         label='tab:spectra-probe-widths'), rows
 
 

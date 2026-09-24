@@ -482,8 +482,11 @@ def test_tables_have_one_cell_per_column(rendered):
 
 
 def test_results_tables_print_finished_over_attempted(rendered):
-    """Every results row says how many runs are behind it (ANALYSIS_CONTRACTS)."""
-    for name in ('cifar', 'fig5', 'transformers'):
+    """Every results row says how many runs are behind it (ANALYSIS_CONTRACTS).
+
+    The CIFAR summary table is the one exception: its counts were dropped with the cost
+    columns and live in the per-scan confirmation table its caption points to."""
+    for name in ('fig5', 'transformers'):
         rows = rendered[name][0]
         assert any(k.startswith('fin') for k in rows[0]), f'{name}: no fin/att column'
         for row in rows:

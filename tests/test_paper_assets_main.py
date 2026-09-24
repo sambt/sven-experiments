@@ -22,6 +22,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -319,9 +320,11 @@ def test_clip_outliers_only_bites_on_a_blow_up():
 # ---------------------------------------------------------------------------
 # The figure registry (campaign/FIGURE_API_CONTRACT.md)
 # ---------------------------------------------------------------------------
-#: the seven figures this module owns, in the order build() writes them
+#: the twelve figures this module owns, in the order build() writes them
 MAIN_FIGURES = ('headline_curves', 'headline_curves_all', 'cost_memory', 'k_sweeps',
-                'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm')
+                'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm',
+                'allseed_curves_ce', 'allseed_curves_nosoap', 'allseed_curves_ce_lm_nosoap',
+                'rank_heatmap', 'paired_diffs', 'rank_strip')
 
 
 def test_figure_specs_cover_the_group_in_build_order():
@@ -344,6 +347,13 @@ def test_two_specs_may_share_one_builder():
     assert S['headline_curves_all'].defaults['methods'] == 'all'
     assert (S['allseed_curves'].defaults['scans']
             != S['allseed_curves_ce_lm'].defaults['scans'])
+    # the SOAP-free twins are the same builder over the same scans, minus one method
+    for base in ('allseed_curves', 'allseed_curves_ce_lm'):
+        twin = S[f'{base}_nosoap']
+        assert twin.draw is S[base].draw
+        assert twin.defaults['scans'] == S[base].defaults['scans']
+        assert twin.defaults['exclude'] == ['SOAP']
+        assert S[base].defaults['exclude'] == []
 
 
 def test_no_knob_shadows_a_generic_cosmetic():
@@ -362,9 +372,12 @@ def test_defaults_are_yaml_representable_and_round_trip():
     for name, spec in M.FIGURE_SPECS.items():
         text = yaml.safe_dump(spec.defaults, sort_keys=True)
         assert yaml.safe_load(text) == spec.defaults, name
-        # ... and with an empty override file the effective options ARE the defaults,
-        # which is what keeps the committed figures byte-identical
-        assert F.figure_opts(name, spec.defaults) == spec.defaults, name
+        # ... and with NO overrides in play the effective options ARE the defaults,
+        # which is what keeps the committed figures byte-identical.  The live
+        # figure_overrides.yaml is not consulted: a pinned knob is a legitimate user
+        # edit, not a failure of this invariant.
+        with mock.patch.object(F, 'overrides_for', return_value={}):
+            assert F.figure_opts(name, spec.defaults) == spec.defaults, name
 
 
 def test_every_knob_the_user_asked_for_is_on_figure_one():
@@ -379,6 +392,15 @@ def test_every_knob_the_user_asked_for_is_on_figure_one():
         assert knob in d, knob
     assert {'loc', 'fontsize', 'ncol'} <= set(d['panel_legend_kw']) | {'ncol'}
     assert 'loc' in d['figure_legend_kw']
+
+
+def test_exclude_reads_flat_or_per_scan():
+    from paper_assets import main as M
+    assert M._exclude_for(['SOAP'], 'anything') == ['SOAP']
+    per = {'mnist_scan_labelRegression': ['SOAP'], '*': ['Shampoo']}
+    assert M._exclude_for(per, 'mnist_scan_labelRegression') == ['Shampoo', 'SOAP']
+    assert M._exclude_for(per, 'polynomial_scan') == ['Shampoo']
+    assert M._exclude_for({}, 'polynomial_scan') == []
 
 
 def test_in_columns_picks_the_labelled_panels():

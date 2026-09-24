@@ -600,9 +600,9 @@ def test_every_figure_draws_without_writing_and_carries_its_provenance(name, ctx
 
 
 def test_the_registry_names_every_figure_the_appendices_carry():
-    assert set(R.FIGURE_SPECS) == {'budget', 'overparam', 'overparam_outcomes',
-                                   'batchsize', 'kappa', 'knobs', 'divergence',
-                                   'divergence_grids'}
+    assert set(R.FIGURE_SPECS) == {'budget', 'overparam', 'overparam_losses',
+                                   'batchsize', 'batchsize_loss', 'kappa', 'knobs',
+                                   'divergence', 'divergence_grids'}
     # every figure belongs to exactly one section, and build() writes them in that order
     owned = [n for s in R.SECTIONS for n in R.SECTION_FIGURES[s]]
     assert sorted(owned) == sorted(R.FIGURE_SPECS)
@@ -649,7 +649,7 @@ def test_drawing_one_figure_needs_nothing_but_its_own_section(no_writes):
     fig, _meta = _draw('kappa', ctx)
     plt.close(fig)
     assert ctx.asked == ['kappa']
-    fig, _meta = _draw('overparam_outcomes', ctx)
+    fig, _meta = _draw('overparam_losses', ctx)
     plt.close(fig)
     assert ctx.asked == ['kappa', 'overparam']
 
@@ -671,11 +671,11 @@ def test_tasks_knob_drops_a_task_from_the_overparam_panels(ctx, no_writes):
 
 
 def test_metrics_knob_chooses_what_the_outcome_rows_show(ctx, no_writes):
-    fig, meta = _draw('overparam_outcomes', ctx, metrics=['final_val_loss'])
+    fig, meta = _draw('overparam_losses', ctx, metrics=['final_val_loss'])
     try:
         assert meta['metrics'] == ['final_val_loss']
         assert meta['axes'][0][0].get_ylabel() == 'Final val. loss'
-        assert not meta['axes'][1][0].get_lines()        # the second row is left empty
+        assert not meta['axes'][1][0].get_lines()        # the other rows are left empty
     finally:
         plt.close(fig)
 
@@ -749,7 +749,7 @@ def test_unconditional_cosmetics_became_options(ctx, no_writes):
 
 
 def test_divergence_grids_panel_count_follows_its_knobs(ctx, no_writes):
-    fig, meta = _draw('divergence_grids', ctx, max_grids=2, ncol=2)
+    fig, meta = _draw('divergence_grids', ctx, scans=list(R.BUDGET_SCANS)[:2], ncol=2)
     try:
         assert meta['grids'] == list(R.BUDGET_SCANS)[:2]
         assert np.asarray(meta['axes']).shape == (1, 2)

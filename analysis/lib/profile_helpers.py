@@ -717,9 +717,11 @@ def plot_pareto(df, arch, ax):
     ax.set_title(ARCH_TITLES.get(arch, arch) + ': chunk-size trade-off'); ax.grid(True, which='both', ls='--', alpha=0.4)
 
 
-def plot_phase_bars(df, ax, archs=None, study='methods'):
+def plot_phase_bars(df, ax, archs=None, study='methods', fractions=False, total_fontsize=None):
     """Stacked capture vs solve+apply time for each Sven variant, grouped by architecture.
 
+    ``fractions=True`` stacks each bar's share of ``capture + solve`` on a linear [0, 1]
+    axis (comparable across backends and architectures) and prints the total ms above it.
     A ``nonfinite`` variant keeps its bar (the phases were timed) with a ``*`` on its tick."""
     d = df[(df.study == study) & (df.family == 'sven') & df.status.isin(TIMED)]
     archs = archs or [a for a in ARCH_ORDER if a in set(d.arch)]
@@ -729,12 +731,21 @@ def plot_phase_bars(df, ax, archs=None, study='methods'):
             r = d[(d.arch == a) & (d.method == m)]
             if r.empty: continue
             r = r.iloc[0]
-            ax.bar(x, r.capture_ms, color=color(m), edgecolor='k', lw=0.4)
-            ax.bar(x, r.solve_ms, bottom=r.capture_ms, color=color(m), alpha=0.35, hatch='//', edgecolor='k', lw=0.4)
+            total = r.capture_ms + r.solve_ms
+            scale = total if fractions and total > 0 else 1.0
+            ax.bar(x, r.capture_ms / scale, color=color(m), edgecolor='k', lw=0.4)
+            ax.bar(x, r.solve_ms / scale, bottom=r.capture_ms / scale, color=color(m), alpha=0.35, hatch='//', edgecolor='k', lw=0.4)
+            if fractions:
+                ax.text(x, 1.01, _fmt(total), ha='center', va='bottom',
+                        fontsize=total_fontsize or 6, rotation=0)
             xs.append(x); labs.append(label(m).replace('Sven ', '') + ('' if r.status == 'ok' else '*')); x += 1
         x += 0.8
     ax.set_xticks(xs); ax.set_xticklabels(labs, rotation=60, ha='right', fontsize=8)
-    ax.set_yscale('log'); ax.set_ylabel('Time per step (ms)')
+    if fractions:
+        ax.set_ylim(0, 1.0); ax.set_yticks(np.linspace(0, 1, 6))
+        ax.set_ylabel('Fraction of step time (total in ms above)')
+    else:
+        ax.set_yscale('log'); ax.set_ylabel('Time per step (ms)')
     ax.bar(0, 0, color='grey', label='capture (loss + Jacobian/Gram)'); ax.bar(0, 0, color='grey', alpha=0.35, hatch='//', label='solve + apply')
     ax.legend(fontsize=9)
 

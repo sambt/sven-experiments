@@ -1,20 +1,20 @@
-# Per-figure option overrides for the paper figures.
-#
-# WRITTEN BY THE NOTEBOOKS in analysis/notebooks/paper/ (pf.pin / pf.set_overrides) and
-# read by BOTH the notebooks and `python -m paper_assets`, which is what makes a tweak
-# made in a notebook survive the next CLI rebuild.  Hand-editing is fine; a live kernel
-# picks the change up on the next pf.make().
-#
-# Keys are figure names (the PDF stem under figures_iclr/<group>/), plus `_global` for
-# options that apply to every figure.  Each figure's own knobs are listed by
-# `pf.info(<name>)`; the generic cosmetics (figsize, aspect, xlabel/ylabel/title,
-# xlim/ylim, xscale/yscale, legend, suptitle, grid, tick_labelsize, rc) work on every
-# figure -- see analysis/paper_assets/figspec.py.
-#
-# Empty means "every figure as its builder draws it".  Example:
-#
-#   headline_curves:
-#     methods: all                  # every baseline, not the front of the field
-#     aspect: 0.95
-#     legend: {loc: lower left, ncol: 6, fontsize: 5.0}
-{}
+allseed_curves_ce:
+  ylim:
+    0:
+    - null
+    - 1.0
+    1:
+    - null
+    - 1.0
+headline_curves_all:
+  exclude:
+    mnist_scan_labelRegression:
+    - SOAP
+headline_curves:
+  ylim:
+    1:
+    - null
+    - 0.2
+    4:
+    - null
+    - 0.2
