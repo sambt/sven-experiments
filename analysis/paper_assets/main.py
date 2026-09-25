@@ -296,11 +296,19 @@ class Ctx:
                                                       results_root=self.root)
         return self._ttt[scan]
 
-    def paired(self, scan):
-        if scan not in self._paired:
-            self._paired[scan] = hl.paired_vs_sven(scan, payload=self.payload,
-                                                   results_root=self.root)
-        return self._paired[scan]
+    def paired(self, scan, metric=hl.SELECTION_METRIC):
+        """The paired table against Sven: on validation loss (the selection metric)
+        or, through :func:`headline.paired_outcome_vs_sven`, on a test OUTCOME of the
+        configurations validation already chose."""
+        key = scan if metric == hl.SELECTION_METRIC else (scan, metric)
+        if key not in self._paired:
+            if metric == hl.SELECTION_METRIC:
+                self._paired[key] = hl.paired_vs_sven(scan, payload=self.payload,
+                                                      results_root=self.root)
+            else:
+                self._paired[key] = hl.paired_outcome_vs_sven(
+                    scan, metric=metric, payload=self.payload, results_root=self.root)
+        return self._paired[key]
 
     def runs(self, scan):
         if scan not in self._runs:
@@ -1270,9 +1278,12 @@ def _paired_diffs(ctx, opts):
     for ax in flat[len(scans):]:
         ax.remove()
     info = {}
+    seen = []                                   # methods in order of first appearance
     for j, scan in enumerate(scans):
         ax = flat[j]
-        pv = ctx.paired(scan).sort_values('mean').reset_index(drop=True)
+        pv = (ctx.paired(scan, opts['metric']).sort_values('mean')
+              .reset_index(drop=True))
+        seen.extend(m for m in pv['method'] if m not in seen)
         n_pairs_max = int(pv['n'].max()) if len(pv) else 0
         # the visible range follows the TYPICAL difference, not the largest: on the
         # MNIST scans one SOAP at -0.5 would otherwise flatten thirteen methods within
@@ -1302,11 +1313,30 @@ def _paired_diffs(ctx, opts):
         ax.set_xlim(-0.6, len(pv) - 0.4)
         ax.set_xticks(range(len(pv)))
         # the pairs-won count rides on the tick label ("SGD 15/15"): at fourteen
-        # methods per 1.4 in panel there is no room beside the points
-        labels = [hl.display_name(m) + (f"  {int(w)}/{int(n)}" if opts['show_ratio']
-                                        else '')
-                  for m, w, n in zip(pv['method'], pv['sven_better'], pv['n'])]
-        ax.set_xticklabels(labels, rotation=opts['xtick_rotation'], ha='right',
+        # methods per 1.4 in panel there is no room beside the points.  With
+        # ``xtick_labels='ratio'`` the name is dropped from the tick (the colour key in
+        # the legend strip carries it) and only "15/15" remains.
+        ratio = [f"{int(w)}/{int(n)}" for w, n in zip(pv['sven_better'], pv['n'])]
+        if opts['xtick_labels'] == 'none':
+            # no tick text at all: the colour key names the baseline and the corner
+            # note gives the seed count
+            labels = [''] * len(pv)
+            ax.text(0.97, 0.96, f"$N={n_pairs_max}$ seeds", transform=ax.transAxes,
+                    ha='right', va='top', fontsize=opts['pairs_fontsize'])
+        elif opts['xtick_labels'] == 'ratio':
+            labels = ratio
+        elif opts['xtick_labels'] == 'won':
+            # the numerator alone, with the scan's pair count printed once in the
+            # corner; a baseline with FEWER finished pairs than that keeps its "w/n"
+            labels = [f"{int(w)}" if int(n) == n_pairs_max else r_
+                      for w, n, r_ in zip(pv['sven_better'], pv['n'], ratio)]
+            ax.text(0.97, 0.96, f"$N={n_pairs_max}$ seeds", transform=ax.transAxes,
+                    ha='right', va='top', fontsize=opts['pairs_fontsize'])
+        else:
+            labels = [hl.display_name(m) + (f"  {r}" if opts['show_ratio'] else '')
+                      for m, r in zip(pv['method'], ratio)]
+        rot = float(opts['xtick_rotation'])
+        ax.set_xticklabels(labels, rotation=rot, ha='center' if rot == 0 else 'right',
                            rotation_mode='anchor', fontsize=opts['xtick_fontsize'])
         ax.tick_params(axis='x', length=0)
         ax.set_title(_short_title(scan))
@@ -1327,11 +1357,31 @@ def _paired_diffs(ctx, opts):
                    Patch(color=opts['win_shade'])]
         labels = ['resolved (95% interval excludes 0)', 'not resolved',
                   '95% t-interval', 'Sven lower']
-        fig.legend(handles, labels, **opts['figure_legend_kw'])
+        if opts['method_legend']:
+            labels[0] = 'resolved (interval excludes 0)'
+        kw = dict(opts['figure_legend_kw'])
+        if opts['method_legend']:
+            # the colour key, one dot per baseline, ahead of the mark key.  A legend
+            # fills column by column, so each block is padded with blank entries to a
+            # whole number of columns and the mark key stays together at the right.
+            rows = int(opts['legend_rows'])
+            blank = lambda: Line2D([], [], ls='')
+            pad = lambda n: (-n) % rows
+            key_h = [Line2D([], [], ls='', marker='o', ms=opts['marker_ms'],
+                            color=style.method_color(m)) for m in seen]
+            key_l = [hl.display_name(m) for m in seen]
+            handles = (key_h + [blank() for _ in range(pad(len(key_h)))]
+                       + handles + [blank() for _ in range(pad(len(handles)))])
+            labels = (key_l + [''] * pad(len(key_l))
+                      + labels + [''] * pad(len(labels)))
+            kw['ncol'] = len(handles) // rows
+        fig.legend(handles, labels, **kw)
+    outcome = opts['metric'] != hl.SELECTION_METRIC
     rec = C.provenance(
-        functions=['headline.paired_vs_sven', 'paired.paired_table'],
+        functions=(['headline.paired_outcome_vs_sven'] if outcome
+                   else ['headline.paired_vs_sven', 'paired.paired_table']),
         scans=[hl.dir_name(s, 'confirm') for s in scans],
-        note=('paired per-seed differences Sven - method in final validation loss, '
+        note=(f'paired per-seed differences Sven - method in {opts["metric"]}, '
               'mean with 95% t-interval; a filled marker is an interval excluding zero; '
               'the label is pairs Sven won / pairs finished; intervals wider than '
               'clip_factor x the largest |mean| are clipped and arrowed'),
@@ -1584,6 +1634,7 @@ FIGURE_SPECS = figspec.check_defaults({
              'resolved, with the pairs-won count at each point.'),
         defaults=dict(
             scans=list(RANK_SCANS),         # one panel per scan
+            metric=hl.SELECTION_METRIC,     # or 'final_test_loss' (an outcome)
             ncol=4,
             fraction=0.25,
             aspect=1.25,                    # the rotated tick labels take ~a third of
@@ -1601,12 +1652,72 @@ FIGURE_SPECS = figspec.check_defaults({
             arrow_ms=3.0,
             show_ratio=True,                # "pairs Sven won / pairs finished", on
                                             # the tick label
+            xtick_labels='names',           # 'names' (+ ratio), 'ratio' alone, 'won'
+                                            # (the numerator) or 'none'; the last two
+                                            # print N seeds in the corner
+            pairs_fontsize=5.0,             # the "N = 15 seeds" corner note ('won')
+            method_legend=False,            # a colour key per baseline in the strip
+            legend_rows=3,                  # ... laid out in this many rows
             xtick_rotation=60,
             xtick_fontsize=4.8,
             win_shade='0.94',               # the y < 0 half-plane: Sven lower
             ylabel_text='Sven $-$ method',  # ... in final validation loss (caption)
             figure_legend=True,
             figure_legend_kw=dict(_LEGEND_STRIP, ncol=4),
+        ),
+    ),
+    'paired_diffs_main': figspec.FigureSpec(
+        draw=_paired_diffs,
+        doc=('F16, main-text form: the same paired differences without the two CIFAR-10 '
+             'panels -- one row of five, so the comparison the headline paragraph makes '
+             'sits beside it; App. G keeps the seven-panel version.'),
+        defaults=dict(
+            scans=[s for s in RANK_SCANS if not s.startswith('cifar10')],
+            metric=hl.SELECTION_METRIC,
+            ncol=5,
+            fraction=0.2,
+            aspect=0.95,                    # no tick text to make room for
+            extra_h=0.62,                   # the strip holds the colour key too
+            font_fraction=0.32,
+            clip_percentile=75, clip_factor=2.0, ylim_pad=1.08,
+            marker_ms=3.2, marker_mew=0.8, ci_lw=1.0, arrow_ms=2.8,
+            show_ratio=True,
+            xtick_labels='none',            # bare ticks; N seeds in the corner
+            pairs_fontsize=5.0,
+            method_legend=True,
+            legend_rows=3,
+            xtick_rotation=90, xtick_fontsize=4.4,
+            win_shade='0.94',
+            ylabel_text='Sven $-$ method',
+            figure_legend=True,
+            figure_legend_kw=dict(_LEGEND_STRIP, fontsize=5.2, columnspacing=1.0),
+        ),
+    ),
+    'paired_diffs_main_test': figspec.FigureSpec(
+        draw=_paired_diffs,
+        doc=('F16, main-text form on TEST loss: the same paired differences without the two CIFAR-10 '
+             'panels -- one row of five, so the comparison the headline paragraph makes '
+             'sits beside it; App. G keeps the seven-panel version.'),
+        defaults=dict(
+            scans=[s for s in RANK_SCANS if not s.startswith('cifar10')],
+            metric='final_test_loss',   # an outcome of the val-selected configs
+            ncol=5,
+            fraction=0.2,
+            aspect=0.95,                    # no tick text to make room for
+            extra_h=0.62,                   # the strip holds the colour key too
+            font_fraction=0.32,
+            clip_percentile=75, clip_factor=2.0, ylim_pad=1.08,
+            marker_ms=3.2, marker_mew=0.8, ci_lw=1.0, arrow_ms=2.8,
+            show_ratio=True,
+            xtick_labels='none',            # bare ticks; N seeds in the corner
+            pairs_fontsize=5.0,
+            method_legend=True,
+            legend_rows=3,
+            xtick_rotation=90, xtick_fontsize=4.4,
+            win_shade='0.94',
+            ylabel_text='Sven $-$ method',
+            figure_legend=True,
+            figure_legend_kw=dict(_LEGEND_STRIP, fontsize=5.2, columnspacing=1.0),
         ),
     ),
     'rank_strip': figspec.FigureSpec(

@@ -324,7 +324,8 @@ def test_clip_outliers_only_bites_on_a_blow_up():
 MAIN_FIGURES = ('headline_curves', 'headline_curves_all', 'cost_memory', 'k_sweeps',
                 'hparam_landscape', 'allseed_curves', 'allseed_curves_ce_lm',
                 'allseed_curves_ce', 'allseed_curves_nosoap', 'allseed_curves_ce_lm_nosoap',
-                'rank_heatmap', 'paired_diffs', 'rank_strip')
+                'rank_heatmap', 'paired_diffs', 'paired_diffs_main',
+                'paired_diffs_main_test', 'rank_strip')
 
 
 def test_figure_specs_cover_the_group_in_build_order():

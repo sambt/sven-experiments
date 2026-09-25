@@ -405,9 +405,15 @@ def _progress_curve(d, arrays, key, smooth=SMOOTH_STEPS, transform=None):
     return xs / denom, ys, n
 
 
-def _scan_line(ax, scan, x, y, **kw):
+def _scan_ls(scan, opts=None):
+    """:data:`SCAN_LS`, unless the figure's ``scan_ls`` knob names this scan."""
+    over = (opts or {}).get('scan_ls') or {}
+    return over.get(scan, SCAN_LS.get(scan, '-'))
+
+
+def _scan_line(ax, scan, x, y, opts=None, **kw):
     kw.setdefault('color', SCAN_COLORS.get(scan, '0.3'))
-    kw.setdefault('ls', SCAN_LS.get(scan, '-'))
+    kw.setdefault('ls', _scan_ls(scan, opts))
     kw.setdefault('lw', 1.3)
     kw.setdefault('label', SCAN_SHORT.get(scan, scan))
     return ax.plot(x, y, **kw)
@@ -425,11 +431,11 @@ def _legend_below(fig, handles, labels, ncol=4, **kw):
     return fig.legend(handles, labels, ncol=ncol, loc='outside lower center', **kw)
 
 
-def _scan_legend(fig, scans, ncol=4, lw=1.3, **kw):
+def _scan_legend(fig, scans, ncol=4, lw=1.3, opts=None, **kw):
     """One figure-level legend of scan colours under a row of panels."""
     from matplotlib.lines import Line2D
 
-    handles = [Line2D([], [], color=SCAN_COLORS.get(s, '0.3'), ls=SCAN_LS.get(s, '-'),
+    handles = [Line2D([], [], color=SCAN_COLORS.get(s, '0.3'), ls=_scan_ls(s, opts),
                       lw=lw) for s in scans]
     labels = [SCAN_SHORT.get(s, s) for s in scans]
     return _legend_below(fig, handles, labels, ncol=ncol, **kw)
@@ -800,7 +806,7 @@ def _spectra_across_scans(a, data, scans, opts):
         y = np.asarray(a0['svs_rel'][int(opts['scans_step_index'])], dtype=float)
         ok = np.isfinite(y) & (y > 0)
         x = np.arange(int(a0['width'])) / float(a0['width'])
-        _scan_line(a, s, x[ok], y[ok], lw=opts['scan_lw'])
+        _scan_line(a, s, x[ok], y[ok], opts=opts, lw=opts['scan_lw'])
         floors.append(float(np.nanmedian(a0['noise_rel'])))
     if opts['show_noise'] and floors:
         fl = float(np.median(floors))
@@ -848,7 +854,7 @@ def _spectrum_truncation(data, opts):
                                   smooth=opts['smooth'])
         if x is None:
             continue
-        _scan_line(b, s, x, np.maximum(1.0 - np.asarray(y, dtype=float), floor),
+        _scan_line(b, s, x, np.maximum(1.0 - np.asarray(y, dtype=float), floor), opts=opts,
                    lw=opts['scan_lw'])
     b.set_yscale('log')
     b.set_ylim(floor / 2, 1.4)
@@ -862,7 +868,7 @@ def _spectrum_truncation(data, opts):
         x, y, _ = _progress_curve(data.diags[s], data.arrays[s], 'used_rank',
                                   smooth=opts['smooth'])
         if x is not None:
-            _scan_line(cc, s, x, y, lw=opts['scan_lw'])
+            _scan_line(cc, s, x, y, opts=opts, lw=opts['scan_lw'])
     cc.set_yscale('log')
     cc.set_xlim(0, 1)
     cc.set_xlabel('Training progress')
@@ -870,7 +876,7 @@ def _spectrum_truncation(data, opts):
     cc.set_title('(c) rank actually used')
 
     if opts['show_legend']:
-        _scan_legend(fig, scans, **figspec.merge_kw(opts['legend_kw'],
+        _scan_legend(fig, scans, opts=opts, **figspec.merge_kw(opts['legend_kw'],
                                                    ncol=opts['legend_ncol'],
                                                    lw=opts['scan_lw']))
     prov = c.provenance(
@@ -887,6 +893,160 @@ def _spectrum_truncation(data, opts):
               f'energy in min(k, rtol-rank) directions of THIS batch; (c) all '
               f'{len(scans)} scans, seed mean, {opts["smooth"]}-step moving average'))
     return fig, {'axes': axes, 'provenance': prov, 'scan': scan, 'scans': scans}
+
+
+def _spectra_at_step(ax, data, scans, opts, step_index, title, marks=True):
+    """One panel of every scan's batch spectrum at one logged step, one seed each, on a
+    shared ``i / B`` axis, with each scan's ``rtol`` as a grey horizontal line and each
+    truncating scan's ``k / B`` as a grey vertical one.
+
+    With ``marks`` the lines are identified by scan-coloured dots outside the axes: for
+    an ``rtol`` line just left of the y axis, for a ``k`` line just below the x axis.
+    Scans that share a cut value (MNIST-LR and nanoGPT both use ``rtol = 1e-3``; the
+    polynomial and MNIST-CE scans both cut at ``k / B = 1/2``) share one line and get
+    one dot each, side by side.  A scan with ``k = B`` has no vertical line: its cut is
+    the right edge of the panel.
+    """
+    from matplotlib.transforms import offset_copy
+
+    floors = []
+    for sc in scans:
+        arr = data.arrays[sc][:1]
+        if not arr:
+            continue
+        a0 = arr[0]
+        y = np.asarray(a0['svs_rel'][int(step_index)], dtype=float)
+        ok = np.isfinite(y) & (y > 0)
+        x = np.arange(int(a0['width'])) / float(a0['width'])
+        _scan_line(ax, sc, x[ok], y[ok], opts=opts, lw=opts['scan_lw'])
+        floors.append(float(np.nanmedian(a0['noise_rel'])))
+    if opts['show_noise'] and floors:
+        # dotted black, unlike the dashed grey cuts; labelled only when asked
+        fl = float(np.median(floors))
+        ax.axhline(fl, color='k', lw=0.9, ls=':', zorder=0)
+        if opts['noise_label']:
+            ax.annotate(r'$\sqrt{\epsilon}\,\sigma_{\max}$', xy=(0.03, fl),
+                        xycoords=('axes fraction', 'data'), ha='left', va='bottom',
+                        color='0.35', fontsize=opts['cut_fontsize'])
+    ax.set_yscale('log')
+    lo, hi = ax.get_ylim()
+    pad_lo, pad_hi = opts['spectrum_headroom']
+    ax.set_ylim(max(lo / pad_lo, float(opts['scans_ymin'])), hi * pad_hi)
+    ax.set_xlim(0, 1)
+
+    def groups(values):
+        out = {}
+        for sc, v in values:
+            out.setdefault(v, []).append(sc)
+        return out
+
+    def dots(members, axis, v):
+        # one dot per scan on the outside of the axis, side by side when several
+        # scans share the value; the tick labels are pushed out to make room
+        fig = ax.figure
+        ms, gap = float(opts['dot_ms']), float(opts['dot_gap'])
+        for i, sc in enumerate(members):
+            if axis == 'y':
+                # outward from the axis, so the dots stay on their line's height
+                tr = offset_copy(ax.get_yaxis_transform(), fig=fig,
+                                 x=-(float(opts['dot_pad']) + i * gap), y=0,
+                                 units='points')
+                ax.plot([0], [v], 'o', ms=ms, color=SCAN_COLORS.get(sc, '0.3'),
+                        transform=tr, clip_on=False, zorder=6)
+            else:
+                off = (i - (len(members) - 1) / 2.0) * gap
+                tr = offset_copy(ax.get_xaxis_transform(), fig=fig,
+                                 x=off, y=-float(opts['dot_pad']), units='points')
+                ax.plot([v], [0], 'o', ms=ms, color=SCAN_COLORS.get(sc, '0.3'),
+                        transform=tr, clip_on=False, zorder=6)
+
+    if opts['show_rtol']:
+        rt = groups((sc, float(data.diags[sc].rtol)) for sc in scans)
+        for v, members in rt.items():
+            ax.axhline(v, color=opts['cut_color'], lw=opts['cut_lw'], ls='--', zorder=1)
+            if marks:
+                dots(members, 'y', v)
+        if marks and rt:
+            widest = max(len(m) for m in rt.values())
+            ax.tick_params(axis='y', pad=float(opts['dot_pad'])
+                           + (widest - 1) * float(opts['dot_gap']) + float(opts['dot_ms']))
+    if opts['show_k']:
+        # every scan gets a dot at its k / B; only a scan with k < B gets a line, since
+        # at k = B the cut is the panel's right edge
+        for v, members in groups((sc, data.diags[sc].k / float(data.diags[sc].B))
+                                 for sc in scans).items():
+            if v < 1:
+                ax.axvline(v, color=opts['cut_color'], lw=opts['cut_lw'], ls='--',
+                           zorder=1)
+            if marks:
+                dots(members, 'x', v)
+    if marks and opts['show_k']:
+        ax.tick_params(axis='x', pad=float(opts['dot_pad']) + float(opts['dot_ms']))
+    ax.set_xlabel(r'SV index $i\,/\,B$')
+    ax.set_title(title)
+
+
+def _spectrum_cuts(data, opts):
+    """F2, alternative: every scan's spectrum at the START (a) and END (b) of training,
+    with the selected ``rtol`` and ``k / B`` cuts drawn as labelled lines, and (c) the
+    fraction of the batch residual the cut discards over training.
+
+    Replaces the "rank actually used" panel of :func:`_spectrum_truncation` -- the rank
+    law ``min(k, rtol-rank)`` is stated in the text -- with the spectrum's evolution,
+    which is what makes the cuts' positions readable.
+    """
+    scans = _scans_drawn(data, opts)
+    floor = float(opts['discard_floor'])
+    fig, axes = _panels_for(opts, 3)
+    a, b, cc = axes
+    _spectra_at_step(a, data, scans, opts, opts['start_step_index'],
+                     '(a) spectra, start of training', marks=True)
+    _spectra_at_step(b, data, scans, opts, opts['end_step_index'],
+                     '(b) spectra, end of training', marks=bool(opts['marks_on_both']))
+    a.set_ylabel(r'$\sigma_i / \sigma_{\max}$')
+    if opts['share_spectrum_ylim']:
+        lo = min(a.get_ylim()[0], b.get_ylim()[0])
+        hi = max(a.get_ylim()[1], b.get_ylim()[1])
+        a.set_ylim(lo, hi)
+        b.set_ylim(lo, hi)
+
+    for sc in scans:
+        x, y, _ = _progress_curve(data.diags[sc], data.arrays[sc], 'frac_used',
+                                  smooth=opts['smooth'])
+        if x is None:
+            continue
+        _scan_line(cc, sc, x, np.maximum(1.0 - np.asarray(y, dtype=float), floor),
+                   opts=opts, lw=opts['scan_lw'])
+    cc.set_yscale('log')
+    cc.set_ylim(floor / 2, 1.4)
+    cc.set_xlim(0, 1)
+    cc.set_xlabel('Training progress')
+    cc.set_ylabel(opts['discard_ylabel'])
+    cc.set_title('(c) discarded residual fraction')
+    if opts['discard_decade_grid']:
+        # a tick at every decade (the major locator alone labels every other one at
+        # this height) and a faint rule on each, so a curve can be read off in decades
+        from matplotlib.ticker import LogLocator, NullFormatter
+        cc.yaxis.set_minor_locator(LogLocator(base=10.0, subs=(1.0,), numticks=20))
+        cc.yaxis.set_minor_formatter(NullFormatter())
+        cc.grid(axis='y', which='both', ls=':', lw=0.4, color='0.7', zorder=0)
+
+    if opts['show_legend']:
+        _scan_legend(fig, scans, opts=opts, **figspec.merge_kw(opts['legend_kw'],
+                                                               ncol=opts['legend_ncol'],
+                                                               lw=opts['scan_lw']))
+    prov = c.provenance(
+        functions=['spectra_figs.sven_diag', 'spectra_figs.diag_arrays',
+                   'spectra_figs.seed_stack', 'spectra_figs.smooth_steps',
+                   'spectra_figs.energy_in_top'],
+        scans=[hl.dir_name(sc, 'diag') for sc in scans],
+        reads=[c.results_root()], provisional=data.is_provisional(scans),
+        note=(f'(a), (b) every scan, one seed, online Gram spectrum at logged steps '
+              f'{opts["start_step_index"]} and {opts["end_step_index"]} on an i/B axis, '
+              f'with the selected rtol and k/B as lines; (c) 1 - frac_used, energy '
+              f'outside the min(k, rtol-rank) directions of THIS batch, seed mean, '
+              f'{opts["smooth"]}-step moving average'))
+    return fig, {'axes': axes, 'provenance': prov, 'scans': scans}
 
 
 # ---------------------------------------------------------------------------
@@ -1660,7 +1820,60 @@ FIGURE_SPECS = figspec.check_defaults({
             discard_floor=DISCARD_FLOOR,        # bottom of the log "discarded" axis
             show_k=True, show_rtol=True, show_noise=True,   # the three cut lines
             annotate_steps=True,                # the two "step N" labels in (a)
+            scan_ls={},                         # {scan: linestyle} over SCAN_LS
             show_legend=True, legend_ncol=4, legend_kw={})),
+    'spectrum_truncation_main': figspec.FigureSpec(
+        draw=_spectrum_truncation,
+        doc='F2 as carried in Sec. 4.2, the two CIFAR-10 scans dropped (not part of the main-text story): (a) the polynomial batch spectrum with the k / rtol / '
+            'round-off cuts, (b) what the cut discards, (c) the rank inverted',
+        defaults=dict(
+            _geom(ncol=3, fraction=0.32, aspect=1.00, extra_h=0.30),
+            spectrum_panel='scans',             # (a): 'scans' = every scan's spectrum at
+                                                # the end of training, overlaid; 'training'
+                                                # = one scan's spectrum over training
+            spectrum_scan=F2_SPECTRUM_SCAN,     # the scan 'training' draws
+            scans_step_index=-1,                # which logged step 'scans' draws
+            scans_ymin=1e-8,                    # 'scans': floor of the y axis (Toy 1D
+                                                # runs to 1e-10, which is round-off)
+            scans=[k for k in SCAN_KEY if not k.startswith('cifar10')],   # no CIFAR
+            limit=40,                           # steps drawn in panel (a)
+            lw=0.55,                            # one spectrum line
+            scan_lw=1.3,                        # one scan's curve in (b), (c)
+            cmap='plasma',                      # colour by optimizer step
+            spectrum_headroom=[6.0, 1.4],        # y room below / above the spectrum
+            smooth=SMOOTH_STEPS,                # moving average, in optimizer steps
+            discard_floor=DISCARD_FLOOR,        # bottom of the log "discarded" axis
+            show_k=True, show_rtol=True, show_noise=True,   # the three cut lines
+            annotate_steps=True,                # the two "step N" labels in (a)
+            scan_ls={'exp_nanogpt_speedrun': '-.'},   # dash-dot, not dotted, here
+            show_legend=True, legend_ncol=5, legend_kw={})),
+    'spectrum_cuts': figspec.FigureSpec(
+        draw=_spectrum_cuts,
+        doc='F2, alternative: (a) spectra at the start and (b) end of training with the '
+            'selected rtol / k cuts as labelled lines, (c) what the cut discards',
+        defaults=dict(
+            _geom(ncol=3, fraction=0.32, aspect=1.00, extra_h=0.30),
+            scans=[k for k in SCAN_KEY if not k.startswith('cifar10')],   # no CIFAR
+            start_step_index=0,                 # logged step drawn in (a)
+            end_step_index=-1,                  # ... and in (b)
+            share_spectrum_ylim=True,           # (a) and (b) on one y range
+            scans_ymin=1e-8,                    # floor of the spectrum axes
+            spectrum_headroom=[6.0, 1.4],
+            scan_lw=1.3,
+            smooth=SMOOTH_STEPS,
+            discard_floor=DISCARD_FLOOR,
+            show_k=True, show_rtol=True, show_noise=True,
+            noise_label=False,                  # the sqrt(eps) sigma_max text
+            cut_fontsize=4.6,                   # ... (only used with noise_label)
+            cut_color='0.45', cut_lw=0.7,       # the rtol / k lines, all grey
+            dot_ms=2.6,                         # the scan dots that identify a line
+            dot_gap=3.4,                        # points between dots sharing a line
+            dot_pad=4.0,                        # points outside the axis they sit at
+            marks_on_both=False,                # dots on (b) as well as (a)
+            discard_ylabel=r'$1 - \|\tilde{U}^{\top}\!R\|^2 / \|R\|^2$',   # panel (c)
+            discard_decade_grid=True,           # (c): a tick and rule at every decade
+            scan_ls={'mnist_scan_labelRegression': '-', 'exp_nanogpt_speedrun': '-'},
+            show_legend=True, legend_ncol=5, legend_kw={})),
     'online_spectra': figspec.FigureSpec(
         draw=_online_spectra,
         doc='F9, App. O: the online per-batch spectrum over training, one panel per scan',

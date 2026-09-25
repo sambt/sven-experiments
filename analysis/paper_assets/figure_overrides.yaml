@@ -18,3 +18,5 @@ headline_curves:
     4:
     - null
     - 0.2
+  xlabel:
+    4: Training time (s), standalone run

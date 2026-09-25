@@ -608,7 +608,9 @@ def test_every_spec_declares_yaml_representable_knobs_and_shadows_none():
 def test_the_figure_names_are_the_pdf_stems():
     """The registry key IS the output stem, so ``figures_iclr/spectra/<key>.pdf``."""
     assert list(S.FIGURE_SPECS) == [
-        'spectrum_truncation', 'online_spectra', 'online_utr', 'online_mechanism',
+        'spectrum_truncation', 'spectrum_truncation_main', 'spectrum_cuts',
+        'online_spectra',
+        'online_utr', 'online_mechanism',
         'online_norms', 'mnist_lr_vs_ce', 'used_rank_grid', 'probe_spectra',
         'probe_spectra_all', 'probe_metrics', 'probe_metrics_all', 'probe_norms',
         'probe_energy']
@@ -632,7 +634,7 @@ def test_context_reads_the_passes_once_per_root(monkeypatch):
 # Module contract
 # ---------------------------------------------------------------------------
 def test_the_module_declares_its_assets():
-    assert len(S.FIGURE_SPECS) == 13 and S.TABLES
+    assert len(S.FIGURE_SPECS) == 15 and S.TABLES
     for name, spec in S.FIGURE_SPECS.items():
         assert callable(spec.draw) and spec.draw.__doc__, name
     for fn in S.TABLES:
