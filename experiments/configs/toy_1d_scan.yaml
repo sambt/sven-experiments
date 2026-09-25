@@ -4,7 +4,7 @@ defaults:
   - _self_
 
 name: scan
-mode: all
+mode: both
 device: cuda
 print_config: true
 

@@ -812,7 +812,6 @@ def train_loop_svd(model, optimizer, loss_fn, train_loader, val_loader, num_epoc
             epoch_start_time = time.perf_counter()
             acc = _TrainEpoch()
             epoch_pm = defaultdict(list)  # per-model metrics for this epoch
-            epoch_start_time = time.perf_counter()
             for xb, yb in train_loader:
                 if checkpointer is not None:
                     checkpointer.maybe_save(step, epoch, module)

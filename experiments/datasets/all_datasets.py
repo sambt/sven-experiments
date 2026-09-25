@@ -248,52 +248,6 @@ def eval_polynomial(x, coeffs, powers):
     return y
 
 
-class CIFAR10Dataset:
-    def __init__(self, ROOT="anon/dataset/directory", train_fraction=1.0, val_fraction=1.0, shuffle_seed=1832):
-        if not os.path.isdir(ROOT):
-            ROOT = "./torch_datasets/"
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        train_dataset = CIFAR10(root=ROOT, train=True, download=True, transform=transform)
-        val_dataset = CIFAR10(root=ROOT, train=False, download=True, transform=transform)
-
-        train_data, train_labels, val_data, val_labels = [], [], [], []
-        for data, label in torch.utils.data.DataLoader(train_dataset, batch_size=512):
-            train_data.append(data)
-            train_labels.append(label)
-        for data, label in torch.utils.data.DataLoader(val_dataset, batch_size=512):
-            val_data.append(data)
-            val_labels.append(label)
-        train_data = torch.cat(train_data, dim=0)
-        train_labels = torch.cat(train_labels, dim=0)
-        val_data = torch.cat(val_data, dim=0)
-        val_labels = torch.cat(val_labels, dim=0)
-
-        # shuffle
-        rng = torch.Generator().manual_seed(shuffle_seed)
-        perm_train = torch.randperm(len(train_data), generator=rng)
-        perm_val = torch.randperm(len(val_data), generator=rng)
-        train_data = train_data[perm_train]
-        train_labels = train_labels[perm_train]
-        val_data = val_data[perm_val]
-        val_labels = val_labels[perm_val]
-
-        if train_fraction < 1.0:
-            n_train = int(len(train_data) * train_fraction)
-            train_data = train_data[:n_train]
-            train_labels = train_labels[:n_train]
-        if val_fraction < 1.0:
-            n_val = int(len(val_data) * val_fraction)
-            val_data = val_data[:n_val]
-            val_labels = val_labels[:n_val]
-
-        del train_dataset, val_dataset
-        
-        self.train_dataset = TensorDataset(train_data, train_labels)
-        self.val_dataset = TensorDataset(val_data, val_labels)
-
 class RandomPolynomialDataset:
     """Random polynomial of total degree <= ``degree`` in ``num_vars`` variables (C-D1).
 

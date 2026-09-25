@@ -5,24 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def _in_functorch_transform() -> bool:
-    """Return True when called from within a torch.func transform (jacrev, grad, vmap…).
-
-    During such transforms, in-place mutations to captured tensors (e.g. BatchNorm's
-    running_mean / running_var buffers) raise a hard error.  We use this flag to skip
-    those updates and keep the forward pass purely functional.
-    """
-    try:
-        _functorch = getattr(torch._C, "_functorch", None)
-        if _functorch is None:
-            return False
-        peek = getattr(_functorch, "peek_interpreter_stack", None)
-        return peek is not None and peek() is not None
-    except Exception:
-        return False
-
-
 class _BatchNorm(_NormBase):
     def __init__(
         self,
@@ -42,54 +24,50 @@ class _BatchNorm(_NormBase):
     def forward(self, input: Tensor) -> Tensor:
         self._check_input_dim(input)
 
+        # exponential_average_factor is set to self.momentum
+        # (when it is available) only so that it gets updated
+        # in ONNX graph when this node is exported to ONNX.
         if self.momentum is None:
             exponential_average_factor = 0.0
         else:
             exponential_average_factor = self.momentum
 
         if self.training and self.track_running_stats:
+            # TODO: if statement only here to tell the jit to skip emitting this when it is None
             if self.num_batches_tracked is not None:  # type: ignore[has-type]
-                # Out-of-place increment: avoids aten::add_.Tensor on a captured buffer.
                 self.num_batches_tracked = self.num_batches_tracked + 1  # type: ignore[has-type]
-                if self.momentum is None:
+                if self.momentum is None:  # use cumulative moving average
                     exponential_average_factor = 1.0 / float(self.num_batches_tracked)
-                else:
+                else:  # use exponential moving average
                     exponential_average_factor = self.momentum
 
+        r"""
+        Decide whether the mini-batch stats should be used for normalization rather than the buffers.
+        Mini-batch stats are used in training mode, and in eval mode when buffers are None.
+        """
         if self.training:
             bn_training = True
         else:
             bn_training = (self.running_mean is None) and (self.running_var is None)
 
-        # When computing with batch statistics (bn_training=True), F.batch_norm would
-        # normally update running_mean / running_var in-place.  Inside a torch.func
-        # transform (e.g. jacrev used by Sven) that in-place mutation on a captured
-        # buffer tensor raises:
-        #   "in-place operation … would mutate a captured Tensor"
-        # Fix: pass None so F.batch_norm uses batch stats without writing back to the
-        # running-stat buffers.  Outside of any transform, behaviour is unchanged.
-        if bn_training and _in_functorch_transform():
-            running_mean = None
-            running_var = None
-        else:
-            running_mean = (
-                self.running_mean if not self.training or self.track_running_stats else None
-            )
-            running_var = (
-                self.running_var if not self.training or self.track_running_stats else None
-            )
-
+        r"""
+        Buffers are only updated if they are to be tracked and we are in training mode. Thus they only need to be
+        passed when the update should occur (i.e. in training mode when they are tracked), or when buffer stats are
+        used for normalization (i.e. in eval mode when buffers are not None).
+        """
         return F.batch_norm(
             input,
-            running_mean,
-            running_var,
+            # If buffers are not to be tracked, ensure that they won't be updated
+            self.running_mean
+            if not self.training or self.track_running_stats
+            else None,
+            self.running_var if not self.training or self.track_running_stats else None,
             self.weight,
             self.bias,
             bn_training,
             exponential_average_factor,
             self.eps,
         )
-
 
 class BatchNorm2d(_BatchNorm):
     def _check_input_dim(self, input):
