@@ -2,8 +2,8 @@
  "schema": 2,
  "generated_at": "2026-09-20T22:06:52-0400",
  "generated_by": "tools/select_best.py (per-scan; see selection_provenance)",
- "results_root": "/n/home/anon/sven-experiments/experiment_results",
- "config_dir": "/n/home/anon/sven-experiments/experiments/configs",
+ "results_root": "experiment_results",
+ "config_dir": "experiments/configs",
  "rule_name": "full",
  "rule": "eligible (more than half the expected seeds finished) -> fewest diverged seeds -> lowest seed-mean final VALIDATION loss over the non-diverged runs; diverged = style.is_diverged; test metrics are never read (CHANGES_NEEDED.md section 1)",
  "default_groups": [
@@ -14,7 +14,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/toy_1d_scan",
+   "scan_dir": "experiment_results/toy_1d_scan",
    "n_expected": 1770,
    "n_records": 1770,
    "n_missing": 0,
@@ -1207,7 +1207,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/polynomial_scan",
+   "scan_dir": "experiment_results/polynomial_scan",
    "n_expected": 1630,
    "n_records": 1630,
    "n_missing": 0,
@@ -2404,7 +2404,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/mnist_scan_labelRegression",
+   "scan_dir": "experiment_results/mnist_scan_labelRegression",
    "n_expected": 1360,
    "n_records": 1360,
    "n_missing": 0,
@@ -3521,7 +3521,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/mnist_scan_ce",
+   "scan_dir": "experiment_results/mnist_scan_ce",
    "n_expected": 1610,
    "n_records": 1610,
    "n_missing": 0,
@@ -4641,7 +4641,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/cifar10_resnet_scan_labelRegression",
+   "scan_dir": "experiment_results/cifar10_resnet_scan_labelRegression",
    "n_expected": 700,
    "n_records": 600,
    "n_missing": 100,
@@ -5521,7 +5521,7 @@
     "mode=all",
     "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/cifar10_resnet_ce_scan",
+   "scan_dir": "experiment_results/cifar10_resnet_ce_scan",
    "n_expected": 885,
    "n_records": 785,
    "n_missing": 100,
@@ -6403,7 +6403,7 @@
    "groups": [
     "mode=all"
    ],
-   "scan_dir": "/n/home/anon/sven-experiments/experiment_results/exp_nanogpt_speedrun",
+   "scan_dir": "experiment_results/exp_nanogpt_speedrun",
    "n_expected": 140,
    "n_records": 140,
    "n_missing": 0,

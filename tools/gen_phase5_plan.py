@@ -48,7 +48,9 @@ import reconcile                                        # noqa: E402
 
 DEFAULT_IN = os.path.join(REPO, "bench", "best_configs.json")
 DEFAULT_OUT = os.path.join(REPO, "campaign", "plan_phase5.yaml")
-DEFAULT_RESULTS_ROOT = "/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments"
+DEFAULT_RESULTS_ROOT = os.environ.get(
+    "SV3_RESULTS_ROOT",
+    os.path.join(os.path.expanduser(os.environ.get("SV3_SCRATCH", "~/scratch/sven")), "results"))
 
 #: the hydra overrides that turn a scan config into a TIMING run (C-T1). `++` and not `=`:
 #: no scan config declares `svd_info`, and the MNIST ones declare `checkpoints_svd` but not
@@ -221,14 +223,14 @@ results_root: {root}
 
 lanes:
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
     cpus_extra: 2
     note: "diag / confirm for CIFAR + nanoGPT, and the A100 overflow of the MLP lists"
   mig:
-    partition: gpu_test
+    partition: gpu_mig
     gres: "gpu:4"
     cpus: 32
     mem: 128G
@@ -236,7 +238,7 @@ lanes:
     max_jobs: 2
     note: "MLP diag/confirm only: 19.6 GB a slice fits toy/poly/MNIST, not CIFAR full capture"
   timing:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     cpus: 16
     mem: 64G

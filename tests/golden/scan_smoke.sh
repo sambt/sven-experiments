@@ -13,7 +13,7 @@
 # $WORK/work, which holds its own empty experiment_results/, and hydra.run.dir is
 # pinned under $WORK too. Nothing in the command line resolves into the repo.
 set -u
-REPO=/n/home/anon/sven-experiments
+REPO=${SV3_REPO:-$HOME/sven-experiments}
 PY=$REPO/.venv/bin/python
 WORK=${1:-$(mktemp -d "${TMPDIR:-/tmp}/grid_smoke.XXXXXX")}
 export HYDRA_FULL_ERROR=1

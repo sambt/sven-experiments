@@ -138,8 +138,8 @@ TARGET_NAMES = {2.0: 'easy (2x median)', 1.0: 'median method', 0.5: 'hard (0.5x 
 
 #: where `bench/submit_timing_phase5.sh` puts the timing jobs' logs, which carry the
 #: `bench/calibrate_step.py` lines a step-time claim has to be checked against
-TIMING_LOG_DIR = Path('/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/'
-                      'logs/phase5')
+TIMING_LOG_DIR = (Path(os.environ.get('SV3_SCRATCH', '~/scratch/sven')).expanduser()
+                  / 'campaign' / 'logs' / 'phase5')
 
 
 def scan_title(scan):

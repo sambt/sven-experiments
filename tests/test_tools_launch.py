@@ -84,13 +84,13 @@ plan: tiny
 results_root: {root}
 lanes:
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
     cpus_extra: 2
   mig:
-    partition: gpu_test
+    partition: gpu_mig
     gres: "gpu:4"
     cpus: 32
     mem: 128G
@@ -138,7 +138,7 @@ def sandbox(tmp_path):
             "logs": logs, "tmp": tmp_path}
 
 
-def _fake_squeue(tmp_path, n_jobs, *, partition="gpu_test", fail=False, names=()):
+def _fake_squeue(tmp_path, n_jobs, *, partition="gpu_mig", fail=False, names=()):
     """A `squeue` on PATH that reports `n_jobs` of ours in `partition`.
 
     `names` are reported for the job-NAME query (`-o '%i %T %j'`, no partition), which is
@@ -179,7 +179,7 @@ def _launch(sandbox, *args, extra_path=None, monkeypatch=None):
 
 def test_the_campaign_plan_parses_and_covers_the_kept_scans():
     plan = campaign_plan.load_plan(PLAN_FILE)
-    # P9 = the one combined, priority-ordered MIG list (gpu_test admits only 2 jobs per user)
+    # P9 = the one combined, priority-ordered MIG list (gpu_mig admits only 2 jobs per user)
     assert {wl.phase for wl in plan.work_lists} == {"P0", "P1", "P2", "P3", "P9"}
     assert set(plan.lanes) == {"a100", "mig"}
     names = [wl.name for wl in plan.work_lists]
@@ -257,7 +257,7 @@ def test_the_gpt2_plan_gives_every_run_a_whole_a100():
     plan = campaign_plan.load_plan(os.path.join(REPO, "campaign", "plan_gpt2.yaml"))
     assert set(plan.lanes) == {"a100"}
     assert plan.lanes["a100"].gres == "gpu:1" and plan.lanes["a100"].time == "24:00:00"
-    assert plan.results_root and plan.results_root.endswith("sven_experiments")
+    assert plan.results_root and plan.results_root.endswith("/results")
     by_list = {wl.name: wl for wl in plan.work_lists}
     assert set(by_list) == {"p1_gpt2_sven", "p1_gpt2_baselines"}
     for wl in plan.work_lists:
@@ -548,7 +548,7 @@ def test_timing_is_a_documented_stub_not_a_work_list():
 ])
 def test_a_doubtful_plan_is_refused_with_a_useful_message(tmp_path, mutation, message):
     base = ("version: 1\nlanes:\n  a100: {partition: p, gres: 'gpu:1'}\n"
-            "  mig: {partition: gpu_test, gres: 'gpu:4'}\n"
+            "  mig: {partition: gpu_mig, gres: 'gpu:4'}\n"
             "work_lists:\n  - {name: ok, phase: P0, lane: a100, items: []}\n")
     text = base
     if mutation.startswith("lanes:"):
@@ -556,7 +556,7 @@ def test_a_doubtful_plan_is_refused_with_a_useful_message(tmp_path, mutation, me
                "work_lists:\n  - {name: ok, phase: P0, lane: a100, items: []}\n"
     else:
         text = ("version: 1\nlanes:\n  a100: {partition: p, gres: 'gpu:1'}\n"
-                "  mig: {partition: gpu_test, gres: 'gpu:4'}\n") + mutation
+                "  mig: {partition: gpu_mig, gres: 'gpu:4'}\n") + mutation
     path = tmp_path / "plan_bad.yaml"
     path.write_text(text)
     with pytest.raises(campaign_plan.PlanError) as exc:
@@ -596,7 +596,7 @@ def test_dry_run_prints_the_sbatch_line_and_writes_nothing(sandbox, capsys):
     lines = [l for l in out.splitlines() if "$ sbatch" in l]
     assert len(lines) == 2                            # n_jobs: 2
     for i, line in enumerate(lines):
-        assert "-p lab_gpu_priority,lab_gpu,gpu" in line
+        assert "-p gpu " in line
         assert "--gres=gpu:1" in line
         assert "-c 14" in line                        # max(12, 4) + 2
         assert "--mem=64G" in line
@@ -803,7 +803,7 @@ def test_chain_forces_one_job_and_prints_the_script_path(sandbox, monkeypatch, c
 
 
 def test_a_chain_leaves_a_free_slot_in_a_capped_lane(sandbox, monkeypatch, capsys):
-    """Two chains would fill gpu_test's 2 MaxSubmit slots, and then NEITHER can renew --
+    """Two chains would fill gpu_mig's 2 MaxSubmit slots, and then NEITHER can renew --
     the module docstring promises the opposite, so a selection of two chains is refused."""
     plan = sandbox["plan"]
     plan.write_text(plan.read_text() + """  - name: l_mig2
@@ -868,13 +868,13 @@ def test_the_chain_gets_control_back_before_the_wall_clock(sandbox):
     assert "RENEW BLOCK REACHED" in out, out
 
 
-def test_logs_default_to_labstore_not_to_the_nfs_home(sandbox):
+def test_logs_default_to_the_scratch_tree_not_to_the_repo(sandbox):
     """One log per (job x pool x item x NPROC) plus a hydra dir each is O(10^4) files for
-    the full plan; /n/home is a 95 G NFS home at 84%."""
-    assert launch.DEFAULT_LOG_DIR.startswith("/n/labstore01/")
-    assert "/n/home" not in launch.DEFAULT_LOG_DIR
+    the full plan, so they go under $SV3_SCRATCH, never into the checkout or $HOME."""
+    assert launch.DEFAULT_LOG_DIR.startswith(launch.SCRATCH_ROOT)
+    assert "sven-experiments" not in launch.DEFAULT_LOG_DIR
     pool = open(os.path.join(TOOLS, "worker_pool.sh")).read()
-    assert "WORKER_LOG_ROOT:-/n/labstore01/" in pool
+    assert "WORKER_LOG_ROOT:-${SV3_SCRATCH" in pool
     assert "PYTHONDONTWRITEBYTECODE=1" in pool      # nothing writes into the snapshot
 
 
@@ -911,7 +911,7 @@ def test_the_chain_script_is_valid_bash_and_renews_only_on_exit_code_1(sandbox):
     text = path.read_text()
     subprocess.run(["bash", "-n", str(path)], check=True, timeout=60)
     assert text.startswith("#!/bin/bash")
-    assert "#SBATCH -p gpu_test" in text and "#SBATCH --gres=gpu:4" in text
+    assert "#SBATCH -p gpu_mig" in text and "#SBATCH --gres=gpu:4" in text
     assert "#SBATCH -t 12:00:00" in text and "#SBATCH -c 32" in text
     assert "worker_pool.sh" in text
     assert "reconcile.py" in text and "--list l_mig" in text and "--quiet" in text

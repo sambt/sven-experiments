@@ -38,22 +38,22 @@
 # `# inferred` where they appear.
 version: 1
 plan: campaign
-results_root: /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
+results_root: ${SV3_SCRATCH}/results
 
 lanes:
   # 8 A100-80GB per QOS pair in practice (2 distinct nodes per QOS, independent caps);
   # `gpu` is opportunistic overflow only (campaign/scout/queue.md).
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
     cpus_extra: 2          # cpus-per-task = max NPROC over the list's items + 2
     note: "one GPU per job, many jobs; 24 h default (the 12 h in the old launchers was self-imposed)"
-  # gpu_test: MIG a100_3g.20gb (19.6 GB), median queue wait 3 s, but MaxJobsPU=2 AND
+  # gpu_mig: MIG a100_3g.20gb (19.6 GB), median queue wait 3 s, but MaxJobsPU=2 AND
   # MaxSubmitPU=2 and gres/gpu=8 per user -> exactly 2 jobs x 4 slices.
   mig:
-    partition: gpu_test
+    partition: gpu_mig
     gres: "gpu:4"
     cpus: 32
     mem: 128G
@@ -214,7 +214,7 @@ _items:
 # ---------------------------------------------------------------------------
 work_lists:
   # ---------------- P0: the six headline scans + nanoGPT ----------------
-  # The gpu_test lane admits only 2 jobs per user, so "queue everything at once, headline first"
+  # The gpu_mig lane admits only 2 jobs per user, so "queue everything at once, headline first"
   # (user, 2026-09-18) is ONE ordered list for that lane: P0 items, then P1, then P3. Launch it by
   # name (`--list all_mlp_mig`); the per-phase mig lists below stay for targeted resubmits.
   # 2026-09-19: MNIST HIG costs ~2.25 h per run at NPROC 6 on a MIG slice (SVD of a 640 x 27,562 Jacobian per step),
@@ -241,7 +241,7 @@ work_lists:
   - name: p0_mlp_mig
     phase: P0
     lane: mig
-    n_jobs: 2                 # the gpu_test cap: 2 jobs x 4 slices = the 8-GPU TRES cap
+    n_jobs: 2                 # the gpu_mig cap: 2 jobs x 4 slices = the 8-GPU TRES cap
     # `chain: true` is a note to the operator: this list is long-lived enough to be worth
     # `--chain`, which submits ONE self-renewing job instead of n_jobs. The renewal
     # happens BEFORE the 12 h wall (the pool starts no item within 15 min of

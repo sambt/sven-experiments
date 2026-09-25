@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=lab_gpu_priority,lab_gpu,gpu
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -7,7 +7,7 @@
 #SBATCH --mem=64G
 #SBATCH --time=36:00:00
 #SBATCH --job-name=p5_timing
-#SBATCH --output=/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/phase5/timing-%j.out
+#SBATCH --output=slurm_logs/phase5/timing-%j.out
 #
 # ONE scan's Phase-5 timing pass: every selected (method, configuration) of that scan run
 # BACK TO BACK on one GPU, one process at a time (NPROC 1), with nothing else of ours on
@@ -45,7 +45,7 @@ SCAN=${SCAN:?SCAN (the parent scan name) must be set}
 SNAP=${SNAP:?SNAP (the deploy snapshot) must be set}
 JSON=${JSON:?JSON (bench/best_configs.json) must be set}
 ROOT=${ROOT:?ROOT (SV3_RESULTS_ROOT) must be set}
-PY=${PY:-/n/home/anon/sven-experiments/.venv/bin/python}
+PY=${PY:-${SV3_REPO:-$HOME/sven-experiments}/.venv/bin/python}
 ONLY=${ONLY:-}
 CALIB_STEPS=${CALIB_STEPS:-1000}
 
@@ -58,8 +58,8 @@ export SV3_RESULTS_ROOT="$ROOT"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 
-# hydra writes an `outputs/` tree into the cwd: keep it off the 95 G NFS home
-WORKDIR=${WORKDIR:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/phase5_timing}
+# hydra writes an `outputs/` tree into the cwd: keep it in the scratch tree
+WORKDIR=${WORKDIR:-${SV3_SCRATCH:-$HOME/scratch/sven}/campaign/phase5_timing}
 mkdir -p "$WORKDIR" && cd "$WORKDIR" || exit 2
 
 echo "################ phase-5 timing: $SCAN ################"

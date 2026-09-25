@@ -15,7 +15,7 @@ Requires: tiktoken, datasets  (uv add tiktoken datasets)
 Example (as used for fineweb_edu_gpt2_v2):
   python experiments/data_prep/prepare_tokens.py \
       --dataset HuggingFaceFW/fineweb-edu --config sample-10BT \
-      --out /n/labstore01/.../datasets/fineweb_edu_gpt2_v2 \
+      --out $SV3_DATA_ROOT/fineweb_edu_gpt2_v2 \
       --max_train_tokens 250_000_000 --val_tokens 8_000_000 --test_tokens 8_000_000
 """
 import argparse, json, os, sys

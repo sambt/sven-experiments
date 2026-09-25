@@ -108,13 +108,13 @@ def test_output_root_precedence_and_base(env, prof, want):
 def test_a_relative_root_does_not_follow_the_process_into_the_snapshot(tmp_path):
     """The failure this guards: the real job runs with cwd = the deploy snapshot, so a
     cwd-relative root would write 34 MB of results into a frozen export."""
-    snap = tmp_path / 'sv3_deploy' / 'abc123_def456'
+    snap = tmp_path / 'deploy' / 'abc123_def456'
     snap.mkdir(parents=True)
     here = os.getcwd()
     try:
         os.chdir(snap)
-        assert op.output_root({}, base='/n/home/anon/sven-experiments', env={}) == \
-            '/n/home/anon/sven-experiments/profile_results_v3'
+        assert op.output_root({}, base='/somewhere/sven-experiments', env={}) == \
+            '/somewhere/sven-experiments/profile_results_v3'
         # and with no base at all it is at least absolute, never a bare relative path
         assert os.path.isabs(op.output_root({}, env={}))
     finally:

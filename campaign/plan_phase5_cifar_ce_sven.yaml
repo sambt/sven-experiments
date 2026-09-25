@@ -22,11 +22,11 @@
 # bench/best_configs.json.
 version: 1
 plan: phase5_cifar_ce_sven
-results_root: /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
+results_root: ${SV3_SCRATCH}/results
 
 lanes:
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"

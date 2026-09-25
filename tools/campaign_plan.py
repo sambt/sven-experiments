@@ -162,6 +162,15 @@ class Plan:
         return out
 
 
+def _expand_root(text):
+    """``$SV3_SCRATCH`` / ``~`` in a plan's ``results_root`` are expanded here, so the plan
+    file itself never names a machine. When ``$SV3_SCRATCH`` is unset the launcher's own
+    default (``~/scratch/sven``) is used."""
+    scratch = os.environ.get("SV3_SCRATCH", os.path.expanduser("~/scratch/sven"))
+    text = text.replace("${SV3_SCRATCH}", scratch).replace("$SV3_SCRATCH", scratch)
+    return os.path.expandvars(os.path.expanduser(text))
+
+
 def _check_keys(where, mapping, allowed):
     unknown = sorted(set(mapping) - allowed)
     if unknown:
@@ -292,6 +301,7 @@ def load_plan(path) -> Plan:
 
     return Plan(path=path, version=int(raw.get("version", 1)),
                 name=str(raw.get("plan") or os.path.splitext(os.path.basename(path))[0]),
-                results_root=(str(raw["results_root"]) if raw.get("results_root") else None),
+                results_root=(_expand_root(str(raw["results_root"]))
+              if raw.get("results_root") else None),
                 lanes=lanes, work_lists=tuple(work_lists), timing=timing,
                 note=str(raw.get("note") or ""))

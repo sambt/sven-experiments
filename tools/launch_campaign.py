@@ -11,13 +11,13 @@ pulling from the claim queue instead of one job per shard (campaign/scout/queue.
 
 Lanes come from the plan; the two the campaign uses are
 
-  a100  -p lab_gpu_priority,lab_gpu,gpu --gres=gpu:1, cpus = max NPROC + 2, 64G, 24 h
-  mig   -p gpu_test --gres=gpu:4 -c 32 --mem=128G -t 12:00:00, AT MOST 2 JOBS
+  a100  -p gpu --gres=gpu:1, cpus = max NPROC + 2, 64G, 24 h
+  mig   -p gpu_mig --gres=gpu:4 -c 32 --mem=128G -t 12:00:00, AT MOST 2 JOBS
 
 `--chain` (mig lane) submits a self-renewing job: as its last act it asks
 `tools/reconcile.py` whether work remains and resubmits itself if so.
 
-    MaxSubmit=2 caveat: gpu_test allows a user 2 QUEUED-OR-RUNNING jobs. A job that
+    MaxSubmit=2 caveat: gpu_mig allows a user 2 QUEUED-OR-RUNNING jobs. A job that
     resubmits itself while still running counts as one of those two, so a chain can only
     renew itself if a slot is free at that moment. This tool therefore refuses to submit a
     chain unless a slot would stay free (1 chained job + at most 1 other), and the chain
@@ -58,12 +58,15 @@ sys.path.insert(0, HERE)
 
 import campaign_plan                                  # noqa: E402  (same directory)
 
-DEFAULT_DEPLOY_BASE = "/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy"
-SCRATCH_BASE = "/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch"
+#: One scratch tree for everything the campaign writes outside the results root:
+#: deploy snapshots, work lists, logs. `$SV3_SCRATCH` overrides it; it should be on a
+#: filesystem sized for O(10^4) small files, not a quota-limited NFS home.
+SCRATCH_ROOT = os.path.expanduser(os.environ.get("SV3_SCRATCH", "~/scratch/sven"))
+DEFAULT_DEPLOY_BASE = os.path.join(SCRATCH_ROOT, "deploy")
+SCRATCH_BASE = os.path.join(SCRATCH_ROOT, "campaign")
 DEFAULT_WORK_BASE = os.path.join(SCRATCH_BASE, "work")
-#: logs live on labstore with everything else: the full plan is O(10^4) runner logs and
-#: /n/home is a 95 G NFS home at 84% (a failed `> $log` redirect looks like a training
-#: failure, not a disk-full one).
+#: logs live in the scratch tree with everything else: the full plan is O(10^4) runner
+#: logs (a failed `> $log` redirect on a full home looks like a training failure).
 DEFAULT_LOG_DIR = os.path.join(SCRATCH_BASE, "logs", "campaign")
 SNAPSHOT_PLACEHOLDER = "<snapshot>"
 CHAIN_MAX_DEPTH = 8
@@ -423,7 +426,7 @@ def chain_script(path, *, lane, work_list, items, snapshot, items_file, results_
 #     sbatch {path}
 #
 # The renewal is the LAST act of the job: run the pool, ask reconcile whether work
-# remains (exit 1 = yes), and only then resubmit. gpu_test allows 2 queued-or-running
+# remains (exit 1 = yes), and only then resubmit. gpu_mig allows 2 queued-or-running
 # jobs per user and THIS job still holds one of them at that moment, so the sbatch
 # needs a free slot; it retries {CHAIN_SBATCH_RETRIES} x {CHAIN_SBATCH_SLEEP_S}s and
 # then gives up with a loud message. Relaunching by hand always resumes cleanly -- the
@@ -485,7 +488,7 @@ for try in $(seq 1 {CHAIN_SBATCH_RETRIES}); do
     echo "[chain] renewed: $out"
     exit $rc
   fi
-  echo "[chain] sbatch attempt $try failed ($out); the 2-job gpu_test cap is probably full"
+  echo "[chain] sbatch attempt $try failed ($out); the 2-job gpu_mig cap is probably full"
   sleep {CHAIN_SBATCH_SLEEP_S}
 done
 echo "[chain] GIVING UP on renewal after {CHAIN_SBATCH_RETRIES} attempts -- resubmit by hand:"

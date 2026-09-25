@@ -18,6 +18,14 @@ import zlib
 # changing ``n_train`` never moves the held-out data.
 # ---------------------------------------------------------------------------
 
+#: Where the datasets live: an explicit ``ROOT``, else ``$SV3_DATA_ROOT/<sub>``, else
+#: ``./torch_datasets/<sub>`` (torchvision downloads into it on first use).
+def data_dir(root, sub):
+    if root:
+        return root
+    return os.path.join(os.environ.get("SV3_DATA_ROOT", "./torch_datasets"), sub)
+
+
 def derive_seeds(seed, *names):
     """One independent generator seed per name, derived from a single dataset seed.
 
@@ -151,10 +159,9 @@ class MNISTDataset:
     ``split_seed``; ``test_dataset`` is the official test set (C-E1).  ``n_train``
     subsamples the **train** part only.  Normalisation constants are the published
     full-train statistics and are deliberately not recomputed for the 50k split."""
-    def __init__(self, ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/torch/mnist/",digits=None,n_train=None,subsample_seed=0,
+    def __init__(self, ROOT=None,digits=None,n_train=None,subsample_seed=0,
                  n_val=10_000, split_seed=1234):
-        if not os.path.isdir(ROOT):
-            ROOT = "./torch_datasets/"
+        ROOT = data_dir(ROOT, "torch/mnist")
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,)),
@@ -388,10 +395,9 @@ class CIFAR10Dataset:
     ``split_seed``; ``test_dataset`` is the official test set (C-E1).  ``n_train``
     subsamples the **train** part only.  Channel statistics are the published
     full-train values and are deliberately not recomputed for the 45k split."""
-    def __init__(self, for_mlp=False, ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/torch/cifar10/",
+    def __init__(self, for_mlp=False, ROOT=None,
                  n_train=None, subsample_seed=0, n_val=5_000, split_seed=1234):
-        if not os.path.isdir(ROOT):
-            ROOT = "./torch_datasets/"
+        ROOT = data_dir(ROOT, "torch/cifar10")
         transformations = [transforms.ToTensor(),
                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.262))]
         if for_mlp:
@@ -431,12 +437,10 @@ class CharTextDataset:
     sequences (for the critical-batch / data-scaling studies).
     """
     def __init__(self,
-                 ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/shakespeare/",
+                 ROOT=None,
                  block_size=128, val_fraction=0.1, test_fraction=0.1,
                  n_train=None, subsample_seed=0, split_seed=None):
-        path = os.path.join(ROOT, "input.txt")
-        if not os.path.isfile(path):
-            path = "./torch_datasets/shakespeare/input.txt"
+        path = os.path.join(data_dir(ROOT, "shakespeare"), "input.txt")
         with open(path, "r") as f:
             text = f.read()
         chars = sorted(set(text))
@@ -506,9 +510,10 @@ class TokenBinDataset:
     files, so there is no split seed; ``token_counts.json`` (if present) is recorded.
     """
     def __init__(self,
-                 ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/openwebtext_gpt2",
+                 ROOT=None,
                  block_size=1024, n_train_blocks=None, val_blocks=200, test_blocks=None,
                  vocab_size=50304, split_seed=None):
+        ROOT = data_dir(ROOT, "openwebtext_gpt2")
         self.block_size = block_size
         self.vocab_size = vocab_size
         # No split seed of its own (the split is a property of the files); the argument

@@ -33,8 +33,8 @@ set -f
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PY=${PY:-$REPO/.venv/bin/python}
 JSON=${JSON:-$REPO/bench/best_configs.json}
-DEPLOY_BASE=${DEPLOY_BASE:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy}
-LOG_DIR=${LOG_DIR:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/phase5}
+DEPLOY_BASE=${DEPLOY_BASE:-${SV3_SCRATCH:-$HOME/scratch/sven}/deploy}
+LOG_DIR=${LOG_DIR:-${SV3_SCRATCH:-$HOME/scratch/sven}/campaign/logs/phase5}
 TIME=${TIME:-36:00:00}
 SUBMIT=0; EXCLUSIVE=${EXCLUSIVE:-0}; ONLY=${ONLY:-}; SCANS=""
 

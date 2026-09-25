@@ -42,7 +42,7 @@ REPO = Path(__file__).resolve().parents[1]
 CLAIMS_PATH = REPO / "experiments" / "experiment_code" / "claims.py"
 
 #: set this to a Lustre directory to also run the race there (see the campaign
-#: report): SV3_CLAIMS_LUSTRE_ROOT=/n/labstore01/.../claims_probe pytest -s -k lustre
+#: report): SV3_CLAIMS_LUSTRE_ROOT=$SV3_SCRATCH/claims_probe pytest -s -k lustre
 LUSTRE_ROOT_ENV = "SV3_CLAIMS_LUSTRE_ROOT"
 
 N_RACE_IDS = 2000

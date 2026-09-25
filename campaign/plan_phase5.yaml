@@ -12,10 +12,10 @@
 # the two tools above, in that order, and relaunch.
 #
 # Generated 2026-09-20T22:07:24-0400
-# from      /n/home/anon/sven-experiments/bench/best_configs.json
+# from      <repo>/bench/best_configs.json
 #   selection rule: full
-#   results root:   /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
-#   configs:        /n/home/anon/sven-experiments/experiments/configs
+#   results root:   ${SV3_SCRATCH}/results
+#   configs:        <repo>/experiments/configs
 #   selection made: 2026-09-20T22:06:52-0400
 # GENERATED FROM AN INCOMPLETE SELECTION (--allow-incomplete):
 #   cifar10_resnet_ce_scan: 100 run(s) of the grid unfinished
@@ -33,18 +33,18 @@
 # the end of the job so contamination is detectable after the fact.
 version: 1
 plan: phase5
-results_root: /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
+results_root: ${SV3_SCRATCH}/results
 
 lanes:
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
     cpus_extra: 2
     note: "diag / confirm for CIFAR + nanoGPT, and the A100 overflow of the MLP lists"
   mig:
-    partition: gpu_test
+    partition: gpu_mig
     gres: "gpu:4"
     cpus: 32
     mem: 128G
@@ -52,7 +52,7 @@ lanes:
     max_jobs: 2
     note: "MLP diag/confirm only: 19.6 GB a slice fits toy/poly/MNIST, not CIFAR full capture"
   timing:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     cpus: 16
     mem: 64G

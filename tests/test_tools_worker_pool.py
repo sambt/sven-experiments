@@ -193,12 +193,12 @@ def test_the_runner_environment_is_the_contract(env):
     assert call["cwd"] == snap                   # so `experiments` resolves in-snapshot
 
 
-def test_logs_default_to_labstore_not_to_the_nfs_home():
-    """O(10^4) runner logs + hydra dirs for the full plan; /n/home is a 95 G NFS home
-    at 84% and a failed `> $log` looks like a training failure, not a disk-full one."""
+def test_logs_default_to_the_scratch_tree_not_to_the_repo():
+    """O(10^4) runner logs + hydra dirs for the full plan: they go under $SV3_SCRATCH,
+    and a failed `> $log` on a full home looks like a training failure."""
     body = open(POOL).read()
-    assert "WORKER_LOG_ROOT:-/n/labstore01/" in body
-    assert "/n/home/anon/sven-experiments/slurm_logs" not in body
+    assert "WORKER_LOG_ROOT:-${SV3_SCRATCH" in body
+    assert "slurm_logs" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -333,9 +333,9 @@ def test_the_items_file_snapshot_stamp_is_logged_and_a_mismatch_shouts(env):
     assert "WARNING: this items file was written for ANOTHER snapshot" not in proc.stdout
 
     other = env["tmp"] / "other.txt"
-    other.write_text("# snapshot /n/labstore01/elsewhere/deadbeef_cafe1234\n" + ITEMS)
+    other.write_text("# snapshot /scratch/elsewhere/deadbeef_cafe1234\n" + ITEMS)
     proc = _run(env, items=other, timeout=180)
-    assert "written for ANOTHER snapshot (/n/labstore01/elsewhere/deadbeef_cafe1234)" \
+    assert "written for ANOTHER snapshot (/scratch/elsewhere/deadbeef_cafe1234)" \
         in proc.stdout
     assert "_stale/" in proc.stdout
     assert proc.returncode == 0          # a warning, not a refusal: the operator decides

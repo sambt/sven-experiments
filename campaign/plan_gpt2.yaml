@@ -24,7 +24,7 @@
 # those numbers, family by family.
 version: 1
 plan: gpt2
-results_root: /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
+results_root: ${SV3_SCRATCH}/results
 
 lanes:
   # Full A100-80GB, one GPU per job. NPROC is 1 for EVERY item: the Sven runs hold ~33 GB
@@ -33,7 +33,7 @@ lanes:
   # here shares a device. The MIG lane is not offered at all -- 19.6 GB does not hold one
   # run of this model.
   a100:
-    partition: "lab_gpu_priority,lab_gpu,gpu"
+    partition: gpu
     gres: "gpu:1"
     # 64G of HOST memory, as the legacy submit_gpt2.sh used: the model is on the GPU and
     # the only large host allocations are the memmapped token bins (train.bin is 500 MB)

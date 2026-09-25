@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=lab_gpu_priority,lab_gpu,gpu
+#SBATCH --partition=gpu
 #SBATCH --exclusive
 #SBATCH --time=06:00:00
 #SBATCH --nodes=1
@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=96G
 #SBATCH --job-name=optimizer_profile
-#SBATCH --output=/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/profile/profile-%j.out
+#SBATCH --output=slurm_logs/profile/profile-%j.out
 #
 # Memory / step-time profile: every architecture serially on ONE exclusively reserved node
 # (a co-tenant job skews launch-bound step times by up to 2x -- gpu.probe.md measured the
@@ -60,8 +60,8 @@
 set -u
 set -f                      # hydra list overrides contain [...]: never let bash glob them
 
-REPO=/n/home/anon/sven-experiments
-DEPLOY_BASE=${DEPLOY_BASE:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy}
+REPO=${SV3_REPO:-$HOME/sven-experiments}
+DEPLOY_BASE=${DEPLOY_BASE:-${SV3_SCRATCH:-$HOME/scratch/sven}/deploy}
 PY=${PY:-$REPO/.venv/bin/python}
 CONFIGS=${PROFILE_CONFIGS:-"profile_toy_1d profile_polynomial profile_mnist profile_mnist_width profile_nanogpt profile_nanogpt_width profile_cifar"}
 CALIB_STEPS=${CALIB_STEPS:-1000}
@@ -103,9 +103,8 @@ export PYTHONDONTWRITEBYTECODE=1
 # resolves ROOT_V3 to exactly this path.
 export SV3_PROFILE_ROOT=${SV3_PROFILE_ROOT:-$REPO/profile_results_v3}
 
-# hydra writes an `outputs/` tree into the cwd: keep it out of the frozen snapshot and off
-# the 95 G NFS home
-WORKDIR=${WORKDIR:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/profile}
+# hydra writes an `outputs/` tree into the cwd: keep it out of the frozen snapshot
+WORKDIR=${WORKDIR:-${SV3_SCRATCH:-$HOME/scratch/sven}/campaign/profile}
 mkdir -p "$WORKDIR" && cd "$WORKDIR" || exit 2
 
 ARGS=${PROFILE_ARGS:-}

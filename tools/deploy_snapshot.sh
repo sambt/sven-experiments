@@ -23,8 +23,8 @@
 set -u
 set -o pipefail
 
-REPO=/n/home/anon/sven-experiments
-BASE=/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy
+REPO=${SV3_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
+BASE=${SV3_DEPLOY_BASE:-${SV3_SCRATCH:-$HOME/scratch/sven}/deploy}
 RESULTS_ROOT=""
 ALLOW_DIRTY=0
 FORCE=0
