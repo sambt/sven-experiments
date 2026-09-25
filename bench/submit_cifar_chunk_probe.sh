@@ -8,7 +8,7 @@
 #SBATCH --mem=64G
 #SBATCH --job-name=cifar_chunk_probe
 #SBATCH --output=slurm_logs/cifar_chunk_probe-%j.out
-set -u; cd /n/home11/sambt/iaifi/sv3; OUT=bench/cifar_chunk_probe_${SLURM_JOB_ID}.jsonl
+set -u; cd /n/home/anon/sven-experiments; OUT=bench/cifar_chunk_probe_${SLURM_JOB_ID}.jsonl
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 run() { echo "=== $* ($(date +%T)) ==="; PYTHONPATH=. .venv/bin/python bench/cifar_chunk_probe.py "$@" --out $OUT 2>&1 | grep -E "RESULT|Error|error|Traceback"; }
 run --capture hooks

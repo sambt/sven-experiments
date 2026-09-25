@@ -2,61 +2,61 @@
  "findings": [
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py",
+   "file": "/n/home/anon/sven-experiments/sven/sven/opt/sven.py",
    "line": 191,
    "issue": "GPU-only crash that kills every Sven run in the campaign, with zero test coverage. `_record_rank` appends a **0-d device tensor** to `svd_info[\"num_nonzero_svs\"]` whenever the tensor is not on CPU. The runner hands the raw dict straight to `_split_diagnostics` (`generic_scan.py:510` -> `_write_run` -> `generic_scan.py:204`: `np.asarray(si.get('num_nonzero_svs') or [], dtype=np.int32)`), which raises `TypeError: can't convert cuda:0 device type tensor to numpy` (I confirmed the exact error by driving `_record_rank` with a non-CPU (meta) tensor: \"np.asarray on non-cpu 0-d tensors RAISES: TypeError can't convert meta device type tensor to numpy\"). The exception fires INSIDE `_write_run` before `_write_result` writes `{run_id}.jsonl`, i.e. before the dedup marker, so `execute`'s `except Exception` prints `[error] ...` and the run is re-attempted on every resubmission, forever. `svd_info` defaults to `\"full\"` (`grid.py:218`) and no config overrides it, so `track_svd_info=True` for EVERY svd run -> the whole svd half of ~16,000 runs produces no output and never retires. The CPU test suite can never see this: `_record_rank` takes the eager `int()` branch on CPU, and no test constructs the device branch. Worse, the laziness buys nothing: I instrumented `Tensor.item/tolist/cpu/numpy/__bool__/__int__/__float__` over a non-logged step and a host transfer already happens unconditionally on every step anyway -- `sven.py:436` (`bool(keep.any())`) for `SvenGram`/`SvenGramReg` and `pinv.py:63` (`.item()`) for the classic path. So the deferral removes 1 of 2 syncs on a step that already serialises, in exchange for a GPU-only campaign-stopper. Note also that `finalize_svd_info()` -- now *required* for correctness on GPU -- does not appear anywhere in `campaign/CONTRACTS.md`'s \"Sven optimizer logging (C-L1)\" interface, so the C-L2 track has no contractual reason to call it.",
    "suggested_fix": "Make `_record_rank` eager unconditionally: `self.svd_info[\"num_nonzero_svs\"].append(int(torch.count_nonzero(kept)))`. Better, fuse it with the sync that already happens, so the step gets *fewer* transfers than today, e.g. in `SvenGram.step` replace lines 435-443 with `keep = sigma > self.rtol * sigma[0]; s_inv_sq = torch.where(keep & (sigma > self._SIGMA_TOL), 1.0/sigma.pow(2), torch.zeros_like(sigma)); any_kept, n_kept = torch.stack((keep.any().to(torch.int64), torch.count_nonzero(s_inv_sq))).tolist()` then raise on `not any_kept` and append `n_kept`. Keep `finalize_svd_info()` (harmless and useful), but stop making correctness depend on someone else calling it, and add it to CONTRACTS.md if it is meant to be part of the interface."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/experiments/experiment_code/generic_scan.py",
+   "file": "/n/home/anon/sven-experiments/experiments/experiment_code/generic_scan.py",
    "line": 215,
    "issue": "Seam hazard created by this track (fix belongs to the C-L2/runner owner, but it must not be lost). Making `svs` sparse silently corrupts the recorded spectra the moment anything sets `log_this_step`. `_split_diagnostics` still treats `svs` as one entry per step: `sv_max`/`sv_min` become per-*logged*-step arrays that `_epoch_mean(sv_max, n_epochs)` then splits across epochs as if they were per-step (wrong epoch assignment), and `idx = np.arange(0, len(svs), every)` + `diag['svs_step'] = idx` labels spectra with POSITIONS, not steps -- so every spectrum on disk gets the wrong step index. `_apply_log_schedule` is already wired in `experiment_utils.py:389`, so this goes live as soon as one config gains a schedule (none does today, which is the only thing keeping it latent). The new keys `step/utr/update_norm/resid_norm/sv_min_kept` are also silently dropped by `_split_diagnostics`, so the C-L1 payload never reaches disk until C-L2 lands.",
    "suggested_fix": "In `_split_diagnostics`, index everything spectral by `si['step']` (`diag['svs_step'] = np.asarray(si['step'], np.int32)`, no further subsampling), compute `sv_max`/`sv_min` epoch means from `num_nonzero_svs`-length step indices rather than from `svs` positions, store `utr/update_norm/resid_norm/sv_min_kept`, and rename the old `sv_min` column (F20) since it is now sigma_M while `sv_min_kept` is the kept one. Call `optimizer.finalize_svd_info()` at `generic_scan.py:510` and pass `empty_cache=False` at `generic_scan.py:523/531` and `optimizer_profile.py:229/241` (the C-T3 measurement is unreachable without the latter)."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_logging.py",
+   "file": "/n/home/anon/sven-experiments/sven/tests/test_torch_logging.py",
    "line": 287,
    "issue": "The task's explicit requirement \"on NON-logged steps avoid device->host transfers other than what the step needs for correctness\" has no acceptance test. `test_log_this_step_false_records_only_rank` only checks that the record is empty and the params match; nothing pins the sync behaviour, which is the entire justification for the lazy `_record_rank` design (and, per my probe, the design does not actually achieve it). A regression that puts `.item()` back on the hot path would go unnoticed.",
    "suggested_fix": "Add a CPU test that monkeypatches `torch.Tensor.item`, `.tolist`, `.cpu`, `.numpy`, `__bool__`, `__int__`, `__float__`, counts calls whose stack frame is inside `sven/opt/`, and asserts the count on a `log_this_step=False` step is <= the intended budget (1 after the fix above) and strictly less than on a logged step. This runs in milliseconds and would have caught the `_record_rank` problem."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py",
+   "file": "/n/home/anon/sven-experiments/sven/sven/opt/sven.py",
    "line": 210,
    "issue": "`update_norm` is recorded as the norm of the update BEFORE the `-lr` scaling, i.e. `||delta_theta|| / lr`, not the applied parameter change. The contract (`CONTRACTS.md:83-86`) just says `update_norm`, and the tests encode the pre-lr convention by dividing by `LR` themselves (`test_torch_logging.py:84,100`). lr spans several decades across these scans, so an analysis track reading `update_norm` as `||delta_theta||` produces plausible-looking figures that are wrong by a per-run factor of lr -- exactly the class of silent error F20 is about. Same for `SvenGramReg`, where `update` additionally contains the decay term.",
    "suggested_fix": "Either record the applied change (`(self._get_lr() * update).norm()`, or multiply in `_log_step`), or keep the pre-lr value and make it unambiguous in the record: rename to `update_norm_prelr` and/or store `lr` alongside it in `svd_info`. Whichever you pick, state it in CONTRACTS.md's C-L1 interface block so the analysis track cannot guess wrong."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py",
+   "file": "/n/home/anon/sven-experiments/sven/sven/opt/sven.py",
    "line": 327,
    "issue": "The F17 deliverable (\"an untruncated spectrum on disk\") is weaker than the spec assumes, and the acceptance test cannot reveal it because it runs a float64 model. Both paths take sigma from a float64 `eigh` of `J J^T`, but the Jacobian/activation entries feeding that Gram are float32 in production (`gram_dtype=float64` only fixes the accumulation, not the inputs). The Gram squares the condition number: with `delta_G ~ eps32 * sigma_max^2`, `delta_sigma ~ eps32 * sigma_max^2 / (2 sigma)`, so sigma values below ~sqrt(eps32)*sigma_max (~3e-4 * sigma_max) are pure noise and values at 1e-3*sigma_max already carry several-percent error -- three decades of usable range, not the ~1e-7 floor F19 quotes for `svdvals(J)`. Every test asserting `svs == svdvals(J)` to rtol 1e-9 does so on a float64 MLP (`test_torch_logging.py:140,154,261`), where this effect is absent, so the suite certifies a precision the campaign will not have. The spectrum figures and any `sv_min_kept`-vs-noise-floor argument must cut at ~3e-4*sigma_max.",
    "suggested_fix": "Add a float32-model test that measures the achievable floor (e.g. compare `svs` against `svdvals` of the float64-cast explicit Jacobian on a small MLP in float32 and assert agreement only above `sqrt(eps)*sigma_max`), and record the floor in the payload (e.g. `sv_noise_floor = sqrt(finfo(params.dtype).eps) * sigma_max`) so the analysis can truncate rather than plot noise. Say it in the `Sven` diagnostics docstring too."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py",
+   "file": "/n/home/anon/sven-experiments/sven/sven/opt/sven.py",
    "line": 290,
    "issue": "`applied = applied + update` in `_update_params_variable_k` allocates a fresh (P,) tensor per accepted rank-1 component -- up to `kmax` allocations and +1 live (P,) tensor per step (45 MB at ResNet scale) purely for `update_norm`. It is out-of-place only because `applied` is initialised as a 0-d scalar and could not broadcast in place.",
    "suggested_fix": "Initialise `applied = None` and use `applied = update.clone() if applied is None else applied.add_(update)`, returning a zero-norm sentinel when `k_used == 0`."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_logging.py",
+   "file": "/n/home/anon/sven-experiments/sven/tests/test_torch_logging.py",
    "line": 180,
    "issue": "`torch.testing.assert_close(info[\"svs\"][0], sigma, rtol=0, atol=0)` where `sigma` comes from `Sven._spectrum_from_gram(gram.to(DT))` -- the same function on the same input the optimizer used. It is a tautology (it only pins eigh determinism), so this parametrized test looks like it verifies the spectrum but does not; the real check is the `svdvals` comparison in `test_gram_svs_match_svdvals`.",
    "suggested_fix": "Compare against `torch.linalg.svdvals(jac)` here too (rtol 1e-9), or drop the assertion and rely on test 1 so the coverage is not overstated."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_logging.py",
+   "file": "/n/home/anon/sven-experiments/sven/tests/test_torch_logging.py",
    "line": 336,
    "issue": "`test_empty_cache_flag` is parametrized over `Sven` and `SvenGram` only, so the fourth `torch.cuda.empty_cache()` site (`sven.py:672`, `SvenGramReg`) is never exercised -- the task said the flag must guard all 4 sites. Separately, nothing warns downstream that `utr`'s per-direction SIGN is arbitrary (it comes from `eigh`, which fixes no sign convention, and within degenerate sigma clusters the whole sub-basis is arbitrary), so averaging signed `utr` across steps or runs would give ~0 for no physical reason.",
    "suggested_fix": "Add `(SvenGramReg, 1)` to the parametrize list, and add one line to the `Sven` diagnostics docstring: only `|utr|` (or `utr**2`) is comparable across steps and runs."
   }
  ],
- "tests_run": "All run with /n/home11/sambt/iaifi/sv3/.venv/bin/python -m pytest, CPU, in /n/home11/sambt/iaifi/sv3/sven:\n- tests/test_torch_logging.py -q  ->  \"18 passed in 15.54s\"\n- tests/test_torch_gram.py tests/test_torch_gram_reg.py tests/test_torch_residual.py -q  ->  \"56 passed in 17.66s\"\n- tests/ -q -p no:randomly (whole sven suite)  ->  \"179 passed, 5 skipped in 25.38s\" (skips are pre-existing: 4 jax importorskip, 1 missing OpenWebText shard)\n\nExtra probes I wrote (scratchpad, not in the repo):\n- Host-transfer counter (monkeypatched Tensor.item/tolist/cpu/numpy/__bool__/__int__/__float__, filtered to sven/opt and sven/nn frames): SvenGram log=False -> 2 sites (sven.py:436 __bool__, sven.py:191 __int__); log=True -> 7. Classic Sven log=False -> 2 sites (pinv.py:63 item, sven.py:191 __int__); log=True -> 7. So a sync already occurs unconditionally on every step in both paths.\n- _record_rank driven with a non-CPU (meta) tensor: stores a device tensor; np.asarray([...], dtype=np.int32) -> \"TypeError: can't convert meta device type tensor to numpy\" (same failure generic_scan.py:204 will hit on CUDA).\n- Bitwise check of the mask-multiply solve vs the old index-slice solve (M in 8..128, 30 random decaying spectra each, 3 (k, rtol) settings): 0 non-identical cases on CPU, so the SvenGram legacy numerics are preserved there (a 1-ulp GPU gemv difference is possible but harmless).\nNo SLURM jobs submitted; no files edited.",
+ "tests_run": "All run with /n/home/anon/sven-experiments/.venv/bin/python -m pytest, CPU, in /n/home/anon/sven-experiments/sven:\n- tests/test_torch_logging.py -q  ->  \"18 passed in 15.54s\"\n- tests/test_torch_gram.py tests/test_torch_gram_reg.py tests/test_torch_residual.py -q  ->  \"56 passed in 17.66s\"\n- tests/ -q -p no:randomly (whole sven suite)  ->  \"179 passed, 5 skipped in 25.38s\" (skips are pre-existing: 4 jax importorskip, 1 missing OpenWebText shard)\n\nExtra probes I wrote (scratchpad, not in the repo):\n- Host-transfer counter (monkeypatched Tensor.item/tolist/cpu/numpy/__bool__/__int__/__float__, filtered to sven/opt and sven/nn frames): SvenGram log=False -> 2 sites (sven.py:436 __bool__, sven.py:191 __int__); log=True -> 7. Classic Sven log=False -> 2 sites (pinv.py:63 item, sven.py:191 __int__); log=True -> 7. So a sync already occurs unconditionally on every step in both paths.\n- _record_rank driven with a non-CPU (meta) tensor: stores a device tensor; np.asarray([...], dtype=np.int32) -> \"TypeError: can't convert meta device type tensor to numpy\" (same failure generic_scan.py:204 will hit on CUDA).\n- Bitwise check of the mask-multiply solve vs the old index-slice solve (M in 8..128, 30 random decaying spectra each, 3 (k, rtol) settings): 0 non-identical cases on CPU, so the SvenGram legacy numerics are preserved there (a 1-ulp GPU gemv difference is possible but harmless).\nNo SLURM jobs submitted; no files edited.",
  "verdict": "needs_fixes"
 }

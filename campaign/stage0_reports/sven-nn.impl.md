@@ -2,8 +2,8 @@ All runs are in. Final state verified: full sven suite green, both new files gre
 
 ## TRACK sven-nn — done
 
-**Changed:** `/n/home11/sambt/iaifi/sv3/sven/sven/nn/sven_wrapper.py` (BN policy + C-R4), `/n/home11/sambt/iaifi/sv3/sven/sven/nn/gram_wrapper.py` (uses the base policy; `_frozen_norm_stats` removed from here), `/n/home11/sambt/iaifi/sv3/sven/pyproject.toml` (`[tool.pytest.ini_options]`: `testpaths=["tests"]`, `addopts="-ra"`), first lines of the four `sven/tests/test_jax_*.py` (`pytest.importorskip("jax")`).
-**Created:** `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_bn_policy.py`, `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_param_fraction_record.py`.
+**Changed:** `/n/home/anon/sven-experiments/sven/sven/nn/sven_wrapper.py` (BN policy + C-R4), `/n/home/anon/sven-experiments/sven/sven/nn/gram_wrapper.py` (uses the base policy; `_frozen_norm_stats` removed from here), `/n/home/anon/sven-experiments/sven/pyproject.toml` (`[tool.pytest.ini_options]`: `testpaths=["tests"]`, `addopts="-ra"`), first lines of the four `sven/tests/test_jax_*.py` (`pytest.importorskip("jax")`).
+**Created:** `/n/home/anon/sven-experiments/sven/tests/test_torch_bn_policy.py`, `/n/home/anon/sven-experiments/sven/tests/test_torch_param_fraction_record.py`.
 
 **Observed pytest lines** (via `campaign/run_cpu_tests.sh`): new files `32 passed in 3.58s`; whole sven suite `161 passed, 5 skipped in 6.79s` (was 129 passed/1 skipped torch-only, and `pytest tests/` used to error at collection — the 4 jax modules now skip).
 

@@ -16,14 +16,14 @@ Background: `campaign/CAMPAIGN_STATUS.md`, `campaign/CONTRACTS.md` (record schem
 `analysis/ANALYSIS_FIXES.md` (analysis conventions already decided), `CHANGES_NEEDED.md` §1 (binding selection rule).
 
 ## Ground rules
-* Repo `/n/home11/sambt/iaifi/sv3`, branch `robustness-campaign`. **Never commit, stash, reset, checkout or switch
+* Repo `/n/home/anon/sven-experiments`, branch `robustness-campaign`. **Never commit, stash, reset, checkout or switch
   branches** — the orchestrator commits. Several agents work in this tree at the same time: edit ONLY the files your
   work package owns (listed in your task). Need a change elsewhere? Put new code in your own module; a genuine bug in a
   shared helper may get a MINIMAL fix, which you must list in your report.
 * Results are READ-ONLY: `experiment_results/` (fresh, schema 2), `experiment_results_legacy_2026-09-18/` (legacy),
   `profile_results_v2/`. Never write, move or delete there (the loader cache under `experiment_results/_cache/` is the
   one allowed write). Never submit or cancel SLURM jobs unless your task says so.
-* Python `/n/home11/sambt/iaifi/sv3/.venv/bin/python`; Jupyter `.venv/bin/jupyter`. This is an 8-core / 32 GB compute
+* Python `/n/home/anon/sven-experiments/.venv/bin/python`; Jupyter `.venv/bin/jupyter`. This is an 8-core / 32 GB compute
   node shared by ~6 agents: run one notebook / one test file at a time locally; anything long (> ~5 min) or
   memory-hungry goes through `campaign/run_cpu_tests.sh <cmd...>` (sbatch --wait on a CPU partition, prints the log).
   Cold-loading a scan from Lustre takes ~20 s and is cached afterwards. `import torch` is slow (1-2 min cold).

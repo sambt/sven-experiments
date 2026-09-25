@@ -3,7 +3,7 @@
 # the rebuttal suite. Old results already moved to _backup_2026-08-31/.
 # SLURM queues these under the per-user cap; run_id dedup => re-submittable.
 set -u
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 C=experiments/configs
 sub() { NPROC=$1 sbatch --parsable submit_rebuttal_parallel.sh "$2" "${@:3}"; }
 

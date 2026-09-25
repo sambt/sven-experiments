@@ -1,4 +1,4 @@
-**TRACK sven-opt — review fixes applied.** Changed `/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py`; `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_logging.py` (18 → 36 tests). Nothing else touched (`pinv.py` untouched).
+**TRACK sven-opt — review fixes applied.** Changed `/n/home/anon/sven-experiments/sven/sven/opt/sven.py`; `/n/home/anon/sven-experiments/sven/tests/test_torch_logging.py` (18 → 36 tests). Nothing else touched (`pinv.py` untouched).
 
 ### Findings
 1. **H, `_record_rank` 0-d CUDA tensor — real, fixed.** Now unconditionally `int(torch.count_nonzero(kept))`. In `SvenGram`/`SvenGramReg` the count instead rides the sync the step already makes: `any_kept, n_kept = torch.stack((keep.any().to(int64), count_nonzero(s_inv_sq))).tolist()`, so the guard and the rank cost **one** transfer (was 2). `finalize_svd_info()` kept, no longer load-bearing. Measured sites/step (`sven/opt` frames only): SvenGram 1 (log) / 1, SvenGramReg 1 / 1, classic 7 / **2** (`pinv.py:63` + the rank int).

@@ -1,6 +1,6 @@
 ## TRACK analysis-core — done
 
-**Files** (only my track's): `/n/home11/sambt/iaifi/sv3/analysis/{style.py,analysis_helpers.py,scan_analysis.py,sv_diagnostics.py}` (+953/−208), new `/n/home11/sambt/iaifi/sv3/tests/test_analysis_core.py` (746 lines).
+**Files** (only my track's): `/n/home/anon/sven-experiments/analysis/{style.py,analysis_helpers.py,scan_analysis.py,sv_diagnostics.py}` (+953/−208), new `/n/home/anon/sven-experiments/tests/test_analysis_core.py` (746 lines).
 
 **Acceptance tests** — `.venv/bin/python -m pytest tests/test_analysis_core.py -q` → `19 passed, 2 skipped in 3.92s`; via `campaign/run_cpu_tests.sh env SV3_CHECK_REAL_SCANS=1 …` → **`21 passed in 4.94s`**.
 

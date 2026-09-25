@@ -1,5 +1,5 @@
 **Files created** (all WP5-owned; nothing committed, results roots untouched):
-`/n/home11/sambt/iaifi/sv3/analysis/legacy_diff.py` (951 l) · `/n/home11/sambt/iaifi/sv3/analysis/legacy_vs_fresh.ipynb` · `/n/home11/sambt/iaifi/sv3/analysis/WHAT_CHANGED.md` · `/n/home11/sambt/iaifi/sv3/tests/test_legacy_diff.py` (20 tests) · `analysis/tables/legacy/` (13 md + 13 tex) · `analysis/plots_v2/legacy_vs_fresh/*.{pdf,png}` (2 figures).
+`/n/home/anon/sven-experiments/analysis/legacy_diff.py` (951 l) · `/n/home/anon/sven-experiments/analysis/legacy_vs_fresh.ipynb` · `/n/home/anon/sven-experiments/analysis/WHAT_CHANGED.md` · `/n/home/anon/sven-experiments/tests/test_legacy_diff.py` (20 tests) · `analysis/tables/legacy/` (13 md + 13 tex) · `analysis/plots_v2/legacy_vs_fresh/*.{pdf,png}` (2 figures).
 **Changed:** `analysis/legacy_repair/corrections.csv` (8 → 21 scans) + 13 new repair parquets — the task's instruction to regenerate missing example-weighted repairs (`repair_legacy.py` via `run_cpu_tests.sh`; nanoGPT needed no `--n-val`, n_val = 871 from the records). No shared helper touched, **no bug fixes needed in frozen modules**.
 
 **Notebook `legacy_vs_fresh`: 34 cells, 18 code, 0 error cells, 0 unexecuted, 42 s** (scans slim-cached; legacy cache goes to `analysis/legacy_repair/_cache`, never the read-only root). `pytest tests/` → **1155 passed, 33 skipped**.

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=iaifi_gpu_priority,iaifi_gpu,gpu
+#SBATCH --partition=lab_gpu_priority,lab_gpu,gpu
 #SBATCH --exclusive
 #SBATCH --time=36:00:00
 #SBATCH --nodes=1
@@ -15,7 +15,7 @@
 # Configs come from bench/best_configs.json (bench/select_best_configs.py); the
 # tag|override lines are produced by the same rule as submit_timing_runs.sh.
 set -u; set -f
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
 PY=.venv/bin/python; JSON=bench/best_configs.json
 SCANS=${SCANS:-"toy_1d_scan polynomial_scan mnist_scan_labelRegression mnist_scan_ce exp_nanogpt_speedrun"}

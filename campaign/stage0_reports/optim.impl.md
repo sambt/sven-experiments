@@ -1,7 +1,7 @@
 **Files created** (none of the files I do not own were touched):
-- `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/optim_factory.py`
-- `/n/home11/sambt/iaifi/sv3/experiments/optimizers/muon_conv.py`
-- `/n/home11/sambt/iaifi/sv3/tests/test_optim_factory.py`
+- `/n/home/anon/sven-experiments/experiments/experiment_code/optim_factory.py`
+- `/n/home/anon/sven-experiments/experiments/optimizers/muon_conv.py`
+- `/n/home/anon/sven-experiments/tests/test_optim_factory.py`
 
 **Pytest, observed twice:** `45 passed in 26.33s` / `45 passed in 24.43s` (local, `.venv/bin/python -m pytest tests/test_optim_factory.py -q`, no SLURM needed).
 

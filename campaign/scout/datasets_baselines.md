@@ -13,7 +13,7 @@ Everything below is **read** from the files cited unless marked **[RAN]**.
 | `CharTextDataset` :171 | `ROOT, block_size=128, val_fraction=0.1, n_train, subsample_seed` | contiguous by position, val = **last 10 %** (:195-196) | subsample only | none (char ids) | no |
 | `TokenBinDataset` :236 | `ROOT, block_size=1024, n_train_blocks, val_blocks=200, vocab_size` | reads `train.bin` / `val.bin` | none (deterministic blocks) | none | no |
 
-**Token files** `/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/fineweb_edu_gpt2/`: `train.bin` 500,000,000 B = 250 M uint16 tokens, `val.bin` 16,000,000 B = 8 M tokens (both Sep 8 15:16–15:20).
+**Token files** `/n/labstore01/LABS/anon_lab/Users/anon/datasets/fineweb_edu_gpt2/`: `train.bin` 500,000,000 B = 250 M uint16 tokens, `val.bin` 16,000,000 B = 8 M tokens (both Sep 8 15:16–15:20).
 **[RAN] C-D2 check: `np.array_equal(t[:len(v)], v)` → `True`; 8,000,000/8,000,000 tokens identical.** F4 confirmed. **No** trailing zeros in either file (both budgets exactly filled), so the "unfilled tail" half of F4 does not apply here. Because `val_blocks=200`, only the first 204,800 tokens of `val.bin` are used — these are literally train blocks 0–199, i.e. the validation set *is* the first 200 training batches. `datasets/tokenize.log` also shows a `[Errno 9] Bad file descriptor` retry and a fatal interpreter error after both writes flushed (files are complete, the tool is not crash-clean).
 
 ## 2. C-E1 / C-D1 / C-D2 / C-D3 insertion points
@@ -26,7 +26,7 @@ Sizes: **C-D1 = S** (~25 lines: `combinations_with_replacement` is already impor
 
 **Steps/epoch changes [RAN]:** MNIST 60k→50k @B=64: 938→**782** (−16.7 %); CIFAR 50k→45k @B=128: 391→**352** (−10 %); Shakespeare (1,115,394 chars, vocab 65) blocks 7842/871 → **6971/871/871**, steps/epoch @B=64 122→**108**. Legacy curves are therefore not epoch-comparable; MNIST/CIFAR scans also get 10–17 % cheaper.
 
-**Re-tokenising:** ~**5–6 min** wall for 266 M tokens, inferred from the existing run's mtimes (8 M at 15:16, 250 M at 15:20). It **needs HuggingFace network access**: **[RAN]** `curl https://huggingface.co/api/datasets/HuggingFaceFW/fineweb-edu` → **HTTP 200** from this compute node, and `/n/holystore01/.../hf_cache/datasets/` holds only `burkelibbey___colors` (streaming never caches), so ~1.1 GB is re-downloaded. Budget 30 min with one retry. Note train needs ≥ 215,040,000 tokens for `n_train_blocks: 210000`, so write 250 M / 8 M / 8 M.
+**Re-tokenising:** ~**5–6 min** wall for 266 M tokens, inferred from the existing run's mtimes (8 M at 15:16, 250 M at 15:20). It **needs HuggingFace network access**: **[RAN]** `curl https://huggingface.co/api/datasets/HuggingFaceFW/fineweb-edu` → **HTTP 200** from this compute node, and `/n/labstore01/.../hf_cache/datasets/` holds only `burkelibbey___colors` (streaming never caches), so ~1.1 GB is re-downloaded. Budget 30 min with one retry. Note train needs ≥ 215,040,000 tokens for `n_train_blocks: 210000`, so write 250 M / 8 M / 8 M.
 
 ## 3. Baselines
 

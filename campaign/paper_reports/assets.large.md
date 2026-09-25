@@ -1,8 +1,8 @@
 **TASK "assets-large" — complete.** Resumed prior partial work (which was sound), verified it against the now-final inputs, fixed two defects, filled one scope gap.
 
 ## Files changed
-- `/n/home11/sambt/iaifi/sv3/analysis/paper_assets/large.py` (kept; extended) — new `_headroom()`, `selected_lrs()`, `fig_nanogpt()`, `table_nanogpt_lr()`, 7 new nanoGPT lr macros, registry + provenance entries, corrected a stale docstring claim (v3 *does* profile the ResNet).
-- `/n/home11/sambt/iaifi/sv3/tests/test_paper_assets_large.py` — stub gained a selection payload + `nanogpt_lr` frame; 4 new tests (74 pass).
+- `/n/home/anon/sven-experiments/analysis/paper_assets/large.py` (kept; extended) — new `_headroom()`, `selected_lrs()`, `fig_nanogpt()`, `table_nanogpt_lr()`, 7 new nanoGPT lr macros, registry + provenance entries, corrected a stale docstring claim (v3 *does* profile the ResNet).
+- `/n/home/anon/sven-experiments/tests/test_paper_assets_large.py` — stub gained a selection payload + `nanogpt_lr` frame; 4 new tests (74 pass).
 - Regenerated (all by `python -m paper_assets.large`, nothing hand-typed): `iclr_manuscript/figures_iclr/large/*.pdf` (17), `iclr_manuscript/tables_v2/{cifar,fig5,transformers,transformers_nanogpt_lr,transformers_gpt2,transformers_gpt2_lr,profile_methods,gram_cost,profile_v2_v3,profile_scaling}.tex`, `iclr_manuscript/numbers_v2_large.tex` (**370 macros, 0 provisional, 0 skipped**), PNG twins in `agent_lab/paper_assets/large/`, `*.provenance.json` per file. Nothing committed anywhere; manuscript repo untouched except its untracked generated dirs.
 
 ## Verified by running (all via `campaign/run_cpu_tests.sh`)

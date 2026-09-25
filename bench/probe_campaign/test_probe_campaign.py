@@ -132,8 +132,8 @@ def test_tags_are_unique_and_filesystem_safe():
 
 def test_nothing_is_written_to_a_protected_results_directory():
     for m in ALL_MEASUREMENTS:
-        args = " ".join(P.hydra_args(m, "/n/holystore01/probe_results/x", "/n/holystore01/h"))
-        assert "profile.output_dir=/n/holystore01/probe_results/x" in args
+        args = " ".join(P.hydra_args(m, "/n/labstore01/probe_results/x", "/n/labstore01/h"))
+        assert "profile.output_dir=/n/labstore01/probe_results/x" in args
         assert "experiment_results" not in args and "profile_results_v2" not in args
 
 
@@ -234,7 +234,7 @@ def _rec(**kw):
          "wall_ms": {"n": 400, "mean": 10.4, "median": 10.4, "p10": 9.4, "p90": 11.4,
                      "steady_mean": 10.4},
          "memory": {"peak_alloc_bytes_max": 21_000_000, "peak_reserved_bytes_max": 25_000_000},
-         "provenance": {"sven": "/n/holystore01/x/sven/sven/__init__.py"}}
+         "provenance": {"sven": "/n/labstore01/x/sven/sven/__init__.py"}}
     r.update(kw)
     return r
 

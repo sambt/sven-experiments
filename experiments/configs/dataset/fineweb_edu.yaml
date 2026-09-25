@@ -5,7 +5,7 @@
 # documents also occur in train, 0.04% -- exact duplicates of FineWeb-edu itself, not a
 # split bug: no document occurs twice inside a split). vocab_size padded to 50304.
 _target_: experiments.datasets.TokenBinDataset
-ROOT: /n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/fineweb_edu_gpt2_v2
+ROOT: /n/labstore01/LABS/anon_lab/Users/anon/datasets/fineweb_edu_gpt2_v2
 block_size: 1024
 n_train_blocks: 210000   # ~215M tokens/run -> ~9.3h Sven @ B=16 (safe under 12h)
 val_blocks: 200

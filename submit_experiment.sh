@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=iaifi_gpu_priority
+#SBATCH --partition=lab_gpu_priority
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -10,7 +10,7 @@
 
 source ~/.bash_profile
 mamba activate jax
-cd /n/home11/sambt/iaifi/sv3/
+cd /n/home/anon/sven-experiments/
 
 config=$1
 config_path=`dirname $config`

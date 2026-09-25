@@ -1,10 +1,10 @@
-[reconcile] results root /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments   (the plan's results_root)
-[reconcile] configs      /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs   (the snapshot's)
-[reconcile] grid.py      /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61
+[reconcile] results root /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments   (the plan's results_root)
+[reconcile] configs      /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs   (the snapshot's)
+[reconcile] grid.py      /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61
 
 === rebuttal_overparam_toy_1d_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_toy_1d_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/rebuttal_overparam_toy_1d_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   2080 runs   (config grid 2080, manifest-only 0)
   on disk    2080 jsonl
   overrides  'mode=svd n_data=150'
@@ -48,8 +48,8 @@
   => COMPLETE: 0 run(s) to do
 
 === rebuttal_overparam_polynomial_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_polynomial_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/rebuttal_overparam_polynomial_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   2080 runs   (config grid 2080, manifest-only 0)
   on disk    2080 jsonl
   overrides  'mode=svd n_data=170'
@@ -93,8 +93,8 @@
   => COMPLETE: 0 run(s) to do
 
 === rebuttal_overparam_mnist_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_mnist_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/rebuttal_overparam_mnist_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   2400 runs   (config grid 2400, manifest-only 0)
   on disk    2400 jsonl
   overrides  'mode=svd n_data=2500'
@@ -146,8 +146,8 @@
   => COMPLETE: 0 run(s) to do
 
 === rebuttal_batchsize_polynomial_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_batchsize_polynomial_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/rebuttal_batchsize_polynomial_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   1680 runs   (config grid 1680, manifest-only 0)
   on disk    1680 jsonl
   overrides  'mode=svd'
@@ -179,8 +179,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_kappaScan_labelRegression ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_kappaScan_labelRegression
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_kappaScan_labelRegression
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   210 runs   (config grid 210, manifest-only 0)
   on disk    210 jsonl
   overrides  'mode=svd'
@@ -193,8 +193,8 @@
   => COMPLETE: 0 run(s) to do
 
 === toy_1d_microbatch_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_microbatch_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/toy_1d_microbatch_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   120 runs   (config grid 120, manifest-only 0)
   on disk    120 jsonl
   overrides  'mode=svd'
@@ -207,8 +207,8 @@
   => COMPLETE: 0 run(s) to do
 
 === toy_1d_paramfrac_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_paramfrac_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/toy_1d_paramfrac_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   100 runs   (config grid 100, manifest-only 0)
   on disk    100 jsonl
   overrides  'mode=svd'
@@ -221,8 +221,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_microbatch_labelreg_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_microbatch_labelreg_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_microbatch_labelreg_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   140 runs   (config grid 140, manifest-only 0)
   on disk    140 jsonl
   overrides  'mode=svd'
@@ -235,8 +235,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_paramfrac_labelreg_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_paramfrac_labelreg_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_paramfrac_labelreg_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   100 runs   (config grid 100, manifest-only 0)
   on disk    100 jsonl
   overrides  'mode=svd'
@@ -249,8 +249,8 @@
   => COMPLETE: 0 run(s) to do
 
 === polynomial_microbatch_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_microbatch_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/polynomial_microbatch_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   120 runs   (config grid 120, manifest-only 0)
   on disk    120 jsonl
   overrides  'mode=svd'
@@ -263,8 +263,8 @@
   => COMPLETE: 0 run(s) to do
 
 === polynomial_paramfrac_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_paramfrac_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/polynomial_paramfrac_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   100 runs   (config grid 100, manifest-only 0)
   on disk    100 jsonl
   overrides  'mode=svd'
@@ -277,8 +277,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_microbatch_ce_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_microbatch_ce_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_microbatch_ce_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   140 runs   (config grid 140, manifest-only 0)
   on disk    140 jsonl
   overrides  'mode=svd'
@@ -291,8 +291,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_paramfrac_ce_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_paramfrac_ce_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_paramfrac_ce_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   100 runs   (config grid 100, manifest-only 0)
   on disk    100 jsonl
   overrides  'mode=svd'
@@ -305,8 +305,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_scan_labelRegression ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_scan_labelRegression
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_scan_labelRegression
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   1360 runs   (config grid 1360, manifest-only 0)
   on disk    1360 jsonl
   overrides  'mode=hig'
@@ -343,8 +343,8 @@
   => COMPLETE: 0 run(s) to do
 
 === mnist_scan_ce ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_scan_ce
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/mnist_scan_ce
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   1360 runs   (config grid 1360, manifest-only 0)
   on disk    1360 jsonl
   overrides  'mode=hig'
@@ -381,8 +381,8 @@
   => COMPLETE: 0 run(s) to do
 
 === toy_1d_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/toy_1d_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   1080 runs   (config grid 1080, manifest-only 0)
   on disk    1080 jsonl
   overrides  'mode=svd'
@@ -420,8 +420,8 @@
   => COMPLETE: 0 run(s) to do
 
 === polynomial_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/polynomial_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   1200 runs   (config grid 1200, manifest-only 0)
   on disk    1200 jsonl
   overrides  'mode=svd'
@@ -459,8 +459,8 @@
   => COMPLETE: 0 run(s) to do
 
 === cifar10_resnet_scan_labelRegression ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/cifar10_resnet_scan_labelRegression
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/cifar10_resnet_scan_labelRegression
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   555 runs   (config grid 555, manifest-only 0)
   on disk    555 jsonl
   overrides  'mode=svd'
@@ -491,8 +491,8 @@
   => COMPLETE: 0 run(s) to do
 
 === cifar10_resnet_ce_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/cifar10_resnet_ce_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/cifar10_resnet_ce_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   655 runs   (config grid 655, manifest-only 0)
   on disk    655 jsonl
   overrides  'mode=svd'
@@ -523,8 +523,8 @@
   => COMPLETE: 0 run(s) to do
 
 === exp_nanogpt_speedrun ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/exp_nanogpt_speedrun
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/exp_nanogpt_speedrun
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   140 runs   (config grid 140, manifest-only 0)
   on disk    140 jsonl
   overrides  'mode=svd'
@@ -544,8 +544,8 @@
   => COMPLETE: 0 run(s) to do
 
 === rebuttal_fig5_cifar_paramfrac_scan ===
-  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_fig5_cifar_paramfrac_scan
-  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  dir        /n/labstore01/LABS/anon_lab/Users/anon/sven_experiments/rebuttal_fig5_cifar_paramfrac_scan
+  configs    /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61/experiments/configs
   expected   15 runs   (config grid 15, manifest-only 0)
   on disk    15 jsonl
   overrides  'mode=svd'

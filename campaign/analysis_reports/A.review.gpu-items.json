@@ -2,56 +2,56 @@
  "findings": [
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/campaign/plan_campaign.yaml",
+   "file": "/n/home/anon/sven-experiments/campaign/plan_campaign.yaml",
    "line": 362,
    "issue": "The documented (and committed) re-selection command \u2014 `tools/select_best.py cifar10_resnet_ce_scan --groups 'mode=all' --groups 'mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]'` \u2014 names ONE scan and no `--out`, so it writes `bench/best_configs.json` with only that scan. `select_best.main` builds `payload = to_json(reports, ...)` from the requested scans and never merges the existing file (tools/select_best.py:741-746), and `--out` defaults to bench/best_configs.json. The file currently holds all 7 headline scans and is the selection of record read by `tools/gen_phase5_plan.py` (DEFAULT_IN, line 49) and by WP2's headline work. Running the command as written silently destroys the other 6 scans' selections. The same command is repeated in the implementer's follow-up #1.",
    "suggested_fix": "Either (a) run it as `--print` first and then with `--out /tmp/ce_rtol.json`, merging only `scans.cifar10_resnet_ce_scan` into bench/best_configs.json, or (b) re-run all seven scans \u2014 but note `--groups` is GLOBAL, so passing the CIFAR override group to the other six adds ~135 phantom expected run_ids per scan (inflating n_missing and breaking `--require-complete`). Fix the note in plan_campaign.yaml and the handoff so the next agent cannot follow it verbatim; state that bench/best_configs.json is git-tracked and recoverable if it already happened."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_helpers.py",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_helpers.py",
    "line": 12,
    "issue": "Documentation contradicted by the records: the claim that profile_results_v2 was measured \"with the Gram wrapper freezing the BatchNorm statistics that the CIFAR scans keep updating\" is false. Every v2 CIFAR Gram record carries `meta.freeze_norm_stats: False` (27 `full` + 6 `chunked` = 33 of 33), because the pre-C-E2 config `cifar10_resnet_scan_labelRegression.yaml` still set `gram_freeze_norm_stats: false`. v2's norm policy is IDENTICAL to what v3 will use, so 100% of the expected CIFAR speedup is empty_cache + allocator, and \"v3 re-measures all three correctly\" (line 13) overstates a two-factor change. The bn_mode work prevented a *future* regression, it did not repair v2. The false statement is repeated at analysis/profile_helpers.py:237, in the new `profile_overview.ipynb` v2-vs-v3 markdown cell (cell 14, a cell a paper reader will see), in tests/test_optimizer_profile.py:5-6, and in commit 118156a's message.",
    "suggested_fix": "Reword all four places: v2 got TWO things wrong (per-step empty_cache, no expandable_segments); the bn_mode fix stops the post-C-E2 profiler default from freezing CIFAR's BatchNorm in v3, and v2 already ran unfrozen (cite `meta.freeze_norm_stats: False` in all 33 v2 CIFAR Gram records). Keep tests/test_optimizer_profile.py:131-141's own docstring, which states this correctly."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_helpers.py",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_helpers.py",
    "line": 219,
    "issue": "`load_profiles` writes its pickle cache to `root/_profile_cache.pkl` (line 205), i.e. INSIDE the results root, and the new `compare_profiles(old=ROOT_V2, ...)` calls it with `use_cache=True` on v2 by default \u2014 so every run of the new comparison cell writes into profile_results_v2, which ANALYSIS_CONTRACTS.md declares read-only (\"the loader cache under experiment_results/_cache/ is the one allowed write\") and which the same docstring at line 13 promises \"is never written to\". It already happened: profile_results_v2/_profile_cache.pkl was rewritten at 2026-09-20 18:39:06 (398 -> 421 KB). The try/except added only catches OSError, which never fires because the directory is writable.",
    "suggested_fix": "Pass `use_cache=False` for the `old` root in `compare_profiles`, or relocate the cache out of the results root (e.g. `experiment_results/_cache/profile_<rootname>.pkl`), and drop the \"never written to\" claim. No measurement file was touched, so nothing needs re-measuring."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_helpers.py",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_helpers.py",
    "line": 180,
    "issue": "`has_profiles()` returns True on the FIRST json, and `results_root()` then prefers v3 over v2 (line 186-188). Job 47396284 writes 720 files over up to 6 h, so any notebook run \u2014 including WP1's `./make_plots.sh`, whose default PROFILES set is the four profile notebooks (make_plots.sh:33) \u2014 that happens while the pass is in flight silently reports a PARTIAL v3 with no completeness check and no record of how many of 720 landed. `add_relative()` computes rel_time vs Adam and rel_mem vs SGD at matching arch/B/width, so a partially written root yields silently wrong or NaN relative columns rather than an error.",
    "suggested_fix": "Require a completeness signal before v3 wins: either a sentinel the sbatch touches after the last config, or `has_profiles(ROOT_V3)` gated on a per-config expected count (720 total), and print `<n>/720` in `load_profiles`. Until then, tell WP1/WP5 to run the profile notebooks with `prefer=ph.ROOT_V2` or `SV3_PROFILE_ROOT` pinned while 47396284 is running."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_overview.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_overview.ipynb",
    "line": 1,
    "issue": "The four profile notebooks were committed with changed code cells (`ph.results_root()` / `ph.load_profiles(ROOT)`) and a new two-cell v2-vs-v3 section, but were never executed \u2014 the new cells have `execution_count: None` and no outputs, while the rest of each notebook still carries outputs produced by the old code path. The contracts require notebooks to be executed in place with 0 error cells and outputs kept, and these notebooks are in make_plots.sh's default set, so the acceptance gate now rests on code this package never ran. (I did not execute them myself, being read-only: doing so writes analysis/plots_v2/profile/ and the v2 cache.)",
    "suggested_fix": "Have whoever runs `./make_plots.sh` execute the four profile notebooks against v2 now (the comparison cell is genuinely inert \u2014 I verified `compare_profiles()` returns an empty frame and prints its 'nothing to compare yet' line while v3 is absent) and again after 47396284 lands, and hand WP1/WP5 the job ids so the gate is not silently skipped."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/experiments/configs/profile_cifar.yaml",
+   "file": "/n/home/anon/sven-experiments/experiments/configs/profile_cifar.yaml",
    "line": 20,
    "issue": "Stale reference in a file this package just edited: the comment still reads \"ResNet18 with batch-statistics BatchNorm (gram_freeze_norm_stats: false, inherited)\", but the parent `cifar10_resnet_scan_labelRegression.yaml` no longer has that key \u2014 it sets `bn_mode: batch` (C-E2), which is exactly why the profiler needed `bn_mode_of()`.",
    "suggested_fix": "Say `bn_mode: batch, inherited`."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/bench/profile_serial.sbatch",
+   "file": "/n/home/anon/sven-experiments/bench/profile_serial.sbatch",
    "line": 96,
    "issue": "`export SV3_PROFILE_ROOT=${SV3_PROFILE_ROOT:-$REPO/profile_results_v3}` and `ARGS=${PROFILE_ARGS:-}` (line 103) honour inherited values, and job 47396284 was submitted with `--export=ALL`. A leaked SV3_PROFILE_ROOT from a smoke shell sends the real pass to the smoke root (v3 stays empty \u2014 detectable but only after 6 h), and a leaked PROFILE_ARGS (e.g. `base.batch_size=16`) writes differently-parameterised run_ids into v3. The dangerous PROFILE_SMOKE=1 + v3 combination IS guarded (lines 111-113).",
-   "suggested_fix": "Check the first lines of /n/holystore01/.../sv3_campaign_scratch/logs/profile/profile-47396284.out when it starts: it prints `results <root>`, `code <snapshot>` and `alloc ...` \u2014 confirm root == /n/home11/sambt/iaifi/sv3/profile_results_v3 and that no smoke args appear. Longer term, submit with `--export=NONE,SNAP=...` or hard-set the root when SLURM_JOB_ID is set."
+   "suggested_fix": "Check the first lines of /n/labstore01/.../sv3_campaign_scratch/logs/profile/profile-47396284.out when it starts: it prints `results <root>`, `code <snapshot>` and `alloc ...` \u2014 confirm root == /n/home/anon/sven-experiments/profile_results_v3 and that no smoke args appear. Longer term, submit with `--export=NONE,SNAP=...` or hard-set the root when SLURM_JOB_ID is set."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_helpers.py",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_helpers.py",
    "line": 250,
    "issue": "Report overstatement: \"compare_profiles(v2, v2) -> 720 rows, every step_ms_ratio exactly 1.0\". 720 rows is right, but 11 of them have NaN `step_ms_ratio` (the oom/error/infeasible records that have no timings); the identity holds on the 709 ok rows.",
    "suggested_fix": "State it as 709/720 non-null ratios exactly 1.0, so the v2-vs-v3 sanity check is not read as covering the non-ok records."

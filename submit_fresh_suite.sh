@@ -7,8 +7,8 @@
 #         that `ablations`, `rebuttal` and `tier3` assume.
 #         DRY=1 ./submit_fresh_suite.sh tier1                       # print, don't submit
 #         ONLY='mnist|cifar' ./submit_fresh_suite.sh headline          # subset by config-name regex
-# Jobs go to whichever of iaifi_gpu_priority / iaifi_gpu / gpu starts them first (see the
-# #SBATCH --partition line in submit_rebuttal_parallel.sh); the two iaifi partitions each cap
+# Jobs go to whichever of lab_gpu_priority / lab_gpu / gpu starts them first (see the
+# #SBATCH --partition line in submit_rebuttal_parallel.sh); the two lab partitions each cap
 # a user at 2 nodes (8 single-GPU jobs), `gpu` has no cap but a lower priority tier.
 #
 # Layout (from the gpu_test sharding benchmark, bench/results_46028086.jsonl):
@@ -22,7 +22,7 @@
 #     if one times out, just run this script again -- finished runs are skipped.
 set -u
 set -f   # no globbing: hydra list overrides use [...]
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 C=experiments/configs
 GROUP=${1:-all}
 DRY=${DRY:-0}

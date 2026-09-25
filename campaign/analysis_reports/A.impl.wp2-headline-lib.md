@@ -1,9 +1,9 @@
 **WP2 (library half) — done.** Full test suite green, notebook executed in place with 0 error cells.
 
 ### Files created (no existing file touched)
-- `/n/home11/sambt/iaifi/sv3/analysis/headline.py` (1352 l) — selection→runs matching, confirmation/data-seed tables, paired vs Sven, budget wrappers, efficiency + calibration + time-to-target, ranking summary, md/LaTeX export.
-- `/n/home11/sambt/iaifi/sv3/analysis/headline_tables.ipynb` (27 cells, executed, 0 errors, outputs kept).
-- `/n/home11/sambt/iaifi/sv3/tests/test_headline.py` (665 l, 20 tests, synthetic scan+confirm+timing via `SV3_RESULTS_ROOT`).
+- `/n/home/anon/sven-experiments/analysis/headline.py` (1352 l) — selection→runs matching, confirmation/data-seed tables, paired vs Sven, budget wrappers, efficiency + calibration + time-to-target, ranking summary, md/LaTeX export.
+- `/n/home/anon/sven-experiments/analysis/headline_tables.ipynb` (27 cells, executed, 0 errors, outputs kept).
+- `/n/home/anon/sven-experiments/tests/test_headline.py` (665 l, 20 tests, synthetic scan+confirm+timing via `SV3_RESULTS_ROOT`).
 - Generated: `analysis/tables/` (138 `.md`/`.tex`, 229 KB), `analysis/plots_v2/headline/{paired_vs_sven,best_of_n}.pdf`.
 
 ### Verified by running

@@ -2,10 +2,10 @@
 
 | path | what |
 |---|---|
-| `/n/home11/sambt/iaifi/sv3/iclr_manuscript/sections_v2/app_exp_details.tex` | finalised: campaign totals now macro-driven, seed-count and confirmation-scope claims corrected, compute paragraph rewritten from measured records, ablation-table caption disambiguated |
-| `/n/home11/sambt/iaifi/sv3/iclr_manuscript/sections_v2/app_reproducibility.tex` | finalised: failure-record wording (275 of 1,422 divergences carry no step), added the exported-snapshot / commit-hash fact |
-| `/n/home11/sambt/iaifi/sv3/analysis/paper_assets/campaign.py` | **new** generator (module protocol `build()`, also `python -m paper_assets.campaign`); reads the first line of every record, emits 11 macros |
-| `/n/home11/sambt/iaifi/sv3/iclr_manuscript/numbers_v2_campaign.tex` | **generated** (+ provenance sidecar in `agent_lab/paper_assets/provenance/`) |
+| `/n/home/anon/sven-experiments/iclr_manuscript/sections_v2/app_exp_details.tex` | finalised: campaign totals now macro-driven, seed-count and confirmation-scope claims corrected, compute paragraph rewritten from measured records, ablation-table caption disambiguated |
+| `/n/home/anon/sven-experiments/iclr_manuscript/sections_v2/app_reproducibility.tex` | finalised: failure-record wording (275 of 1,422 divergences carry no step), added the exported-snapshot / commit-hash fact |
+| `/n/home/anon/sven-experiments/analysis/paper_assets/campaign.py` | **new** generator (module protocol `build()`, also `python -m paper_assets.campaign`); reads the first line of every record, emits 11 macros |
+| `/n/home/anon/sven-experiments/iclr_manuscript/numbers_v2_campaign.tex` | **generated** (+ provenance sidecar in `agent_lab/paper_assets/provenance/`) |
 
 **Verified by running**
 

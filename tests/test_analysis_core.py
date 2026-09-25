@@ -116,7 +116,7 @@ def schema2_outcomes(i):
 def provenance(seed, i):
     return {'status': 'ok', 'schema_version': 2, 'run_hash': f'{i:064x}',
             'git_sha': 'a' * 40 if i % 2 else 'b' * 40, 'git_dirty': bool(i % 2),
-            'sven_git_sha': 'c' * 40, 'host': f'holygpu{i}', 'slurm_job_id': str(i),
+            'sven_git_sha': 'c' * 40, 'host': f'gpunode{i}', 'slurm_job_id': str(i),
             'n_shards': 4, 'shard_id': i % 4, 'gpu_name': 'A100' if i % 2 else 'V100',
             'start_time': f'2026-09-18T0{i % 10}:00:00+00:00', 'start_unix': 1.0 * i,
             'end_time': f'2026-09-18T0{i % 10}:30:00+00:00', 'end_unix': 2.0 * i,

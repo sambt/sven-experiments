@@ -3,14 +3,14 @@
 ## Files created / changed
 | file | change |
 |---|---|
-| `/n/home11/sambt/iaifi/sv3/experiments/datasets/all_datasets.py` | rewritten: 6 classes + `AdditiveCubicDataset` + 8 pure helpers |
-| `/n/home11/sambt/iaifi/sv3/experiments/datasets/__init__.py` | exports `AdditiveCubicDataset` and the helpers |
-| `/n/home11/sambt/iaifi/sv3/experiments/data_prep/prepare_tokens.py` | one shared iterator, val→test→train, `os.truncate`, `token_counts.json`, `--test_tokens`, clean `os._exit(0)` |
-| `/n/home11/sambt/iaifi/sv3/tools/check_token_split.py` | **new** |
-| `/n/home11/sambt/iaifi/sv3/tests/test_datasets.py` | **new**, 19 tests |
-| `/n/home11/sambt/iaifi/sv3/experiments/configs/dataset/*.yaml` | all 7 updated |
+| `/n/home/anon/sven-experiments/experiments/datasets/all_datasets.py` | rewritten: 6 classes + `AdditiveCubicDataset` + 8 pure helpers |
+| `/n/home/anon/sven-experiments/experiments/datasets/__init__.py` | exports `AdditiveCubicDataset` and the helpers |
+| `/n/home/anon/sven-experiments/experiments/data_prep/prepare_tokens.py` | one shared iterator, val→test→train, `os.truncate`, `token_counts.json`, `--test_tokens`, clean `os._exit(0)` |
+| `/n/home/anon/sven-experiments/tools/check_token_split.py` | **new** |
+| `/n/home/anon/sven-experiments/tests/test_datasets.py` | **new**, 19 tests |
+| `/n/home/anon/sven-experiments/experiments/configs/dataset/*.yaml` | all 7 updated |
 
-**Token rebuild DONE and verified.** `/n/holystore01/.../datasets/fineweb_edu_gpt2_v2/` = 250,000,000 train / 8,000,000 val / 8,000,000 test uint16 + `token_counts.json`. `check_token_split.py` → `DISJOINT`, exit 0 (15 s). Old `fineweb_edu_gpt2/` untouched (mtimes still Sep 8) and now reported `OVERLAP DETECTED`, exit 1 (32/32 sampled val blocks found in train — F4 reproduced then eliminated). v2 `val.bin` is byte-identical to v1 `val.bin` (same stream order); v2 `train.bin` no longer contains it.
+**Token rebuild DONE and verified.** `/n/labstore01/.../datasets/fineweb_edu_gpt2_v2/` = 250,000,000 train / 8,000,000 val / 8,000,000 test uint16 + `token_counts.json`. `check_token_split.py` → `DISJOINT`, exit 0 (15 s). Old `fineweb_edu_gpt2/` untouched (mtimes still Sep 8) and now reported `OVERLAP DETECTED`, exit 1 (32/32 sampled val blocks found in train — F4 reproduced then eliminated). v2 `val.bin` is byte-identical to v1 `val.bin` (same stream order); v2 `train.bin` no longer contains it.
 
 ## Acceptance tests — `19 passed in 18.60s` (observed, `pytest tests/test_datasets.py -q`)
 - `test_known_monomials_evaluate_correctly` — `eval_polynomial` multiplies factors: `3x₀x₁−2x₀²+5`, `x₀²x₁³`, constant, `rtol=1e-15`.

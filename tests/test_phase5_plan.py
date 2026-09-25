@@ -272,7 +272,7 @@ def test_the_nproc_table_is_total_over_the_classes_it_is_asked_for():
 def test_the_checked_in_plan_parses_and_names_configs_that_exist():
     plan = campaign_plan.load_plan(REAL_PLAN)
     assert plan.name == "phase5"
-    assert plan.results_root and plan.results_root.startswith("/n/holystore"), \
+    assert plan.results_root and plan.results_root.startswith("/n/labstore"), \
         f"the workers must not write to the NFS home: {plan.results_root}"
     for wl in plan.work_lists:
         assert wl.items, wl.name

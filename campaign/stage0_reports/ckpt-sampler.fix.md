@@ -1,6 +1,6 @@
 **Track ckpt-sampler — fixer report**
 
-**Files changed** (only track-owned): `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/checkpointing.py`, `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/sampler.py`, `/n/home11/sambt/iaifi/sv3/tests/test_checkpointing.py`, `/n/home11/sambt/iaifi/sv3/tests/test_sampler.py`. Nothing outside the track imports either module (verified by grep: only docs reference them), so all changes are safe.
+**Files changed** (only track-owned): `/n/home/anon/sven-experiments/experiments/experiment_code/checkpointing.py`, `/n/home/anon/sven-experiments/experiments/experiment_code/sampler.py`, `/n/home/anon/sven-experiments/tests/test_checkpointing.py`, `/n/home/anon/sven-experiments/tests/test_sampler.py`. Nothing outside the track imports either module (verified by grep: only docs reference them), so all changes are safe.
 
 **Findings: all five confirmed and fixed, none rejected.**
 1. *pid-only temp name* — `_atomic_save` now writes `f"{path}.tmp.{os.getpid()}.{uuid.uuid4().hex[:8]}"`. uuid4 draws from `os.urandom`, so cross-node uniqueness needs no hostname. The `save_init_state` TOCTOU is left as is and documented: with per-writer temp files the racing writers write *identical* bytes (one seed, one init), so last-`os.replace`-wins is correct.

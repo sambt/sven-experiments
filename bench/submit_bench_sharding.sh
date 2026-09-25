@@ -12,7 +12,7 @@
 # per setting; varies NPROC and per-process thread count. Same CPU allocation
 # (8 cores) as the production launcher.
 set -u
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 PY=.venv/bin/python
 OUT=bench/results_${SLURM_JOB_ID}.jsonl
 nvidia-smi --query-gpu=name,memory.total --format=csv

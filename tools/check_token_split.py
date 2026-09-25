@@ -21,7 +21,7 @@ A trailing run of more than --max_zero_tail zero tokens (an unfilled file tail l
 a stream that ran dry) is also a failure.
 
 Usage:
-  python tools/check_token_split.py /n/holystore01/.../datasets/fineweb_edu_gpt2_v2
+  python tools/check_token_split.py /n/labstore01/.../datasets/fineweb_edu_gpt2_v2
   python tools/check_token_split.py DIR --sample_blocks 32 --block_len 256
 Exit status 0 = disjoint, 1 = overlap found (or nothing to check).
 """

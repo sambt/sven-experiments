@@ -2,7 +2,7 @@
 
 This repository contains code for the experiments presented in **Sven: Singular Value Descent
 as a Computationally Efficient Natural Gradient Method**. You will need the `sven` package
-from [this repository](https://github.com/sambt/sven) to use the Sven optimizer; in this tree
+to use the Sven optimizer; in this tree
 it lives as the nested repo `sven/`.
 
 ## Where things are
@@ -84,7 +84,7 @@ Sven (841 → 187 ms/step) and was the entire source of step-time variance. Laun
 
 ## Results layout
 
-Results live under `$SV3_RESULTS_ROOT` (default `experiment_results`, a symlink to holystore).
+Results live under `$SV3_RESULTS_ROOT` (default `experiment_results`, a symlink to labstore).
 Each run writes, under `{root}/{scan}/`:
 
 ```
@@ -110,7 +110,7 @@ The frozen pre-campaign results are read-only at `experiment_results_legacy_2026
 
 | script | what it does |
 |---|---|
-| `tools/deploy_snapshot.sh` | freeze both repos at HEAD into a content-addressed snapshot on holystore; prints the path as its last line |
+| `tools/deploy_snapshot.sh` | freeze both repos at HEAD into a content-addressed snapshot on labstore; prints the path as its last line |
 | `tools/launch_campaign.py` | turn a `campaign/plan_*.yaml` into sbatch commands; prints by default, submits with `--submit` |
 | `tools/reconcile.py` | the authority on "is this scan done": expected vs on-disk per family, with `ok / diverged / oom / error / claimed-live / stale-hash` |
 | `tools/select_best.py` | the **selection of record** → `bench/best_configs.json`, under the binding rule (eligible → fewest diverged → seed-mean final validation loss). Never quote `reconcile.py`'s quick best-config table: it omits the fewest-diverged tier |

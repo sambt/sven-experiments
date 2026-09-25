@@ -13,11 +13,11 @@
 # `started/` empty, `attempts/` empty, nothing under `_stale/`.
 version: 1
 plan: smoke_race
-results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_race_74987054
+results_root: /n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/smoke_race_74987054
 
 lanes:
   a100:
-    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    partition: "lab_gpu_priority,lab_gpu,gpu"
     gres: "gpu:1"
     mem: 64G
     time: "00:20:00"

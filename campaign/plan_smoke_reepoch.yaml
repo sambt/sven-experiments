@@ -10,13 +10,13 @@
 #   tools/launch_campaign.py campaign/plan_smoke_reepoch.yaml --snapshot <snap> --submit --time 00:20:00
 version: 1
 plan: smoke_reepoch
-results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_74987054
+results_root: /n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/smoke_74987054
 
 lanes:
   # the a100 lane, not gpu_test: this check is about the runner's stale-generation logic,
   # and on the night of Gate 1 the gpu_test nodes were draining
   a100:
-    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    partition: "lab_gpu_priority,lab_gpu,gpu"
     gres: "gpu:1"
     cpus: 4
     mem: 32G

@@ -68,6 +68,6 @@ Style: match the existing writing — concise, not verbose, but no important det
   && pdflatex ... && pdflatex ...` with no errors and no undefined references/citations. New citations go to a NEW bib
   file `iclr_manuscript/references_v2.bib` loaded alongside the existing one. ICLR main text limit: 9 pages
   (references and appendices unlimited) — check the page count of the main text.
-* Ground rules: repo `/n/home11/sambt/iaifi/sv3` (branch robustness-campaign): never commit there either unless your
+* Ground rules: repo `/n/home/anon/sven-experiments` (branch robustness-campaign): never commit there either unless your
   task says so; results roots are read-only; heavy CPU work through `campaign/run_cpu_tests.sh`; python
   `.venv/bin/python`. Edit only the files your task owns.

@@ -48,7 +48,7 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 ## Log
 * 09-18 13:45 — branches created; scaffolding committed (558463c); Stage 0 workflow launched; cloud research
   agent launched. Probe results will land in
-  `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/probe_results/`.
+  `/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/probe_results/`.
 * 09-18 ~16:30 — **GPU probe done** (jobs 47037513 A100-80, 47037629/47038158 MIG; report in the stage-0 workflow
   journal, scripts in `bench/probe_campaign/`, results in `.../sv3_campaign_scratch/probe_results/`, one-command
   table: `.venv/bin/python bench/probe_campaign/analyse.py`). Decisions: CIFAR Sven keeps `gram_capture: full` with
@@ -57,7 +57,7 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   give T=0.98). `empty_cache=False` becomes the default for ALL runs. NPROC on A100-80: MLP Sven 12, cheap first-order
   = cores, LBFGS 4-6, nanoGPT Sven 3, CIFAR baselines 4+. NPROC on a MIG slice: MLP Sven 6-8, Adam 6, LBFGS 6-8,
   nanoGPT 1, CIFAR Sven 1 at chunked 0.5 (419 ms/step, 10 GB). MLP step time is set by host CPU load (1.13 ms on a
-  quiet gpu_test node vs 4.58 ms on a full iaifi node) -> timing runs must control for node load; use wall time, never
+  quiet gpu_test node vs 4.58 ms on a full lab node) -> timing runs must control for node load; use wall time, never
   CUDA events, for co-tenancy decisions. CIFAR Sven run is now ~25-30 min -> headline CIFAR Sven ~80 GPU-h total.
 * 09-18 ~16:40 — Stage 0: all 10 implementers finished; adversarial reviews in progress (real catches so far: 0-d
   device tensors in `svd_info` crash the runner on GPU; sparse `svs` vs per-step `_split_diagnostics` seam;
@@ -71,7 +71,7 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   campaign/CONTRACTS.md "Stage 1 contracts". After they finish: commit, Stage 2 = full-diff review + Gate 1 GPU smoke
   matrix on gpu_test (needs a deploy snapshot), then ask the user for the go on the pilot (toy + polynomial).
 * 09-18 ~20:55 — **Legacy results frozen** at the user's request: `sven_experiments` renamed to
-  `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments_legacy_2026-09-18` (repo symlink
+  `/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments_legacy_2026-09-18` (repo symlink
   `experiment_results_legacy_2026-09-18`, write bits removed except `_cache/`), new EMPTY `sven_experiments`
   behind the unchanged `experiment_results` symlink. Legacy analysis: `SV3_RESULTS_ROOT=../experiment_results_legacy_2026-09-18`.
   All 10 Stage-0 tracks committed (analysis-core 4767461, analysis-offline 40675bd).
@@ -100,11 +100,11 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
 ## CAMPAIGN LAUNCHED — Fri 2026-09-18 20:05 EDT
 * Gate 1: smoke matrix GREEN, independent audit **GO** (`campaign/stage1_reports/gate1.{smoke,audit}.md`). The smoke run
   caught a launch-killing bug (`scheduler=claims` rejected by Hydra struct mode -> every runner exited 1), fixed in f29298c.
-* **Production snapshot:** `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61` (sv3 2c6faf59,
+* **Production snapshot:** `/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/2c6faf59_203a4e61` (sv3 2c6faf59,
   sven 203a4e61, git_dirty false). ALL campaign jobs must use this snapshot (`--snapshot <path>`); if code or configs
   change, the launcher refuses to mix snapshots - wait for the queue to drain or cancel first.
-* Results root: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments` (repo symlink `experiment_results`).
-  Pool logs: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs/campaign/`.
+* Results root: `/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments` (repo symlink `experiment_results`).
+  Pool logs: `/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/campaign/`.
 * Jobs (names carry list + snapshot sha): CIFAR Sven x6 47080825-32; CIFAR baselines x2 47080834-35; nanoGPT x2
   47080839-40; MIG combined list `all_mlp_mig` x2 47080843-44 (12 h, ends Sat ~08:00 EDT -> RESUBMIT the same command
   until reconcile is clean); MLP A100 overflow P0 x4 47080846-50, P1 x2 47080867/69, P3 x1 47080871; Fig-5 x2 47080858/60.
@@ -116,7 +116,7 @@ Estimated ~520-600 GPU-h (A100 lane 280-360, MIG lane ~240) -> fits the cluster 
   as `diverged` (known from legacy, accepted); Shampoo (~35 min/run) and HIG (~22 min/run) are the slow MLP items on MIG.
 * WAITING on results (not launched): standalone timing of best configs, diagnostics + confirmation seeds, polynomial
   data-seed replicates (needs `data_seed` in `result_id_fields` first). Deferred: CIFAR fine-tune (extension phase).
-* Log locations (all under `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/`):
+* Log locations (all under `/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/`):
   job-level pool log `logs/campaign/<jobname>-<jobid>.out`; per-process runner logs
   `logs/<jobname>.<jobid>/item<NN>_<scan>_gpu<g>_p<k>.log` (+ `hydra/`); work-item files and launch records
   `work/campaign/<list>.items.txt|.launched.json`; smoke roots `smoke_*`; probe `probe_results/`.
@@ -147,10 +147,10 @@ CIFAR-CE SGD lr=1 high edge, KFAC low edges, overparam/batch-size baseline lr=0.
 NEXT (needs the user): review tables; decide the extension round; then timing / diagnostics / confirmation passes and the
 schema-2 analysis notebooks.
 * 09-19 ~22:40 EDT — USER GO (standing, overnight): launch the grid-extension round, then the result-dependent passes (timing/diagnostics/confirmation), and GPT-2-small (after a one-run GPU smoke). Agents: ext-configs, phase5-tooling running; GPT-2 agent starts after ext-configs lands.
-* 09-19 23:35 EDT: extension round launched from NEW snapshot /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/62e5105e_203a4e61 (sv3 62e5105e; +7,480 additive runs, finished runs dedup out, no _stale created): MIG all_mlp_mig 47322040/42, CIFAR baselines 47322047/52, MLP overflow P0 x3, P1 x3. gpt2-prep agent started.
+* 09-19 23:35 EDT: extension round launched from NEW snapshot /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/62e5105e_203a4e61 (sv3 62e5105e; +7,480 additive runs, finished runs dedup out, no _stale created): MIG all_mlp_mig 47322040/42, CIFAR baselines 47322047/52, MLP overflow P0 x3, P1 x3. gpt2-prep agent started.
 * 09-20 00:00 EDT: phase-5 tooling committed (tools/select_best.py -> bench/best_configs.json; tools/gen_phase5_plan.py -> campaign/plan_phase5.yaml; bench/submit_timing_phase5.sh; *_diag/_confirm configs). Decisions: selection uses the FULL binding rule (eligible -> fewest diverged -> seed mean); CIFAR diag keeps checkpoints: epochs (~100 GB, fine); no float64 switch exists -> skipped. TODO when gpt2-prep lands: classify the 14 new configs in tests/test_configs.py. Launch passes only after the extension round reconciles clean: select_best.py --require-complete, gen_phase5_plan.py, deploy, launch.
-* 09-20 01:55 EDT: GPT-2 smoke GREEN (Sven 2.52 s/step = 9.2 h/run, 35 GiB; AdamW 2.8 h, Muon 2.9 h, SOAP 4.1 h); Sven lrs extended to [0.02,0.05,0.1,0.5,1.0] (smoke: lr 0.5 unstable). GPT-2 launched (29 runs, ~122 GPU-h, 10 jobs) from snapshot /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/e5b6fb77_203a4e61 (extension round keeps running from /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/62e5105e_203a4e61; separate scans/lists).
-* 09-20 04:05 EDT: extension round COMPLETE (reconcile clean, 23,2xx runs). Final selection written (bench/best_configs.json, full binding rule; CIFAR 'incomplete 100' = parked JD/HIG, polynomial LBFGS selected on 3/5 seeds). Phase-5 launched from snapshot /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/b8fadc6f_203a4e61: diag+confirm MIG 47337921/22, heavy A100 x4, MLP A100 x2; timing 7 per-scan serial jobs (non-exclusive, calibration microbenchmark at start/end for contamination check). GPT-2 running (10 jobs, snapshot /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/e5b6fb77_203a4e61).
+* 09-20 01:55 EDT: GPT-2 smoke GREEN (Sven 2.52 s/step = 9.2 h/run, 35 GiB; AdamW 2.8 h, Muon 2.9 h, SOAP 4.1 h); Sven lrs extended to [0.02,0.05,0.1,0.5,1.0] (smoke: lr 0.5 unstable). GPT-2 launched (29 runs, ~122 GPU-h, 10 jobs) from snapshot /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/e5b6fb77_203a4e61 (extension round keeps running from /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/62e5105e_203a4e61; separate scans/lists).
+* 09-20 04:05 EDT: extension round COMPLETE (reconcile clean, 23,2xx runs). Final selection written (bench/best_configs.json, full binding rule; CIFAR 'incomplete 100' = parked JD/HIG, polynomial LBFGS selected on 3/5 seeds). Phase-5 launched from snapshot /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/b8fadc6f_203a4e61: diag+confirm MIG 47337921/22, heavy A100 x4, MLP A100 x2; timing 7 per-scan serial jobs (non-exclusive, calibration microbenchmark at start/end for contamination check). GPT-2 running (10 jobs, snapshot /n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/e5b6fb77_203a4e61).
 * 09-20 07:02 EDT check-in: diag+confirm DONE for toy, polynomial, both MNIST; CIFAR diag/confirm ~50-55 of 55 each; timing done for toy/poly/nanoGPT, MNIST timing 6/70 (HIG/Shampoo/JD slow, serial), CIFAR timing ~21/55; nanoGPT diag/confirm pending in the heavy lists; GPT-2 5/29 done, 10 running. 18 jobs running, 0 oom/error.
 * 09-20 10:05 EDT check-in: diag + confirm COMPLETE for all 7 headline scans; timing complete for toy/poly/nanoGPT/both CIFAR, MNIST timing 33/70 and 19/70 (serial heavy methods); GPT-2 10/29. bench/check_timing_join.py: nanoGPT bit-identical, medians ~1e-8 (toy/poly); deviations only for hardware-sensitive methods (Muon bf16 Newton-Schulz up to 25% on polynomial, LBFGS line search, SOAP/Shampoo/HIG decompositions at 1e-9 losses, CIFAR cuDNN 1-3% median) = scans ran on MIG A100-40 slices, timing on A100-80: cross-hardware nondeterminism, not a lifecycle bug; timing validity unaffected. Worth a sentence in the paper: Muon/LBFGS seed-level results are not bit-reproducible across GPU types.
 * 09-20 13:07 EDT check-in: ALL timing/diag/confirm passes complete. GPT-2 20/29 done, 5 jobs running (remaining: mostly slow runs), 0 oom/error.

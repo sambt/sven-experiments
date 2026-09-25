@@ -2,49 +2,49 @@
  "findings": [
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/profile_helpers.py",
+   "file": "/n/home/anon/sven-experiments/analysis/profile_helpers.py",
    "line": 176,
    "issue": "The new `status=\"nonfinite\"` is handled in the *labels* (STATUS_NOTE, method_table, plot_method_bars, plot_heatmap) but not in the ~8 `status == 'ok'` filters that decide which rows are USED, even though the implementer's own comment in optimizer_profile.py says the timings of such a row are valid. Concretely: (a) `add_relative` line 176 builds the Adam/AdamW and SGD reference from ok-only rows, so if the *reference* method ends non-finite (LBFGS w/ strong_wolfe, PolyakSGD max_lr=1.0, Sven at scan lrs are all plausible over 50-400 steps on 8 repeated batches) then `rel_time`/`rel_mem` become NaN for EVERY method at that (arch,B,width) and the headline 'x Adam' column plus `plot_heatmap(value='rel_time')` blank out; (b) `plot_phase_bars` (line 355) and `plot_pareto`'s ref (line 344) drop such a row with no failure marker at all, so a Sven variant's capture/solve bar silently vanishes; (c) `plot_sweep` draws non-ok points as red crosses \"so OOM walls are visible\", i.e. a perfectly timed nonfinite point is rendered as a failure wall; (d) `scaling_table` (389) reports it under 'first failure'. Not owned but also unflagged in the report: `bench/probe_campaign/probe_run.py:236` returns exit 1 unless `status == \"ok\"` and `bench/probe_campaign/analyse.py:73` drops non-ok rows from the probe timing tables \u2014 the probe campaign that decides NPROC/sharding would now discard a probe whose parameters blew up, and the gpu.probe report says those decisions must come from wall_ms of exactly those runs.",
    "suggested_fix": "Add `TIMED = ('ok', 'nonfinite')` next to STATUS_NOTE and use `df.status.isin(TIMED)` in `add_relative` (176), `plot_phase_bars` (355), `plot_pareto`'s ref (344), `plot_steadiness` (405) and `scaling_table` (388/389); keep the `Note` column / red annotation as the flag. Add to the integrator list: `probe_run.py`'s exit code and `analyse.py:73` must treat `nonfinite` as timed."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/repair_legacy.py",
+   "file": "/n/home/anon/sven-experiments/analysis/repair_legacy.py",
    "line": 185,
    "issue": "`val_ew` is one entry SHORTER than the stored `val` curve whenever `pre_training_eval` is true (every legacy scan), but the docstring at line 168 says it \"is the example-weighted curve aligned with the stored ``val`` curve\". Verified on the real output: for `svd_bs128_k128_lr1.0_rtol0.0001_svdtorch_mseed4001_lseed4000_gram_bnbatch` in cifar10_resnet_ce_scan the stored `val` has 21 entries and `val_ew` has 20, so `val_ew[i]` is epoch i+1, not epoch i. Any notebook cell that plots the repaired curve on the epoch axis built from `losses['val']` (or overlays it on the legacy curve) will be shifted by one epoch, and the only signal is the separate `pre_training_eval` column. The scalars (`final_val_loss`, `final_val_loss_ew`, `rel_corr_*`) are correct \u2014 I reproduced 2.99616 / 2.96386 / 1.078% independently from the npz \u2014 so this is a trap for the consumer, not a wrong number today.",
    "suggested_fix": "Emit `val_ew` at the stored curve's length (prepend `np.nan`, or the stored pre-training value, when `pre_training_eval`), or rename the column and say explicitly \"index i corresponds to val[i + pre_training_eval]\". Add an assertion/test that `len(val_ew) + pre_training_eval == len(losses['val'])`."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/paired.py",
+   "file": "/n/home/anon/sven-experiments/analysis/paired.py",
    "line": 52,
    "issue": "`paired_runs` -> `ah.config_runs(df, row)` does `df['run_id'].isin(config_row['run_ids'])`, and `analysis_helpers.config_table` leaves `run_ids` as NaN for a configuration whose every seed diverged (it joins those groups in with `how='outer'`). Passing such a row raises `TypeError: only list-like objects are allowed to be passed to isin(), you passed a 'float'`. Reproduced: a 2-config synthetic table (one config with 3 diverged seeds) makes `paired.paired_difference(df, good_row, diverged_row)` raise. `paired_table` over `best_per_method` rows is safe (eligible-filtered), but the documented-looking use \"compare the reference against every row of `config_table`\" \u2014 e.g. Sven's best vs every Adam config \u2014 crashes part-way through the table, and all-diverged configs are common in these grids.",
    "suggested_fix": "Guard in `paired_runs`: `ids = row.get('run_ids'); ids = ids if isinstance(ids, (list, tuple, set, np.ndarray)) else []` and take the runs from `df[df.run_id.isin(ids)]`, returning an empty frame (n=0, NaN mean/std) instead of raising; add a test with an all-diverged reference/other row."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/repair_legacy.py",
+   "file": "/n/home/anon/sven-experiments/analysis/repair_legacy.py",
    "line": 264,
    "issue": "The guard the spec asks for (\"assert on a sample that the equal-weight mean reproduces the stored value before trusting the repair\") can pass vacuously. `eq_check` is `_nanmax(_rel(eq, ref))`, which is NaN for a run whose stored val curve ends non-finite (a diverged run), and `bad = sample[sample['eq_check'] > rtol]` is empty for NaN. So if the five alphabetically-first runs of a scan all diverged, the repair is 'verified' without a single comparison. Nothing slipped through on the eight scans actually run (`eq_check_max = 0.0` everywhere, which I re-derived bit-exactly for a CIFAR run), but the assertion is what protects a future scan whose batch geometry differs.",
    "suggested_fix": "Sample from the rows that actually produced a check: `cand = ok[ok['eq_check'].notna()]`, assert `len(cand) >= min(check, len(ok))` (raise 'no run could be checked' otherwise), then assert `cand.head(check)['eq_check'] <= rtol`. Add a test where the first sampled runs have NaN curves and show the check still fires."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/experiments/optimizer_profile.py",
+   "file": "/n/home/anon/sven-experiments/experiments/optimizer_profile.py",
    "line": 496,
    "issue": "The per-config console line still prints `steady {t['steady_mean']:.2f} ms`, so the runner's log and the analysis headline now disagree for exactly the methods C-T2 is about (SOAP on profile_mnist logs 5.56 while the table reads 6.14).",
    "suggested_fix": "Print `cycle_mean` there (or both). It is ~60 lines below the owned `summarize()`, so hand it to the integrator if the ownership line is strict."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/tests/test_analysis_offline.py",
+   "file": "/n/home/anon/sven-experiments/tests/test_analysis_offline.py",
    "line": 103,
    "issue": "`test_profiler_records_nonfinite_status_after_the_measured_steps` asserts only on source text (`'result[\"status\"] = \"nonfinite\"' in src` plus substring ordering). It would pass with the check inside a dead branch, testing the wrong tensors, or after any reformat of that line.",
    "suggested_fix": "Extract the predicate as a tiny module-level `def _params_finite(model)` in optimizer_profile.py and unit-test it on a CPU `nn.Linear` with an injected inf (the test file is torch-free by design, so put it in a torch test file or accept the import cost there); keep the ordering assertion as a cheap extra."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/paired.py",
+   "file": "/n/home/anon/sven-experiments/analysis/paired.py",
    "line": 33,
    "issue": "`SEED_SPREAD_LABEL` is defined and tested but used nowhere in the repo, so the C-A6 clause \"legends say '+/- 1 std over seeds'\" is delivered only as a constant plus prose. The existing seed-band labels live in files this track does not own (`scan_analysis.py:141,734`, `analysis_helpers.py:248`, `style.py:824`) and say '+/- 1 std' without 'over seeds'.",
    "suggested_fix": "Keep the constant, but state it as an explicit integrator ACTION (which four call sites must import it) rather than a remark, so the clause is not silently dropped at integration."

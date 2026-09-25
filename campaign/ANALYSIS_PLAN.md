@@ -6,7 +6,7 @@ decisions), `analysis/ANALYSIS_FIXES.md` (analysis conventions), `CHANGES_NEEDED
 
 ## 0. State of play
 
-**Data (all under `experiment_results/` = `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments`, schema 2):**
+**Data (all under `experiment_results/` = `/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments`, schema 2):**
 * 21 campaign scans incl. the extension round — reconcile clean (`tools/reconcile.py --all campaign/plan_campaign.yaml`).
 * `exp_gpt2_small_comparison` — 29 runs, 1 seed (5 baseline runs still finishing on 09-20 16:00; check reconcile on `campaign/plan_gpt2.yaml`).
 * Result-dependent passes for the 7 headline scans: `<scan>_timing` (standalone, logging off), `<scan>_diag`

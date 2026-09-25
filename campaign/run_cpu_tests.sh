@@ -7,7 +7,7 @@
 #   campaign/run_cpu_tests.sh .venv/bin/python -m pytest tests/ -x -q
 #   campaign/run_cpu_tests.sh -C sven ../.venv/bin/python -m pytest tests/test_torch_gram.py -q
 set -u
-REPO=/n/home11/sambt/iaifi/sv3
+REPO=/n/home/anon/sven-experiments
 DIR=$REPO
 if [ "${1:-}" = "-C" ]; then DIR=$(cd "$REPO" && cd "$2" && pwd); shift 2; fi
 mkdir -p "$REPO/slurm_logs/devtests"

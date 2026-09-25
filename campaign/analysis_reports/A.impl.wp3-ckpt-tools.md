@@ -1,7 +1,7 @@
 # WP3 tool half — final report
 
 ## Files
-**New:** `/n/home11/sambt/iaifi/sv3/analysis/ckpt_tools.py` (960 l), `/n/home11/sambt/iaifi/sv3/tools/compute_ckpt_spectra.py` (260 l), `/n/home11/sambt/iaifi/sv3/tests/test_ckpt_tools.py` (520 l, 28 tests, 4.8 s).
+**New:** `/n/home/anon/sven-experiments/analysis/ckpt_tools.py` (960 l), `/n/home/anon/sven-experiments/tools/compute_ckpt_spectra.py` (260 l), `/n/home/anon/sven-experiments/tests/test_ckpt_tools.py` (520 l, 28 tests, 4.8 s).
 **Changed (authorised by the task):** `analysis/.gitignore` +3 lines (`ckpt_spectra/`). Nothing else touched; results read-only (verified: no file under `experiment_results/*_diag` modified).
 **Cache (git-ignored, 54 MB, 64 npz):** `analysis/ckpt_spectra/{toy_1d,polynomial}_scan_diag/*_probefull.npz` (20 each = Sven/Adam/MuonW/HIG × 5 seeds, 34 ckpts, full 10 000-row pool), `mnist_scan_labelRegression_diag/*_probe512.npz` (20, 35 ckpts) and `*_probe2000_epochs.npz` (4, 21 ckpts, seed 3000).
 
@@ -31,4 +31,4 @@ Mechanism findings for phase B: on the **full pool** only 8 (init) → 27-31 (fi
 * Two `polynomial_scan_diag` L-BFGS runs are `diverged` with partial curves; `verify_checkpoint` now refuses them with a diagnosis instead of an `IndexError` (spectra still computable by step). Tested.
 * Full-pool MNIST (50 000×27 562 = 10.3 GB fp64) is refused by `MAX_JAC_BYTES=3 GB`; feasible on a big-memory node if wanted.
 * Cost on 4 cores: toy/polynomial 28 s per run, MNIST-512 45 s, MNIST-2000 11 min.
-* **Phase B / other WPs:** read the cache with `ckpt_tools.load_spectra(scan, method=, model_seed=, n_probe=)`; hyperparameters (k, rtol, lr, B) come from `load_run(scan, str(entry['run_id'])).record`, deliberately not duplicated in the npz. No name clashes with `sv_diagnostics` (which covers only the online per-step spectra). Scratch scripts kept at `/n/home11/sambt/sv3_wp3_scratch/`.
+* **Phase B / other WPs:** read the cache with `ckpt_tools.load_spectra(scan, method=, model_seed=, n_probe=)`; hyperparameters (k, rtol, lr, B) come from `load_run(scan, str(entry['run_id'])).record`, deliberately not duplicated in the npz. No name clashes with `sv_diagnostics` (which covers only the online per-step spectra). Scratch scripts kept at `/n/home/anon/sv3_wp3_scratch/`.

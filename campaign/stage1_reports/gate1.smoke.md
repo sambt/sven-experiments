@@ -2,7 +2,7 @@ Both suites green (sv3 `728 passed, 29 skipped`; sven `198 passed, 7 skipped`). 
 
 # Gate 1 — report
 
-**Final green run.** Snapshot `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_deploy/74987054_203a4e61` — sv3 `749870540208e4098b466dbc0ed6052f37f9bb66`, sven `203a4e612122b430d2eb6afd224d00d6546e7506`, `git_dirty false`. **Temp root: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_74987054`** (216 MB, 100 markers = 97 plan runs + 2 re-epoch + 1 polyak). Also `…/smoke_race_74987054` (18), `…/smoke_f29298c0` (earlier green round). **Real root `sven_experiments` still has 0 entries; legacy dir untouched (mtime 16:51).**
+**Final green run.** Snapshot `/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/smoke_deploy/74987054_203a4e61` — sv3 `749870540208e4098b466dbc0ed6052f37f9bb66`, sven `203a4e612122b430d2eb6afd224d00d6546e7506`, `git_dirty false`. **Temp root: `/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/smoke_74987054`** (216 MB, 100 markers = 97 plan runs + 2 re-epoch + 1 polyak). Also `…/smoke_race_74987054` (18), `…/smoke_f29298c0` (earlier green round). **Real root `sven_experiments` still has 0 entries; legacy dir untouched (mtime 16:51).**
 
 **Jobs** (all COMPLETED 0:0, **0 failed runner processes**). Final matrix `47078906` mig 9:56 · `47078915` 2:02 · `47078925` 13:13 · `47078936` 0:48. (h) `47079587/89/91/92`. (j) race `47079647/48`. (i)+polyak `47079957/60`. Aborted first attempt `47076783/88/94/97` (bug 2). Earlier green round `47077215/20/27/30`. ≈1.6 A100-equivalent GPU-h of 10.
 

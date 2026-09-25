@@ -1,10 +1,10 @@
 Both files pass. Final report:
 
 **Files created** (all new, none else touched):
-- `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/checkpointing.py`
-- `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/sampler.py`
-- `/n/home11/sambt/iaifi/sv3/tests/test_checkpointing.py`
-- `/n/home11/sambt/iaifi/sv3/tests/test_sampler.py`
+- `/n/home/anon/sven-experiments/experiments/experiment_code/checkpointing.py`
+- `/n/home/anon/sven-experiments/experiments/experiment_code/sampler.py`
+- `/n/home/anon/sven-experiments/tests/test_checkpointing.py`
+- `/n/home/anon/sven-experiments/tests/test_sampler.py`
 
 **Observed pytest lines** (via `campaign/run_cpu_tests.sh`): `tests/test_checkpointing.py` → `9 passed in 15.99s`; `tests/test_sampler.py` → `9 passed in 6.62s`; together `18 passed in 8.95s`.
 

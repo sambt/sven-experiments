@@ -48,7 +48,7 @@ import reconcile                                        # noqa: E402
 
 DEFAULT_IN = os.path.join(REPO, "bench", "best_configs.json")
 DEFAULT_OUT = os.path.join(REPO, "campaign", "plan_phase5.yaml")
-DEFAULT_RESULTS_ROOT = "/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments"
+DEFAULT_RESULTS_ROOT = "/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments"
 
 #: the hydra overrides that turn a scan config into a TIMING run (C-T1). `++` and not `=`:
 #: no scan config declares `svd_info`, and the MNIST ones declare `checkpoints_svd` but not
@@ -221,7 +221,7 @@ results_root: {root}
 
 lanes:
   a100:
-    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    partition: "lab_gpu_priority,lab_gpu,gpu"
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
@@ -236,7 +236,7 @@ lanes:
     max_jobs: 2
     note: "MLP diag/confirm only: 19.6 GB a slice fits toy/poly/MNIST, not CIFAR full capture"
   timing:
-    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    partition: "lab_gpu_priority,lab_gpu,gpu"
     gres: "gpu:1"
     cpus: 16
     mem: 64G
@@ -331,7 +331,7 @@ def main(argv=None):
     # realpath, not abspath: the selection may have resolved the root through the repo's
     # `experiment_results` symlink, and the plan is what the workers get as
     # SV3_RESULTS_ROOT -- a home-directory path there would put O(10^4) result files on a
-    # 95 G NFS home instead of on holystore.
+    # 95 G NFS home instead of on labstore.
     root = os.path.realpath(a.results_root or payload.get("results_root")
                             or DEFAULT_RESULTS_ROOT)
 

@@ -11,7 +11,7 @@ pulling from the claim queue instead of one job per shard (campaign/scout/queue.
 
 Lanes come from the plan; the two the campaign uses are
 
-  a100  -p iaifi_gpu_priority,iaifi_gpu,gpu --gres=gpu:1, cpus = max NPROC + 2, 64G, 24 h
+  a100  -p lab_gpu_priority,lab_gpu,gpu --gres=gpu:1, cpus = max NPROC + 2, 64G, 24 h
   mig   -p gpu_test --gres=gpu:4 -c 32 --mem=128G -t 12:00:00, AT MOST 2 JOBS
 
 `--chain` (mig lane) submits a self-renewing job: as its last act it asks
@@ -58,11 +58,11 @@ sys.path.insert(0, HERE)
 
 import campaign_plan                                  # noqa: E402  (same directory)
 
-DEFAULT_DEPLOY_BASE = "/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy"
-SCRATCH_BASE = "/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch"
+DEFAULT_DEPLOY_BASE = "/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy"
+SCRATCH_BASE = "/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch"
 DEFAULT_WORK_BASE = os.path.join(SCRATCH_BASE, "work")
-#: logs live on holystore with everything else: the full plan is O(10^4) runner logs and
-#: /n/home11 is a 95 G NFS home at 84% (a failed `> $log` redirect looks like a training
+#: logs live on labstore with everything else: the full plan is O(10^4) runner logs and
+#: /n/home is a 95 G NFS home at 84% (a failed `> $log` redirect looks like a training
 #: failure, not a disk-full one).
 DEFAULT_LOG_DIR = os.path.join(SCRATCH_BASE, "logs", "campaign")
 SNAPSHOT_PLACEHOLDER = "<snapshot>"

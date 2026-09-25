@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=iaifi_gpu_priority
+#SBATCH --partition=lab_gpu_priority
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -11,7 +11,7 @@
 # Rebuttal scans use the uv env (has torch_optimizer + kfac-pytorch for the
 # Shampoo / K-FAC baselines), NOT the jax conda env.
 set -e
-REPO=/n/home11/sambt/iaifi/sv3
+REPO=/n/home/anon/sven-experiments
 VENV=$REPO/.venv/bin/python
 cd "$REPO"
 

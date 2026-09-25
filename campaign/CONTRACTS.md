@@ -12,7 +12,7 @@ scout reports with exact insertion points in `campaign/scout/*.md`. Where this f
   change in a file you do not own, write it down in your report instead.
 * Never touch `experiment_results/` (symlink to irreplaceable results) and never submit/cancel SLURM jobs,
   except through `campaign/run_cpu_tests.sh` (CPU test jobs) or where your track says otherwise.
-* Python: `/n/home11/sambt/iaifi/sv3/.venv/bin/python`. The dev node has 4 cores / 16 GB shared by ~10 agents
+* Python: `/n/home/anon/sven-experiments/.venv/bin/python`. The dev node has 4 cores / 16 GB shared by ~10 agents
   and `import torch` takes 1-2 min cold. Run small test files locally (`-x -q`, one file at a time); run
   anything heavy via `campaign/run_cpu_tests.sh <cmd...>` (sbatch --wait on a CPU partition, prints the log).
 * Tests: sv3 tests go in `tests/` (pytest, CPU-only, float64 where exactness is asserted, no dataset
@@ -154,7 +154,7 @@ processes and many jobs may serve the same scan concurrently. Exit code 0 when n
 
 **Execution:** campaign processes run from an exported snapshot, never the live tree:
 `tools/deploy_snapshot.sh` exports both repos at their HEAD into
-`/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/<sv3sha>_<svensha>/` with `DEPLOY_INFO.json` (provenance
+`/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/<sv3sha>_<svensha>/` with `DEPLOY_INFO.json` (provenance
 falls back to it) and an `experiment_results` symlink to the real results root; workers set
 `PYTHONPATH=<snapshot>:<snapshot>/sven`, `SV3_RESULTS_ROOT`, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`,
 `OMP_NUM_THREADS=1`. NPROC per GPU from the probe: A100 — MLP Sven 12, first-order MLP 12, LBFGS/HIG/Shampoo 4,

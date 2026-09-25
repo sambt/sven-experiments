@@ -1,6 +1,6 @@
 ## Configs track — final report
 
-### Files changed (all absolute paths under `/n/home11/sambt/iaifi/sv3/`)
+### Files changed (all absolute paths under `/n/home/anon/sven-experiments/`)
 
 **`experiments/configs/` (22 edited, 2 created)**
 - **Headline MLP** `toy_1d_scan`, `polynomial_scan`, `mnist_scan_{ce,labelRegression}`: `checkpoints: log` (toy/poly) / `checkpoints_svd: log` (MNIST); `+SGDm`; shared `lrs_standard: [1e-5,3e-5,1e-4,1e-3,1e-2,1e-1,3e-1,1.0]`; `lrs_jd: [1e-5…1e-1]`; `lrs_hig: [0.005,0.015,0.05,0.1,0.25]` (≥0.5 removed — always crashes); `tau_hig` +`3e-2,1e-1`; polynomial `rtol` +`1e-5`.

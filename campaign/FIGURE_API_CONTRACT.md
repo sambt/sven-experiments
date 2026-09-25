@@ -76,7 +76,7 @@ Rules:
 
 ## Ground rules
 
-* Repo `/n/home11/sambt/iaifi/sv3`, branch `robustness-campaign`. Python `.venv/bin/python`.
+* Repo `/n/home/anon/sven-experiments`, branch `robustness-campaign`. Python `.venv/bin/python`.
   **Never** `git commit`/`add`/`stash`/`checkout`/`switch` — the orchestrator commits.
 * **You own exactly two files**: `analysis/paper_assets/<your module>.py` and
   `tests/test_paper_assets_<your module>.py`. Do not edit `common.py`, `figspec.py`,
@@ -96,7 +96,7 @@ Rules:
    `figspec.figure_opts`, and that at least one knob visibly changes the figure (e.g. a
    different method count in `meta`).
 2. **The byte-identity check.** A pre-snapshot of your group's PDFs is at
-   `/tmp/claude-66176/-n-home11-sambt-iaifi-sv3/30b30b16-e05d-4e46-8a25-371ea6181950/scratchpad/figs_pre/<group>/`.
+   `/tmp/claude-66176/-n-home-anon-sven-experiments/30b30b16-e05d-4e46-8a25-371ea6181950/scratchpad/figs_pre/<group>/`.
    Rebuild your group's figures only —
    `campaign/run_cpu_tests.sh bash -c 'cd analysis && ../.venv/bin/python -m paper_assets --only <mod> --figures-only'`
    — then compare with `.venv/bin/python tools/cmp_figures.py <group>`, which reports a

@@ -1,6 +1,6 @@
 ## WP4a — reviewer MLP studies (overparam / batch size / κ / micro-batch / param-fraction)
 
-**Files created:** `/n/home11/sambt/iaifi/sv3/analysis/reviewer_figs.py` (new, ~580 lines: per-arm binding-rule selection `arm_table`, `rank_table`, `divergence_table`, `edge_optima`, `scan_census`, `reach_epoch/reach_table`, `median_method_target`, `fastest_to_target`, `knob_table`, `kappa_table`, `matched_step_table`, `plot_arm/plot_knob`, `savefig` PDF+PNG); `/n/home11/sambt/iaifi/sv3/tests/test_reviewer_figs.py` (25 tests, synthetic tmp-root scans only).
+**Files created:** `/n/home/anon/sven-experiments/analysis/reviewer_figs.py` (new, ~580 lines: per-arm binding-rule selection `arm_table`, `rank_table`, `divergence_table`, `edge_optima`, `scan_census`, `reach_epoch/reach_table`, `median_method_target`, `fastest_to_target`, `knob_table`, `kappa_table`, `matched_step_table`, `plot_arm/plot_knob`, `savefig` PDF+PNG); `/n/home/anon/sven-experiments/tests/test_reviewer_figs.py` (25 tests, synthetic tmp-root scans only).
 **Files rewritten:** `analysis/{overparam,batchsize,kappa,microbatch,paramfrac}_analysis.ipynb`. Builders (gitignored, re-runnable): `agent_lab/wp4a/build_*.py`, `nbbuild.py`, `orig/`.
 **Shared helpers: untouched** — no genuine bug found. `make_plots.sh`: **no change needed**, all five are already in `STUDIES`.
 

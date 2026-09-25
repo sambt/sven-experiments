@@ -1,7 +1,7 @@
 **WP3 spectra-figures — fixer report**
 
 ## Files changed
-`/n/home11/sambt/iaifi/sv3/analysis/spectra_figs.py` (927→1203 l), `/n/home11/sambt/iaifi/sv3/analysis/spectra_analysis.ipynb` (42→43 cells), `/n/home11/sambt/iaifi/sv3/analysis/comparisons.ipynb` (22→23 cells), `/n/home11/sambt/iaifi/sv3/tests/test_spectra_figs.py` (456→659 l, 23→32 tests). `analysis/sv_diagnostics.py` **not touched** in this round (the implementer's noise-floor fix stands; it is still the one shared-helper fix to list). Backups: `/n/home11/sambt/sv3_wp3_scratch/fixB/*.ipynb.bak`. No results written.
+`/n/home/anon/sven-experiments/analysis/spectra_figs.py` (927→1203 l), `/n/home/anon/sven-experiments/analysis/spectra_analysis.ipynb` (42→43 cells), `/n/home/anon/sven-experiments/analysis/comparisons.ipynb` (22→23 cells), `/n/home/anon/sven-experiments/tests/test_spectra_figs.py` (456→659 l, 23→32 tests). `analysis/sv_diagnostics.py` **not touched** in this round (the implementer's noise-floor fix stands; it is still the one shared-helper fix to list). Backups: `/n/home/anon/sv3_wp3_scratch/fixB/*.ipynb.bak`. No results written.
 
 | notebook | code cells | error cells | runtime |
 |---|---|---|---|

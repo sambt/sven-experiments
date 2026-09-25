@@ -2,76 +2,76 @@
  "findings": [
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "Fig 5 (main text, R1 Q2) omits the confound EXPERIMENTS.md \u00a73.3 explicitly flags, and the computed framing states the collapse causally. Recomputed from experiment_results/rebuttal_fig5_cifar_paramfrac_scan/*.jsonl: all 15 runs share ONE configuration \u2014 k=64, lr=1.0, rtol=1e-3, loss=label_regression \u2014 with no per-fraction re-tuning. EXPERIMENTS.md line 356-358 says of exactly this scan: \"this set point is the pre-Gram classic best and is still flagged SET POINT, STILL TENTATIVE ... It was NOT re-derived from the BN-fixed headline scan before launch, whose Sven optimum is k = 128, lr = 0.5, rtol = 1e-3\", and line 350 attributes both blow-ups to \"the scan's single lr = 1.0\". My own recount of the headline label-reg scan confirms the confound: ALL 5 Sven divergences there are at lr=1.0 (k=64: 3/5 seeds, k=128: 2/5), and the Fig-5 f=1 runs (val 0.450/0.700/0.854, mean 0.668 \u00b1 0.204) are the same volatile cell as the main scan's k=64/lr=1.0/rtol=1e-3 (0.46-0.95), versus the selected config's 0.4803 \u00b1 0.013. Cell 27 nonetheless prints \"At f <= 0.25 the run does not train at all ... with 2 diverged run(s)\", attributing to f a collapse that a fixed, untuned, divergence-prone lr can produce on its own. Neither the Fig-5 markdown (cell 22) nor the facts print (cell 23, which prints k/lr/B/epochs/capture but not `loss`) nor the framing says the lr was never re-tuned per fraction or that this is not the headline-selected configuration.",
    "suggested_fix": "In cell 22/27 add a computed line: print the single (k, lr, rtol) actually run, state that it is the pre-Gram tentative set point rather than the headline optimum (k=128, lr=0.5), that lr was NOT re-tuned per fraction, and that the two blow-ups are at the scan's only lr=1.0 \u2014 so the low-f collapse bounds \"this config at this lr\", not \"masking at fraction f\". Cite EXPERIMENTS.md \u00a73.3."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/gpt2_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/gpt2_analysis.ipynb",
    "issue": "Cell 0 (header markdown) claims \"29 runs, ~122 GPU-h \u2014 a third of the campaign's GPU-hours in 0.1% of its runs\". Recomputed by summing losses.total_time over every .jsonl in experiment_results/ (full census, 24,846 records): the 29 GPT-2 runs are 124.2 GPU-h of 1,539.5 GPU-h total = 8.1%, not a third \u2014 wrong by ~4x. mnist_scan_ce alone is 325.7 GPU-h and mnist_scan_labelRegression 229.8 GPU-h, either of which exceeds the GPT-2 total. The paired claim \"0.1% of its runs\" is correct (29/24,846 = 0.12%), and the header figure itself is slightly low (124.2, not ~122). Hard-coded in prose, so it will not self-correct.",
    "suggested_fix": "Either drop the GPU-hour share sentence or compute it: the notebook already loads only its own scan, so quote \"124 GPU-h for 29 runs (~4.3 GPU-h per run, the most expensive runs in the campaign)\" and leave the campaign-share claim out unless it is computed from the root."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "Section-2 markdown (cell 8) states \"Both panels draw the same runs the tables above report \u2014 the selected configuration in {scan}_confirm ... so a curve cannot drift away from its table\". Cell 10 (the vs-time panels) draws RUNS_TIME = selected_runs_by_method(scan,'timing'), and the timing pass uses the TUNING seeds, not the confirmation seeds: recomputed model_seed sets are {4000..4004} in cifar10_resnet_ce_scan_timing vs {4100..4104} in _confirm. The two panels therefore describe different runs, and the numbers differ: timing-pass Sven mean final val = 1.3995, confirmation = 1.4239 (the table's headline), tuning scan = 1.4028. Neither the figure title (\"standalone timing pass, synchronised training time\") nor the legend (\"(5 seeds)\") says which seeds. Same wording in nanogpt_analysis cell 6 (timing seeds 5000-5004 vs confirm 5100-5104). Aside: the task asks for val/test loss AND accuracy vs synchronised time; cell 10 draws only 'val' and 'test_acc' (no test loss, no val accuracy).",
    "suggested_fix": "Reword cell 8 so the claim is scoped to the per-epoch panels, and label the time-axis figure as the standalone pass on the TUNING seeds (print the seed set, or have plot_curves put n_seeds and the seed range in the legend). Same one-line fix in nanogpt_analysis cell 6."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/large_figs.py",
+   "file": "/n/home/anon/sven-experiments/analysis/large_figs.py",
    "line": 479,
    "issue": "plot_sven_landscape marks a cell as provisional from `eligible`, not from `finished < attempted`, so a 3-of-5-seed cell is drawn exactly like a complete 5-seed one \u2014 which is the case that actually occurs. The docstring promises the opposite (\"showing it unmarked would let a 2-seed mean be read as a 5-seed one\") and cifar_analysis cell 15 tells the reader \"cells that exist but have not finished more than half their seeds are drawn dashed and marked * \u2014 on the cross-entropy scan those are extension cells still landing\". Recomputed on cifar10_resnet_ce_scan: the rtol extension is 9 cells, EVERY one of them partial (3 of 5 seeds now, 2-3 at execution), yet only 2 carry `*` in plots_v2/cifar/cifar10_resnet_ce_scan_sven_landscape.png; the other 7 (1.52, 1.40, 1.44, 1.36, 1.44, 1.39, 1.72) are unmarked. The unmarked 3-seed cell at lr=0.1/rtol=0.1 reads 1.36 and beats the red-ringed selection of record (1.40) \u2014 exactly the comparison a reader will draw off the figure. tests/test_large_figs.py::test_landscape_draws_the_provisional_cell only fixtures a 1-of-3 (ineligible) cell, so the real case is untested.",
    "suggested_fix": "Set prov from `finished < attempted` (or annotate the seed count in the cell, e.g. \"1.36 (3/5)\") and keep `eligible` for the dashed edge; add a fixture cell with 3 of 5 seeds to the test."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "The CIFAR-CE robustness bullet in the computed framing (cell 27) prints \"Sven diverged on 0 of 195 runs of its own grid here\" using GRID['attempted'].sum(). 195 = 175 records + 20 runs that have never started: recomputed, cifar10_resnet_ce_scan holds 177 Sven records today (175 at execution) and 0 are diverged under the wide rule, while cell 16 of the same notebook prints \"20 run(s) of this grid have no record yet\". The denominator therefore counts 20 non-existent runs as clean, inflating the robustness claim by ~11%, and it will keep moving as the extension lands. EXPERIMENTS.md \u00a77 quotes the CIFAR-CE divergence row on its on-grid records (\"740 on-grid runs\") for exactly this reason. The label-regression bullet (\"5 of 90\") is correct \u2014 that grid has no missing runs, and I confirmed the 5 are k=64/lr=1.0/rtol=1e-4 (3) and k=128/lr=1.0/rtol=1e-4 (2).",
    "suggested_fix": "Use finished + n_diverged + n_failed (records that exist) as the denominator, and print n_missing beside it: \"0 of 175 runs recorded (20 of the 195 intended not yet started)\"."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "Cell 18 markdown asserts \"the tuning-budget table finds every Sven grid point on CIFAR a distinct trajectory: no two grid points collapse onto the same run\", and cell 21 then prints CIFAR-CE Sven grid_points 39, distinct 35, distinct_frac 0.8974 \u2014 the notebook contradicts its own output three cells later (label-reg is 18/18 = 1.00, so only the CE row moved). Worse, the printed 0.897 is itself an artefact, not a collapse: I checked every pair of Sven configurations on every seed for a bit-identical losses.val curve and found NONE, so no two grid points share a trajectory. budget.trajectory_table computes distinct = mean over (seed, lr) groups x n_lr, which is diluted by the ragged extension (9 cells that exist for only 3 of 5 seeds and 3 of 5 lrs); the number will return toward 1.00 when the extension completes. Left as is, the notebook both states a falsehood about its own table and passes a ragged-grid artefact through as a tuning-budget fact.",
    "suggested_fix": "Either recompute the claim from the printed table (and say \"all but the ragged extension cells\") or add one line noting that CIFAR-CE's distinct_frac < 1 is a ragged-grid artefact of trajectory_table's (seed, lr) grouping while the extension is partial, with the raw check that no two Sven trajectories coincide. Do not change budget.py (frozen)."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/large_figs.py",
+   "file": "/n/home/anon/sven-experiments/analysis/large_figs.py",
    "line": 730,
    "issue": "plot_paramfrac_cost overlays the profile_results_v2 param_fraction study on the same axes and units as the records, and for the step-time panel the two say OPPOSITE things with nothing on the figure to say so. Recomputed from profile_helpers.load_profiles(): v2 gives masked 530.5/534.2/571.0/626.2 ms at f=0.05..0.5 and unmasked 845.7 ms at f=1 \u2014 masking looks 1.4x FASTER; the records give masked 342.1..389.1 ms and unmasked 178.3 ms \u2014 masking is 1.9-2.2x SLOWER. plots_v2/cifar/fig5_paramfrac_cost.png shows the dashed profile curve rising to a single orange point at 846 ms directly above the record curve's dip to 178 ms, with only a legend entry (\"profile, mask=...\"). The empty_cache explanation exists only in cell 25's printed text, so the figure alone \u2014 which is the object that goes into the rebuttal \u2014 reverses Fig 5's cost conclusion. (The memory panel is fine: profile 11829/12121/12993/14447/22978 MB vs records 11816/12107/12979/14433/22965 MB, which is why the overlay is invisible there.)",
    "suggested_fix": "Until v3 lands, either drop the v2 step-time overlay (keep the memory one) or draw it greyed with an on-axes annotation \"profile v2: empty_cache on every step, not comparable\"; gate it on profile_helpers.results_root() being v3."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "Neither Fig-5 figure carries the run counts or the objective. EXPERIMENTS.md line 353-355 states the requirement directly: \"a Fig-5 point at pf <= 0.1 therefore rests on 2 surviving seeds of 3, which any seed band on that figure must show as finished / attempted\". plots_v2/cifar/fig5_paramfrac_quality.png draws the f=0.05 and f=0.1 points as ordinary error bars with no marker of the reduced n (recomputed: 2 of 3 finished at both, 1 diverged each), the counts appearing only in the table printed below the figure. And in a notebook that reports two objectives side by side, no Fig-5 cell states which one this is: recomputed loss field = label_regression for all 15 runs, yet the section shows val 0.668 two cells after the CE table shows 1.424, inviting a direct comparison of a label-regression loss with a cross-entropy one.",
    "suggested_fix": "Annotate the two left points with \"2/3\" (or open markers) in plot_paramfrac_quality, and put the objective plus the configuration in the Fig-5 titles/suptitle, computed from the frame (e.g. \"CIFAR-10 / ResNet18, Sven, label regression, k=64, lr=1.0, rtol=1e-3, 3 seeds\")."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/large_figs.py",
+   "file": "/n/home/anon/sven-experiments/analysis/large_figs.py",
    "line": 197,
    "issue": "curve_axis double-prepends t=0 on a time axis for any key in large_figs.PRE_TRAINING_CURVES but not in scan_analysis.PRE_TRAINING_CURVES \u2014 i.e. 'train_eval_acc'. scan_analysis._has_pre_training already detects the pre-training entry by length (len(curve) == n_epochs + 1), so epoch_axis has ALREADY prepended the zero; the extra branch prepends a second one and the trailing truncation x[:len(curve)] then drops the last time. Reproduced on the real CIFAR-CE timing rows: curve_axis(..., 'val', 'time') -> [0, 62.879, 125.015, ...] ending 1244.38 (correct), while curve_axis(..., 'train_eval_acc', 'time') -> [0, 0, 62.879, 125.015, ...] ending 1182.24 \u2014 the whole curve is shifted one epoch late and its final point is plotted 62 s early. The branch is unreachable-useful for versus='epoch' (it recomputes the same arange) and wrong only for versus='time'. No figure in the three notebooks hits it today (train_eval_acc is drawn only vs epoch), so nothing published is wrong \u2014 but plot_curves accepts any key and the next cell that asks for it gets a silently mis-shifted axis.",
    "suggested_fix": "Delete the branch at lines 192-198 (epoch_axis's length check covers it), or guard it with `if not sa._has_pre_training(rows, curve, 'train')`. Add a test that curve_axis for 'train_eval_acc' vs 'time' equals curve_axis for 'val' vs 'time'."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/gpt2_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/gpt2_analysis.ipynb",
    "issue": "The computed framing (cell 12) quotes \"best baseline Muon at 3.741\" without carrying over what its own cell-8 table found: Muon's and SOAP's optima are on the HIGH edge of their lr sweeps (Muon best lr 0.003 = max tried, SOAP the same; recomputed, both confirmed). The comparison is therefore conservative in Sven's favour \u2014 two baselines may not have been tuned out \u2014 and the gap the paper quotes (+39%) is a lower bound. The direction is safe, but the caveat is the mirror image of the k=B=16 caveat the framing does state, and it is one line away in the same notebook.",
    "suggested_fix": "Add a computed clause to the framing bullet: name the methods whose best lr is at an edge of their sweep, so the +39% is stated as a lower bound."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "The BatchNorm gate (cell 3) asserts bn_mode == 'batch' on the two tuning scans only (600 + 765 records), but every headline number in the notebook comes from _confirm, and the cost table from _timing, and the rank plot from _diag \u2014 none of which the gate covers. The header markdown states the policy as universal (\"Every optimizer on both scans ran with bn_mode: batch\"), which is why the assertion exists rather than a sentence. I verified the claim holds \u2014 all 6 result-dependent passes are {'batch': 55} each, 330 records \u2014 so this is scope, not a wrong number.",
    "suggested_fix": "Extend the loop over the four passes per scan (the freshness cell already enumerates them) so the assertion covers the records the tables are built from."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb",
    "issue": "Cell 16's CIFAR-CE grid table is introduced as \"the grid the selection was made on, as the scan itself sees it (eligible -> fewest diverged -> seed mean)\", and the row marked selected=True is fourth, below three extension cells (1.354, 1.356, 1.390 vs the selection's 1.403). Nothing in that cell says why: the scan's own current ordering has diverged from the frozen selection of record (bench/best_configs.json, generated_at 2026-09-20T03:58, pre-extension). Only the PROVISIONAL banner 13 cells earlier covers it, and a reader who lands on the table sees what looks like a selection-rule violation.",
    "suggested_fix": "One computed line under the table: if the top eligible row is not the selected row, print \"the scan's current best (<cfg>, <n> seeds) is not the selection of record (generated_at ...) \u2014 see the PROVISIONAL banner; re-run tools/select_best.py\"."
   }

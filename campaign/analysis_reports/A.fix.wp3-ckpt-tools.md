@@ -1,7 +1,7 @@
 **WP3 tool half — fixer report**
 
 ## Files (all WP3-owned, still untracked; nothing else edited, results untouched)
-`/n/home11/sambt/iaifi/sv3/analysis/ckpt_tools.py` (960→1068 l), `/n/home11/sambt/iaifi/sv3/tools/compute_ckpt_spectra.py` (260→309 l), `/n/home11/sambt/iaifi/sv3/tests/test_ckpt_tools.py` (28→36 tests). Cache `analysis/ckpt_spectra/` unchanged (64 npz, 54 MB — verified byte-age and value-identical, see below).
+`/n/home/anon/sven-experiments/analysis/ckpt_tools.py` (960→1068 l), `/n/home/anon/sven-experiments/tools/compute_ckpt_spectra.py` (260→309 l), `/n/home/anon/sven-experiments/tests/test_ckpt_tools.py` (28→36 tests). Cache `analysis/ckpt_spectra/` unchanged (64 npz, 54 MB — verified byte-age and value-identical, see below).
 
 ## All 7 findings reproduced; all fixed
 1. **Dataset cache (high) — real.** Reproduced: `toy_1d_scan_confirm` data_seed 1000/1001/1002 all returned `id=22376819597936`, `split_seed=1000`, `train[0]=(-0.584906,-0.207050)`. Fix: cache key + `resolved_config`'s guard now use `_resolved_subtree()` = `OmegaConf.to_container(resolve=True)`; `Run.dataset` also checks `split_seed` against the record. After: `(-0.584906,-0.207050)/(0.543525,0.329180)/(0.362286,1.345471)`, distinct objects, `verify_checkpoint` rel 6.7e-06/8.9e-06/3.6e-06 (abs ≤ 6.1e-11). **Sweep over all 43 scan dirs × 12 sampled runs: 0 failures** (was 8/12 in two confirm scans, hard error in the 3 overparam scans); all four `n_data` arms of both overparam scans rebuild with the right `n_train`.
@@ -17,4 +17,4 @@
 ## State
 `tests/` green on a CPU job: **1033 passed, 33 skipped** (119 s); `tests/test_ckpt_tools.py` 36 passed.
 
-**Other WPs / orchestrator:** cache API unchanged (`load_spectra`), no regeneration needed; quote the corrected §2/§7 numbers above; `analysis/sv_diagnostics.py` and `comparisons.ipynb` (phase B) are untouched. Heads-up: the shared scratchpad `/tmp/.../scratchpad/` contains another agent's `sven.py`, which shadows the real package for any script run from there — my scripts live in `/n/home11/sambt/sv3_wp3_scratch/fix/`.
+**Other WPs / orchestrator:** cache API unchanged (`load_spectra`), no regeneration needed; quote the corrected §2/§7 numbers above; `analysis/sv_diagnostics.py` and `comparisons.ipynb` (phase B) are untouched. Heads-up: the shared scratchpad `/tmp/.../scratchpad/` contains another agent's `sven.py`, which shadows the real package for any script run from there — my scripts live in `/n/home/anon/sv3_wp3_scratch/fix/`.

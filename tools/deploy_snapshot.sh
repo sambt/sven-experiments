@@ -1,5 +1,5 @@
 #!/bin/bash
-# Freeze BOTH repos at HEAD into a content-addressed snapshot on holystore, so that
+# Freeze BOTH repos at HEAD into a content-addressed snapshot on labstore, so that
 # campaign jobs never import from the live working tree (~10 agents edit it while jobs
 # run; CONTRACTS.md "Stage 1 contracts / Execution").
 #
@@ -23,8 +23,8 @@
 set -u
 set -o pipefail
 
-REPO=/n/home11/sambt/iaifi/sv3
-BASE=/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy
+REPO=/n/home/anon/sven-experiments
+BASE=/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy
 RESULTS_ROOT=""
 ALLOW_DIRTY=0
 FORCE=0

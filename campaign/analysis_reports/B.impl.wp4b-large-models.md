@@ -1,6 +1,6 @@
 All three notebooks execute clean and every headline number reproduces from the raw JSONL. Final report:
 
-**Files created:** `/n/home11/sambt/iaifi/sv3/analysis/large_figs.py` (~760 l), `/n/home11/sambt/iaifi/sv3/tests/test_large_figs.py` (30 tests), `/n/home11/sambt/iaifi/sv3/analysis/gpt2_analysis.ipynb`. **Rewritten:** `/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb`, `/n/home11/sambt/iaifi/sv3/analysis/nanogpt_analysis.ipynb`. Builders (gitignored scratch): `agent_lab/wp4b/build_{cifar,nanogpt,gpt2}.py`, `nbreport.py`. **No shared helper and no `make_plots.sh` touched** (`git diff HEAD` on style/analysis_helpers/scan_analysis/headline/paired/budget/ckpt_tools/make_plots.sh is empty); nothing written into `analysis/tables/`.
+**Files created:** `/n/home/anon/sven-experiments/analysis/large_figs.py` (~760 l), `/n/home/anon/sven-experiments/tests/test_large_figs.py` (30 tests), `/n/home/anon/sven-experiments/analysis/gpt2_analysis.ipynb`. **Rewritten:** `/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb`, `/n/home/anon/sven-experiments/analysis/nanogpt_analysis.ipynb`. Builders (gitignored scratch): `agent_lab/wp4b/build_{cifar,nanogpt,gpt2}.py`, `nbreport.py`. **No shared helper and no `make_plots.sh` touched** (`git diff HEAD` on style/analysis_helpers/scan_analysis/headline/paired/budget/ckpt_tools/make_plots.sh is empty); nothing written into `analysis/tables/`.
 
 | notebook | cells (code) | errors | runtime | figures (PDF+PNG) |
 |---|---|---|---|---|

@@ -1,11 +1,11 @@
 #!/bin/bash
 # Freeze BOTH repos at HEAD into the probe snapshot, then copy the probe scripts in.
 # ~10 agents are editing the working tree while the probe jobs run, so the jobs must not
-# import anything from /n/home11/sambt/iaifi/sv3 -- probe_run.py enforces that at runtime.
+# import anything from /n/home/anon/sven-experiments -- probe_run.py enforces that at runtime.
 #   bash bench/probe_campaign/make_snapshot.sh
 set -euo pipefail
-SV3=/n/home11/sambt/iaifi/sv3
-SCRATCH=/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch
+SV3=/n/home/anon/sven-experiments
+SCRATCH=/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch
 SNAP=$SCRATCH/probe_snapshot
 RESULTS=$SCRATCH/probe_results
 

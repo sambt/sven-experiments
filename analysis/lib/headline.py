@@ -138,7 +138,7 @@ TARGET_NAMES = {2.0: 'easy (2x median)', 1.0: 'median method', 0.5: 'hard (0.5x 
 
 #: where `bench/submit_timing_phase5.sh` puts the timing jobs' logs, which carry the
 #: `bench/calibrate_step.py` lines a step-time claim has to be checked against
-TIMING_LOG_DIR = Path('/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/'
+TIMING_LOG_DIR = Path('/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/'
                       'logs/phase5')
 
 

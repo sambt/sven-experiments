@@ -1,8 +1,8 @@
 **WP3 figure half — final report**
 
 ## Files
-**New:** `/n/home11/sambt/iaifi/sv3/analysis/spectra_figs.py` (927 l), `/n/home11/sambt/iaifi/sv3/analysis/spectra_analysis.ipynb` (42 cells / 25 code), `/n/home11/sambt/iaifi/sv3/tests/test_spectra_figs.py` (456 l, 31 tests).
-**Changed:** `/n/home11/sambt/iaifi/sv3/analysis/comparisons.ipynb` (regenerated, 22 cells / 11 code; old version at `/tmp/claude-66176/.../scratchpad/wp3/comparisons.ipynb.bak`), `/n/home11/sambt/iaifi/sv3/analysis/sv_diagnostics.py` (+78/−10).
+**New:** `/n/home/anon/sven-experiments/analysis/spectra_figs.py` (927 l), `/n/home/anon/sven-experiments/analysis/spectra_analysis.ipynb` (42 cells / 25 code), `/n/home/anon/sven-experiments/tests/test_spectra_figs.py` (456 l, 31 tests).
+**Changed:** `/n/home/anon/sven-experiments/analysis/comparisons.ipynb` (regenerated, 22 cells / 11 code; old version at `/tmp/claude-66176/.../scratchpad/wp3/comparisons.ipynb.bak`), `/n/home/anon/sven-experiments/analysis/sv_diagnostics.py` (+78/−10).
 **Cache extended (git-ignored):** `analysis/ckpt_spectra/mnist_scan_ce_diag/` — 20 new npz (Sven/Adam/MuonW/HIG × 5 seeds, 35 ckpts, 512-row probe), one 40-min CPU job, verify_rel_error ≤ 2e-8. Results roots untouched (only `_cache/`).
 
 ## Shared-helper fix (the one I made; must be listed)

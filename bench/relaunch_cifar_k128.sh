@@ -2,7 +2,7 @@
 # Relaunch the unfinished CIFAR k=128 Sven runs alone on a GPU (NPROC=1) with
 # capture "full" (single jacrev over all parameters), as set in the CIFAR configs.
 # Usage: bench/relaunch_cifar_k128.sh [lrs...]      (DRY=1 to print only)
-set -u; set -f; cd /n/home11/sambt/iaifi/sv3
+set -u; set -f; cd /n/home/anon/sven-experiments
 LRS=${@:-0.1 0.5 1.0}; n=0
 for c in cifar10_resnet_scan_labelRegression cifar10_resnet_ce_scan; do
   for s in 4000 4001 4002 4003 4004; do for lr in $LRS; do

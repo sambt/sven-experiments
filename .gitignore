@@ -5,7 +5,7 @@ slurm_logs/
 outputs/
 **/.DS_STORE
 
-# Experiment outputs (live on holystore; experiment_results is a symlink there)
+# Experiment outputs (live on labstore; experiment_results is a symlink there)
 experiment_results
 experiment_results/
 experiment_results_jax/

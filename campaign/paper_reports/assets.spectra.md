@@ -3,8 +3,8 @@ Everything verified. Writing the report.
 **TASK "assets-spectra" — complete.** Resumed prior partial work, refreshed against the now-final inputs, fixed a build-breaking macro clash, polished every figure, added one missing asset.
 
 ## Files changed
-- `/n/home11/sambt/iaifi/sv3/analysis/paper_assets/spectra.py` (1631 → 1764 l) — F2, F9, T8, T9, G4.
-- `/n/home11/sambt/iaifi/sv3/tests/test_paper_assets_spectra.py` — +3 tests (38 total; **37 passed, 1 skipped**).
+- `/n/home/anon/sven-experiments/analysis/paper_assets/spectra.py` (1631 → 1764 l) — F2, F9, T8, T9, G4.
+- `/n/home/anon/sven-experiments/tests/test_paper_assets_spectra.py` — +3 tests (38 total; **37 passed, 1 skipped**).
 - Written into `iclr_manuscript/` (no tex edited): `figures_iclr/spectra/*.pdf` (13), `tables_v2/spectra_{mechanism,mechanism_main,probe_energy,low4,probe_widths}.tex`, `numbers_v2_spectra.tex` (**149 macros, 0 provisional**), `numbers_v2.tex` (index regenerated).
 - Eyeball PNGs: `agent_lab/paper_assets/spectra/*.png`; provenance sidecars: `agent_lab/paper_assets/provenance/**` (one per generated file, outside the Overleaf repo); LaTeX harness `agent_lab/paper_assets/scratch/spectra_texcheck/check.tex`.
 

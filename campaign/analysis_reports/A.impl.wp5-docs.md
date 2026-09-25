@@ -1,7 +1,7 @@
 **Files changed** (owned by WP5; nothing committed, no result directory touched):
-- `/n/home11/sambt/iaifi/sv3/EXPERIMENTS.md` — full rewrite, 730 lines, 12 sections
-- `/n/home11/sambt/iaifi/sv3/README.md` — rewrite, 178 lines
-- `/n/home11/sambt/iaifi/sv3/analysis/RERUNS_NEEDED.md` — appended the campaign launch log (+81 lines); items 0–7/10 marked historical, item 8 marked done
+- `/n/home/anon/sven-experiments/EXPERIMENTS.md` — full rewrite, 730 lines, 12 sections
+- `/n/home/anon/sven-experiments/README.md` — rewrite, 178 lines
+- `/n/home/anon/sven-experiments/analysis/RERUNS_NEEDED.md` — appended the campaign launch log (+81 lines); items 0–7/10 marked historical, item 8 marked done
 - No repo-root `CLAUDE.md` exists (`ls CLAUDE.md` → no such file); per the task I did **not** create one.
 
 **Verified by running**

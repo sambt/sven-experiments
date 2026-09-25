@@ -17,7 +17,7 @@ import json
 import os
 import statistics as st
 
-DEFAULT_RESULTS = "/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/probe_results"
+DEFAULT_RESULTS = "/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/probe_results"
 MB = 1e6
 
 
@@ -149,7 +149,7 @@ def section_env(recs: list[dict], results: str) -> str:
     jobs = sorted({str(r.get("slurm_job_id")) for r in recs})
     out.append(f"hosts {hosts}  slurm jobs {jobs}")
     bad = [r.get("tag") for r in recs
-           if not str(g(r, "provenance", "sven", default="")).startswith("/n/holystore01")]
+           if not str(g(r, "provenance", "sven", default="")).startswith("/n/labstore01")]
     out.append("snapshot provenance: OK for every measurement" if not bad
                else f"snapshot provenance VIOLATED for {sorted(set(bad))}")
     return "\n".join("  " + ln for ln in "\n".join(out).splitlines())

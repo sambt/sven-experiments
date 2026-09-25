@@ -1,6 +1,6 @@
 All eight findings verified against the raw records and files; all eight were real and are fixed. Nothing committed; no shared helper, `make_plots.sh` or `analysis/tables/` entry touched (`git diff HEAD` on all of them is empty — the `tables/` and `corrections.csv` changes in the tree are other WPs').
 
-**Files changed (WP4b-owned only):** `/n/home11/sambt/iaifi/sv3/analysis/large_figs.py`, `/n/home11/sambt/iaifi/sv3/tests/test_large_figs.py` (30 → 40 tests), `/n/home11/sambt/iaifi/sv3/analysis/cifar_analysis.ipynb`, `/n/home11/sambt/iaifi/sv3/analysis/nanogpt_analysis.ipynb`, `/n/home11/sambt/iaifi/sv3/analysis/gpt2_analysis.ipynb`.
+**Files changed (WP4b-owned only):** `/n/home/anon/sven-experiments/analysis/large_figs.py`, `/n/home/anon/sven-experiments/tests/test_large_figs.py` (30 → 40 tests), `/n/home/anon/sven-experiments/analysis/cifar_analysis.ipynb`, `/n/home/anon/sven-experiments/analysis/nanogpt_analysis.ipynb`, `/n/home/anon/sven-experiments/analysis/gpt2_analysis.ipynb`.
 
 | notebook | cells (code) | error cells | runtime |
 |---|---|---|---|

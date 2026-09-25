@@ -1,6 +1,6 @@
 **TRACK analysis-core — fixer pass**
 
-**Files changed** (all under `/n/home11/sambt/iaifi/sv3/`): `analysis/style.py` (+`expected_runs`), `analysis/scan_analysis.py`, `analysis/sv_diagnostics.py` (+`spectrum_floor`), `analysis/analysis_helpers.py`, `tests/test_analysis_core.py` (3 new tests, 2 fixtures corrected).
+**Files changed** (all under `/n/home/anon/sven-experiments/`): `analysis/style.py` (+`expected_runs`), `analysis/scan_analysis.py`, `analysis/sv_diagnostics.py` (+`spectrum_floor`), `analysis/analysis_helpers.py`, `tests/test_analysis_core.py` (3 new tests, 2 fixtures corrected).
 
 **Findings — all five real; fixed.**
 1. `_rank_ticks` caption (CONFIRMED, repro: legacy record k=8,B=8,width=3 → ticks `W/4…` while x=0.25 is k/4, data max 2/7). Fix: `_rank_ticks(ax, denom, B, full=True)`, `cap='B' if denom==B else ('W' if full else 'k')`; `plot_sv_spectra` passes the denominator actually used (`spectra.shape[1] if full else k`, `full = width >= k`). `plot_sv_utr` unchanged (always width).
@@ -10,7 +10,7 @@
 5. Missing configs only on `.attrs` — mechanism partly wrong (measured: pandas 3.0.5 here propagates `.attrs` through filter/head/sort/copy/groupby.head; only `merge` drops it), substance right (no notebook reads it, a file-less config has no row). `config_table` now prints one `[config_table] N configuration(s) with no result file at all (M runs): […]` line, mirroring `load_scan`.
 
 **Acceptance tests / observed summaries.** Local `.venv/bin/python -m pytest tests/test_analysis_core.py -q` → `22 passed, 2 skipped in 4.13s`. Via `campaign/run_cpu_tests.sh env SV3_CHECK_REAL_SCANS=1 …` → **`24 passed in 4.47s`** (both real-scan grouping params included). `pytest tests/test_analysis_core.py tests/test_analysis_offline.py -q` → `55 passed, 7 skipped`. New/extended asserts: `coarse_group_keeps_the_seed_rule_and_sums_the_manifest` (10 runs over 2 n_train, 4 finished: attempted 5, n_missing 0, eligible, `best_sven()` not None; with a manifest 8/10/2 and `summary_table` (10, 2)); `legacy_truncated_rank_ticks_are_in_units_of_k` (ticks `$k/4$…`, x max 2/3, ylim (1e-4,2); k=B still `B/4`); `full_width_spectrum_default_floor_shows_the_tail` (float32+rtol+k lines with no `floor=`, ylim < 1e-9, data min 1e-9 unclipped, `B/4` vs `W/4` for width<B, explicit floor still wins); manifest test asserts the printed line; axes tests add drop-last (205→200) and small-N (n_train=100, B=64 → 1 step, 64 examples).
-**Evidence sweep** (`campaign/run_cpu_tests.sh`, 10 real dirs incl. finetune/kappa/microbatch/paramfrac/critbatch): `rows checked 661, of which coarser than the seed count: 116` → `MISMATCHES: none` (attempted == seed count, eligibility == legacy rule, no negative n_missing). Script kept outside the repo: `/n/home11/sambt/tmp_analysis_core_fix/sweep_real.py`.
+**Evidence sweep** (`campaign/run_cpu_tests.sh`, 10 real dirs incl. finetune/kappa/microbatch/paramfrac/critbatch): `rows checked 661, of which coarser than the seed count: 116` → `MISMATCHES: none` (attempted == seed count, eligibility == legacy rule, no negative n_missing). Script kept outside the repo: `/n/home/anon/tmp_analysis_core_fix/sweep_real.py`.
 
 **Deviations from CONTRACTS.md:** none; the impl report's deviation (b) is retracted — the seed rule is restored when there is no manifest.
 

@@ -33,7 +33,7 @@ changes below touch both. Work on a feature branch in each; record both SHAs in 
 2. Run the ten-second overlap check on the FineWeb token files (section C-D2).
 3. Establish the compute facts this plan only estimates: partitions, per-user GPU cap, time
    limit, GPU types (`sinfo`, `sacctmgr show assoc user=$USER`). The launchers assume
-   `iaifi_gpu_priority,iaifi_gpu,gpu`, 12 h, and a cap of 8 concurrent single-GPU jobs.
+   `lab_gpu_priority,lab_gpu,gpu`, 12 h, and a cap of 8 concurrent single-GPU jobs.
 4. Never delete results. Superseded files are moved aside (section 4.1).
 
 ## 1. Decisions already made (binding — do not reopen)
@@ -368,7 +368,7 @@ the capture, independent of k; O(kN|D|) describes only the classic randomized pa
 
 ### 4.1 Results layout
 
-On the cluster `experiment_results` is a symlink to holystore, and the path is hard-coded
+On the cluster `experiment_results` is a symlink to labstore, and the path is hard-coded
 (`generic_scan.py:347`; `RESULTS_ROOT` in the analysis modules). Once the in-flight jobs have
 drained or been cancelled: rename the existing directory to
 `experiment_results_legacy_2026-09-18/` (read-only from then on) and start an empty

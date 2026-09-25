@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=iaifi_gpu_priority,iaifi_gpu,gpu
+#SBATCH --partition=lab_gpu_priority,lab_gpu,gpu
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -17,7 +17,7 @@
 # Example: NPROC=8 sbatch submit_rebuttal_parallel.sh experiments/configs/rebuttal_baselines_toy_1d_scan.yaml
 #          NPROC=4 sbatch submit_rebuttal_parallel.sh experiments/configs/rebuttal_overparam_mnist_scan.yaml n_data=5000
 set -u
-REPO=/n/home11/sambt/iaifi/sv3
+REPO=/n/home/anon/sven-experiments
 PY=$REPO/.venv/bin/python
 cd "$REPO"
 # One thread per shard: the cluster already exports OMP_NUM_THREADS=1, but be

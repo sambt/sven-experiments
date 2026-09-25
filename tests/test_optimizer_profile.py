@@ -113,8 +113,8 @@ def test_a_relative_root_does_not_follow_the_process_into_the_snapshot(tmp_path)
     here = os.getcwd()
     try:
         os.chdir(snap)
-        assert op.output_root({}, base='/n/home11/sambt/iaifi/sv3', env={}) == \
-            '/n/home11/sambt/iaifi/sv3/profile_results_v3'
+        assert op.output_root({}, base='/n/home/anon/sven-experiments', env={}) == \
+            '/n/home/anon/sven-experiments/profile_results_v3'
         # and with no base at all it is at least absolute, never a bare relative path
         assert os.path.isabs(op.output_root({}, env={}))
     finally:

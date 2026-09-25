@@ -6,7 +6,7 @@
 #        EXCLUSIVE=1 ...   -> sbatch --exclusive: whole node, so no co-tenant job (ours or
 #                             anyone's) can slow a launch-bound run; use for the final timing pass.
 set -u; set -f
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 JSON=bench/best_configs.json
 for scan in "$@"; do
   cfg=experiments/configs/${scan}_timing.yaml

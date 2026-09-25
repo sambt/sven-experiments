@@ -1,6 +1,6 @@
 VERDICT: GO
 
-**Independently reproduced** (own scripts under `/tmp/claude-66176/.../scratchpad/audit/`, copies in `/n/home11/sambt/tmp/claude_audit_30b30b16/`; torch work via `run_cpu_tests.sh`).
+**Independently reproduced** (own scripts under `/tmp/claude-66176/.../scratchpad/audit/`, copies in `/n/home/anon/tmp/claude_audit_30b30b16/`; torch work via `run_cpu_tests.sh`).
 
 | check | my result |
 |---|---|

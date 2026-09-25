@@ -1,6 +1,6 @@
 All seven findings verified against the files and the raw records; all seven were real and are fixed.
 
-**Files changed** (only WP2-owned): `/n/home11/sambt/iaifi/sv3/analysis/headline.py`, `/n/home11/sambt/iaifi/sv3/analysis/headline_tables.ipynb` (28 cells, re-executed in place), `/n/home11/sambt/iaifi/sv3/tests/test_headline.py` (20 → 27 tests), regenerated `/n/home11/sambt/iaifi/sv3/analysis/tables/` (140 files, + new `freshness.md/.tex`).
+**Files changed** (only WP2-owned): `/n/home/anon/sven-experiments/analysis/headline.py`, `/n/home/anon/sven-experiments/analysis/headline_tables.ipynb` (28 cells, re-executed in place), `/n/home/anon/sven-experiments/tests/test_headline.py` (20 → 27 tests), regenerated `/n/home/anon/sven-experiments/analysis/tables/` (140 files, + new `freshness.md/.tex`).
 
 ### Fixes, per finding
 1. **high — accuracy sign (fixed).** New `headline.higher_is_better(metric)`; `paired_outcome_vs_sven` now counts `(d>0)` for accuracies, sorts best-for-Sven first in both kinds of table, renames `a_better` → **`sven_better`**, and states the convention in `attrs['sign']` (printed under each table, cell 11 title says which direction). `paired_vs_sven` also carries `sven_better` so the two read together. Raw-JSONL recompute: CIFAR-CE Muon `mean -0.2495, sven_better 0` (was 5), SGDm `1`; all four accuracy tables corrected. Two new tests pin both directions (fixture where Sven wins accuracy, and a second root where it loses).

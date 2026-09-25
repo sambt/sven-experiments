@@ -8,7 +8,7 @@
 #SBATCH --mem=16G
 #SBATCH --job-name=diag_env
 #SBATCH --output=slurm_logs/diag_env-%j.out
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 echo "OMP_NUM_THREADS=${OMP_NUM_THREADS-<unset>}  MKL_NUM_THREADS=${MKL_NUM_THREADS-<unset>}  SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK  SLURM_CPUS_ON_NODE=$SLURM_CPUS_ON_NODE"
 echo "nproc=$(nproc)  nproc --all=$(nproc --all)"; grep Cpus_allowed_list /proc/self/status
 env | grep -i "omp\|mkl\|openblas\|numexpr" | head

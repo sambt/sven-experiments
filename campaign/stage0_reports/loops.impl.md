@@ -1,4 +1,4 @@
-**Files changed** — `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/experiment_utils.py` (loops + helpers only; the `_CUSTOM_OPTIMIZERS`…`build_standard_optimizer` region is byte-identical — verified by grep over the diff), `experiments/optimizers/hig.py` (`HIGWrapper.evaluate` + one import).
+**Files changed** — `/n/home/anon/sven-experiments/experiments/experiment_code/experiment_utils.py` (loops + helpers only; the `_CUSTOM_OPTIMIZERS`…`build_standard_optimizer` region is byte-identical — verified by grep over the diff), `experiments/optimizers/hig.py` (`HIGWrapper.evaluate` + one import).
 **Files created** — `experiments/nn/norm_utils.py`, `tests/test_evaluate.py`, `tests/test_loops_contract.py`, `tests/test_bn_policy_loops.py`.
 
 **Acceptance tests** (observed summary lines: `8 passed in 7.93s` / `16 passed in 4.49s` / `9 passed in 4.35s`; combined `33 passed in 8.50s` via `campaign/run_cpu_tests.sh`)

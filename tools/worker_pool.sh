@@ -61,7 +61,7 @@ ITEMS=$(cd "$(dirname "$ITEMS")" && pwd)/$(basename "$ITEMS")
 [ -f "$SNAP/run.py" ] || die "no run.py in the snapshot $SNAP"
 [ -e "$SNAP/.deploy_complete" ] || echo "[pool] WARNING: $SNAP has no .deploy_complete marker (incomplete export?)"
 
-PY=${WORKER_PY:-/n/home11/sambt/iaifi/sv3/.venv/bin/python}
+PY=${WORKER_PY:-/n/home/anon/sven-experiments/.venv/bin/python}
 [ -x "$PY" ] || die "python '$PY' is not executable (set WORKER_PY)"
 # `++`, not `=`: NO scan config declares `scheduler` (the default lives in
 # grid.resolve_scan_settings and tests/test_configs.py forbids the key in a config), so
@@ -72,10 +72,10 @@ PY=${WORKER_PY:-/n/home11/sambt/iaifi/sv3/.venv/bin/python}
 SCHED=${WORKER_SCHEDULER_OVERRIDE-++scheduler=claims}
 JOBID=${SLURM_JOB_ID:-local.$$}
 [ -n "$LABEL" ] || LABEL=$(basename "$ITEMS" .txt)
-# Logs go to holystore, NOT to $HOME: one log per (job x pool x item x NPROC) plus a
-# hydra dir each is O(10^4) files for the full plan, and /n/home11 is a 95 G NFS home at
+# Logs go to labstore, NOT to $HOME: one log per (job x pool x item x NPROC) plus a
+# hydra dir each is O(10^4) files for the full plan, and /n/home is a 95 G NFS home at
 # 84% full. WORKER_LOG_ROOT still overrides it (the tests point it at a temp dir).
-LOG_ROOT=${WORKER_LOG_ROOT:-/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs}
+LOG_ROOT=${WORKER_LOG_ROOT:-/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs}
 LOGDIR=$LOG_ROOT/$LABEL.$JOBID
 
 # --- the wall clock (see the header): the epoch after which no NEW item is started ----

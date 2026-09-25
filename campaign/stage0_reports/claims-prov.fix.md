@@ -1,6 +1,6 @@
 ## Fixer report — track `claims-prov`
 
-**Changed** (nothing else touched): `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/claims.py`, `/n/home11/sambt/iaifi/sv3/tests/test_claims.py`. `provenance.py` / `test_provenance.py` unchanged (no findings against them).
+**Changed** (nothing else touched): `/n/home/anon/sven-experiments/experiments/experiment_code/claims.py`, `/n/home/anon/sven-experiments/tests/test_claims.py`. `provenance.py` / `test_provenance.py` unchanged (no findings against them).
 
 ### Findings: all four real, all fixed
 Reproduced the reviewer's probe verbatim first (`scratchpad/probe_race.py`): PROBE 1 → 3 of 4 workers died with `FileNotFoundError`; PROBE 2 → `fresh jsonl still present: False`, fresh jsonl/npz/ckpt under `_stale/aaaa1111/...` as `.1` copies, finished run re-claimable.
@@ -11,7 +11,7 @@ Reproduced the reviewer's probe verbatim first (`scratchpad/probe_race.py`): PRO
 4. **(medium) no composed test.** Added below.
 
 ### Acceptance tests (observed)
-`.venv/bin/python -m pytest tests/test_claims.py tests/test_provenance.py -q` → **`27 passed, 1 skipped in 5.16s`**; same on a CPU job with `SV3_CLAIMS_LUSTRE_ROOT` set → **`28 passed in 7.14s`** (Lustre race: **20,242 try_claim/s, 2,530 claims/s**, exactly-once held; probe dir created and removed, nothing left on holystore).
+`.venv/bin/python -m pytest tests/test_claims.py tests/test_provenance.py -q` → **`27 passed, 1 skipped in 5.16s`**; same on a CPU job with `SV3_CLAIMS_LUSTRE_ROOT` set → **`28 passed in 7.14s`** (Lustre race: **20,242 try_claim/s, 2,530 claims/s**, exactly-once held; probe dir created and removed, nothing left on labstore).
 
 New tests, and what each asserts:
 - `test_recipe_over_two_generations_with_a_stale_index` — two workers, one process-start index, `hash_old` generation on disk: worker B executes **nothing**, every `{run_id}.jsonl/npz/ckpt` present with `hash_new` content, `_stale/hash_old/` holds exactly 4 files per run, none containing `hash_new`, no `.1` duplicates, claims dir empty, no started markers, `stale_hashes == []`.

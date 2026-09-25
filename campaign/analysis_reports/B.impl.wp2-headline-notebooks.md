@@ -1,7 +1,7 @@
 **WP2 phase B (notebooks) — done.** All six notebooks execute in place with **0 error cells, 0 unexecuted cells**; `pytest tests/` → **1155 passed, 33 skipped**.
 
 ## Files
-**New:** `/n/home11/sambt/iaifi/sv3/analysis/headline_figs.py` (≈620 l) — the only new code; `/n/home11/sambt/iaifi/sv3/tests/test_headline_figs.py` (24 tests, synthetic root, imports `test_headline`'s fixture). Scratch generators (gitignored): `agent_lab/wp2/build_mlp_notebooks.py`, `build_baselines_notebook.py`.
+**New:** `/n/home/anon/sven-experiments/analysis/headline_figs.py` (≈620 l) — the only new code; `/n/home/anon/sven-experiments/tests/test_headline_figs.py` (24 tests, synthetic root, imports `test_headline`'s fixture). Scratch generators (gitignored): `agent_lab/wp2/build_mlp_notebooks.py`, `build_baselines_notebook.py`.
 **Rewritten:** `analysis/{toy_1d,polynomial,mnist,mnist_labelRegression}_analysis.ipynb` (38 cells / 24 code each), `analysis/baselines_analysis.ipynb` (35 / 22). **Re-executed:** `analysis/headline_tables.ipynb` (28 / 19) — refreshes `analysis/tables/` (140 files) against the now-767-run CIFAR-CE scan. `headline.py` **unchanged** (no bug found). Figures: 14 PDF+PNG per MLP notebook, 10 for baselines, under `analysis/plots_v2/{toy_1d,polynomial,mnist_ce,mnist_labelRegression,baselines}/`.
 
 ## Per notebook (runtime, sequential, one sbatch)

@@ -17,7 +17,7 @@
 # Re-running is safe (dedup); the move-asides are idempotent (nothing to move the second time).
 set -u
 set -f   # hydra list overrides use [...]
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 C=experiments/configs; R=experiment_results
 DRY=${DRY:-0}; ONLY=${ONLY:-}; NJOBS=0; DEPS=""; LAST_JID=""
 

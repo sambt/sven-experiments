@@ -38,7 +38,7 @@ Counts = runs **including all seeds**, for every family the config carries. "Sve
 
 ## 2. Launcher groups (DRY=1 verified)
 
-All go through `submit_rebuttal_parallel.sh`: `--partition=iaifi_gpu_priority,iaifi_gpu,gpu`, `--time=12:00:00`, 1 node, 1 GPU, 8 CPUs, 48 GB, NPROC processes each running `specs[shard_id::n_shards]`.
+All go through `submit_rebuttal_parallel.sh`: `--partition=lab_gpu_priority,lab_gpu,gpu`, `--time=12:00:00`, 1 node, 1 GPU, 8 CPUs, 48 GB, NPROC processes each running `specs[shard_id::n_shards]`.
 
 | group | configs | job split | NPROC | jobs |
 |---|---|---|---|---|
@@ -55,7 +55,7 @@ All go through `submit_rebuttal_parallel.sh`: `--partition=iaifi_gpu_priority,ia
 
 **Full relaunch = 137 SLURM jobs** (headline+ablations+rebuttal+tier3) **+ 9 GPT-2 + 1–54 timing**.
 
-**Compute facts (sinfo, verified):** `iaifi_gpu` and `iaifi_gpu_priority` are the *same* 8 nodes `holygpu8a271xx–274xx`, each **4× A100-SXM4-80GB**, 64 CPUs, 503 GB, **TIMELIMIT 3-00:00:00**. `gpu` adds A100-80GB and A10 nodes, also 3 days. `gpu_test` is **A100 MIG `3g.20gb` slices, 8 per node, 12 h, several nodes idle** — fine for toy/poly/MNIST MLPs, marginal for CIFAR (`gram_capture: full` materialises a 128×11.18M fp32 Jacobian ≈ 5.7 GB per shard), useless for GPT-2 (~33 GB). The 12 h in the launchers is self-imposed, not a partition limit — the single biggest lever for "fewer, longer jobs". `squeue` right now: **9 running `wrap` jobs = `submit_gpt2.sh`** (2 h in; these carry the F4 val⊂train contamination) and `timing_serial_RERUNS` pending on `QOSMaxNodePerUserLimit`. No `exp_finetune` jobs are running (its dir already holds 240 jsonl, i.e. complete and F3-contaminated).
+**Compute facts (sinfo, verified):** `lab_gpu` and `lab_gpu_priority` are the *same* 8 nodes `gpunode8a271xx–274xx`, each **4× A100-SXM4-80GB**, 64 CPUs, 503 GB, **TIMELIMIT 3-00:00:00**. `gpu` adds A100-80GB and A10 nodes, also 3 days. `gpu_test` is **A100 MIG `3g.20gb` slices, 8 per node, 12 h, several nodes idle** — fine for toy/poly/MNIST MLPs, marginal for CIFAR (`gram_capture: full` materialises a 128×11.18M fp32 Jacobian ≈ 5.7 GB per shard), useless for GPT-2 (~33 GB). The 12 h in the launchers is self-imposed, not a partition limit — the single biggest lever for "fewer, longer jobs". `squeue` right now: **9 running `wrap` jobs = `submit_gpt2.sh`** (2 h in; these carry the F4 val⊂train contamination) and `timing_serial_RERUNS` pending on `QOSMaxNodePerUserLimit`. No `exp_finetune` jobs are running (its dir already holds 240 jsonl, i.e. complete and F3-contaminated).
 
 ## 3. Growth under CHANGES_NEEDED (run-count deltas)
 

@@ -55,7 +55,7 @@ quoted as "09-20 05:36", which appears in no record, and the extension round's s
 "09-19 23:35", which is that same instant in **EDT** rather than UTC.
 
 `git_dirty` is `false` on every record: all campaign processes ran from an exported snapshot
-under `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/<sv3sha8>_<svensha8>/`, never from
+under `/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/<sv3sha8>_<svensha8>/`, never from
 the working tree. Both repos were on branch `robustness-campaign`.
 
 ---
@@ -308,7 +308,7 @@ Layout under `{root}/{scan}/`: `*.jsonl`, `diag/`, `ckpt/{run_id}.pt` (+
 (verified: neither exists under any of the 43 result directories).
 
 `SV3_RESULTS_ROOT` selects the root (default `experiment_results`, a symlink to
-`/n/holystore01/.../sven_experiments`); the runner and the analysis both honour it.
+`/n/labstore01/.../sven_experiments`); the runner and the analysis both honour it.
 
 **Dedup and scheduling.** `run_id` stays human-readable. A zero-byte marker
 `{scan}/done/{run_id}.{hash8}.{status}` is written **last**, after ckpt/npz/jsonl; a run is
@@ -1022,7 +1022,7 @@ are. All polynomial scans in this campaign (`polynomial_scan`,
 
 # 1. freeze BOTH repos at HEAD (never run jobs from the working tree)
 SNAP=$(tools/deploy_snapshot.sh | tail -1)
-#   -> /n/holystore01/.../sv3_deploy/<sv3sha8>_<svensha8>/ with DEPLOY_INFO.json
+#   -> /n/labstore01/.../sv3_deploy/<sv3sha8>_<svensha8>/ with DEPLOY_INFO.json
 #      and an experiment_results symlink to the real results root
 
 # 2. dry-run, then submit, one work list at a time (P0 -> P1 -> P3)

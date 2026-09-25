@@ -1,8 +1,8 @@
 #!/bin/bash
 # Block until something needs attention, then print why and exit (the orchestrating session is re-invoked on exit).
 # Reasons: fewer than 2 gpu_test jobs alive, a pool log alarm, oom/error markers or failed attempts, or a heartbeat.
-R=/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
-S=/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs/campaign
+R=/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments
+S=/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/campaign
 HEARTBEAT=${1:-7200}; t0=$(date +%s); base_err=${2:-0}
 while true; do
   sleep 300
@@ -10,8 +10,8 @@ while true; do
   [ "$(squeue -u $USER -h -o %i | wc -l)" -eq 0 ] && { echo "REASON: queue empty"; break; }
   err=$(ls $R/*/done 2>/dev/null | grep -c -E "\.(oom|error)$"); att=$(ls $R/*/attempts 2>/dev/null | grep -c .)
   [ $((err+att)) -gt "$base_err" ] && { echo "REASON: oom/error markers=$err attempts=$att (baseline $base_err)"; break; }
-  al=$(grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]" $S/*$(basename $(cat /n/home11/sambt/iaifi/sv3/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | wc -l)
+  al=$(grep -l -E "failed runner process\(es\): [1-9]|\[poisoned\]" $S/*$(basename $(cat /n/home/anon/sven-experiments/campaign/CURRENT_SNAPSHOT) | cut -c1-8)-*.out 2>/dev/null | wc -l)
   [ "$al" -gt 0 ] && { echo "REASON: $al pool log(s) with alarms"; break; }
   [ $(( $(date +%s) - t0 )) -ge "$HEARTBEAT" ] && { echo "REASON: heartbeat"; break; }
 done
-/n/home11/sambt/iaifi/sv3/campaign/monitor.sh
+/n/home/anon/sven-experiments/campaign/monitor.sh

@@ -8,7 +8,7 @@
 #SBATCH --mem=64G
 #SBATCH --job-name=cifar_bn_probe
 #SBATCH --output=slurm_logs/cifar_bn_probe-%j.out
-set -u; cd /n/home11/sambt/iaifi/sv3; PY=.venv/bin/python; OUT=bench/cifar_bn_probe_${SLURM_JOB_ID}.jsonl
+set -u; cd /n/home/anon/sven-experiments; PY=.venv/bin/python; OUT=bench/cifar_bn_probe_${SLURM_JOB_ID}.jsonl
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 run() { echo "=== $* ($(date +%T)) ==="; PYTHONPATH=. $PY bench/cifar_bn_probe.py "$@" --out $OUT 2>&1 | grep -E "RESULT|Error|Traceback|error" ; }
 run --mode adam --lr 0.01

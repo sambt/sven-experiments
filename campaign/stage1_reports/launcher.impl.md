@@ -3,13 +3,13 @@
 ## Files created (nothing outside the track touched)
 | file | what |
 |---|---|
-| `/n/home11/sambt/iaifi/sv3/tools/deploy_snapshot.sh` | `git archive` both repos at HEAD → `…/sv3_deploy/<sv3sha8>_<svensha8>/` with nested `sven/`, `DEPLOY_INFO.json` in **both** roots (provenance.git_facts never walks up, so sven needs its own), `experiment_results` symlink, `.deploy_complete` written last; idempotent; refuses tracked dirt unless `--allow-dirty` |
-| `/n/home11/sambt/iaifi/sv3/tools/worker_pool.sh` | one pool per visible GPU (MIG UUIDs, `CUDA_VISIBLE_DEVICES` as index-or-UUID filter), walks items in order, NPROC runners per item, snapshot guard, SIGTERM forwarding, per-process logs under `slurm_logs/campaign/<label>.<jobid>/` |
-| `/n/home11/sambt/iaifi/sv3/tools/campaign_plan.py` | plan schema + validation (shared by launcher and reconcile) |
-| `/n/home11/sambt/iaifi/sv3/tools/launch_campaign.py` | plan → sbatch; dry run by default; lanes, mig cap via `squeue`, `--chain` |
-| `/n/home11/sambt/iaifi/sv3/tools/reconcile.py` | C-R2; torch-free, `grid.py` path-loaded, 4 listdirs, per-family classes, never-started list, best-config + grid-edge report |
-| `/n/home11/sambt/iaifi/sv3/campaign/plan_campaign.yaml` | 14 work lists, P0–P3 (already committed by the orchestrator as 6fd8fd9; my later edits are uncommitted) |
-| `/n/home11/sambt/iaifi/sv3/tests/test_tools_{reconcile,launch,worker_pool}.py` | 13 + 30 + 25 tests |
+| `/n/home/anon/sven-experiments/tools/deploy_snapshot.sh` | `git archive` both repos at HEAD → `…/sv3_deploy/<sv3sha8>_<svensha8>/` with nested `sven/`, `DEPLOY_INFO.json` in **both** roots (provenance.git_facts never walks up, so sven needs its own), `experiment_results` symlink, `.deploy_complete` written last; idempotent; refuses tracked dirt unless `--allow-dirty` |
+| `/n/home/anon/sven-experiments/tools/worker_pool.sh` | one pool per visible GPU (MIG UUIDs, `CUDA_VISIBLE_DEVICES` as index-or-UUID filter), walks items in order, NPROC runners per item, snapshot guard, SIGTERM forwarding, per-process logs under `slurm_logs/campaign/<label>.<jobid>/` |
+| `/n/home/anon/sven-experiments/tools/campaign_plan.py` | plan schema + validation (shared by launcher and reconcile) |
+| `/n/home/anon/sven-experiments/tools/launch_campaign.py` | plan → sbatch; dry run by default; lanes, mig cap via `squeue`, `--chain` |
+| `/n/home/anon/sven-experiments/tools/reconcile.py` | C-R2; torch-free, `grid.py` path-loaded, 4 listdirs, per-family classes, never-started list, best-config + grid-edge report |
+| `/n/home/anon/sven-experiments/campaign/plan_campaign.yaml` | 14 work lists, P0–P3 (already committed by the orchestrator as 6fd8fd9; my later edits are uncommitted) |
+| `/n/home/anon/sven-experiments/tests/test_tools_{reconcile,launch,worker_pool}.py` | 13 + 30 + 25 tests |
 
 ## Verified by running
 * **Real snapshot**: `tools/deploy_snapshot.sh --allow-dirty` → `…/sv3_deploy/6fd8fd9e_203a4e61` (17 MB, 15 s), `WARNING: tools/worker_pool.sh is not in this snapshot (not committed yet)`, second call `already exported`. Pool guard against it with the **real** venv: `resolves experiments = …/6fd8fd9e_203a4e61/experiments/__init__.py`, `resolves sven = …/6fd8fd9e_203a4e61/sven/sven/__init__.py` — the editable `sven` install (which points at the live tree) loses to PYTHONPATH because its finder is *appended* to `sys.meta_path`.

@@ -1,7 +1,7 @@
 ## TRACK analysis-offline — final report
 
 ### Files created
-- `/n/home11/sambt/iaifi/sv3/analysis/repair_legacy.py` (C-A1), `analysis/budget.py` (C-A4), `analysis/paired.py` (C-A6), `tests/test_analysis_offline.py`, `analysis/legacy_repair/{8 scans}.parquet + corrections.csv + .gitignore` (outputs; `_cache/` ignored).
+- `/n/home/anon/sven-experiments/analysis/repair_legacy.py` (C-A1), `analysis/budget.py` (C-A4), `analysis/paired.py` (C-A6), `tests/test_analysis_offline.py`, `analysis/legacy_repair/{8 scans}.parquet + corrections.csv + .gitignore` (outputs; `_cache/` ignored).
 
 ### Files changed
 - `analysis/profile_helpers.py` — `cycle_mean()`, `_timing()` (stored `cycle_mean` else **recomputed from `raw`**), `step_ms/wall_ms/capture_ms/solve_ms` switched to it, new reference column **`step_ms_steady`**, `_CACHE_VERSION = 2` in the cache signature, `STATUS_NOTE` (adds `nonfinite`) replacing three status-keyed dicts that would `KeyError`, `plot_raw_steps` draws both means, x-label "Amortised step time".

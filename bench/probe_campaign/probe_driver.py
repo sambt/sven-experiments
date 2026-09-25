@@ -199,7 +199,7 @@ def main() -> int:
     ap.add_argument("--parts", default="a,b,c,d,e")
     ap.add_argument("--results", required=True)
     ap.add_argument("--snapshot", default=os.environ.get("PROBE_SNAPSHOT", ""))
-    ap.add_argument("--venv-python", default="/n/home11/sambt/iaifi/sv3/.venv/bin/python")
+    ap.add_argument("--venv-python", default="/n/home/anon/sven-experiments/.venv/bin/python")
     ap.add_argument("--device-class", default="a100_80gb")
     ap.add_argument("--budget-epoch", type=float, default=0.0,
                     help="stop starting new groups after this unix timestamp")

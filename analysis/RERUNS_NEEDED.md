@@ -265,10 +265,10 @@ fixed sizes are now the foundation of every scan, selection uses validation only
 an outcome. What each scan actually ran is in `EXPERIMENTS.md`; the plan and the decisions are
 in `campaign/CONTRACTS.md` and `campaign/CAMPAIGN_STATUS.md`.
 
-Results root: `/n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments` (repo symlink
+Results root: `/n/labstore01/LABS/anon_lab/Users/anon/sven_experiments` (repo symlink
 `experiment_results`), started EMPTY on 2026-09-18 ~20:55 EDT. Pool logs under
-`/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/logs/`. Every phase ran from
-an exported snapshot, `/n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/<sv3sha8>_<svensha8>/`,
+`/n/labstore01/LABS/anon_lab/Users/anon/sv3_campaign_scratch/logs/`. Every phase ran from
+an exported snapshot, `/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/<sv3sha8>_<svensha8>/`,
 never from the working tree; `git_dirty` is `false` on all 24,824 records (19:10 EDT; the
 total still rises with the in-flight row 5). Both repos on branch
 `robustness-campaign`. SHAs and job ids below are read back from the records' provenance

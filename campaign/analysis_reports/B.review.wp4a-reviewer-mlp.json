@@ -2,112 +2,112 @@
  "findings": [
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/batchsize_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/batchsize_analysis.ipynb",
    "line": 895,
    "issue": "\u00a78 conclusion states \"Against the steps axis every method improves monotonically; the batch-size axis is that axis reversed.\" Recomputed from the raw jsonl (per-arm binding-rule picks, seed means of final val loss, plotted against steps in 20 epochs = 780\u202625000): NOT ONE of the 13 methods is monotone in steps. Sven 0.1231(780) \u2192 0.1346(1560) \u2192 0.1197 \u2192 0.1175 \u2192 0.1063 \u2192 0.1038; MuonW 0.1023 \u2192 0.1133 \u2192 0.1428 \u2192 0.2061 \u2192 0.1600 \u2192 0.1592 (i.e. MuonW, Muon, SOAP, Adam and AdamW are all BEST at the fewest steps / largest B). The \u00a72 figure `budget_axes` shows this, so the conclusion contradicts its own panel \u2014 and it is the load-bearing takeaway for R2 Q1's \"equal epochs is not an equal budget\".",
    "suggested_fix": "Replace with the computed fact: no method is monotone on the steps axis; Sven and the SGD family improve with more steps at the small-B end, while MuonW/Muon/SOAP/Adam/AdamW are best at the LARGEST batch (fewest steps). Compute the monotonicity check in the cell rather than asserting it."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 1588,
    "issue": "\u00a78 \"Robustness, stated honestly\" claims Sven's divergence rate \"is nonetheless below RMSprop's, SGD's and SGD+momentum's on the same grids\". Recomputed wide-rule rates straight from the jsonl: on rebuttal_overparam_polynomial_scan Sven is 252/1800 = 14.00% vs SGD 20/160 = 12.50% and SGD+momentum 18/160 = 11.25% \u2014 Sven is the second-worst of the 13 methods there, above both. (Toy: Sven 15.42% vs SGD 15.62%, SGDm 20.00% \u2014 barely holds; MNIST: 0.28% \u2014 holds.) The same table also pools rates over grids of very different size (Sven 1800 runs incl. two rtol values that diverge ~1/3 of the time, vs 160 per baseline), which is never said.",
    "suggested_fix": "State the per-scan comparison computed from the table (Sven above SGD and SGD+momentum on the polynomial, below them on toy/MNIST) and note that Sven's grid is 11x larger and deliberately includes rtol values known to break, so pooled rates are not directly comparable."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 1249,
    "issue": "\u00a75 markdown asserts the corrected polynomial is \"a different target, on which nothing reaches $10^{-3}$, so only ranks transfer\". The very next cell's own output (cell 19, `fastest_to_target`) contradicts it: at N=170 three methods reach train_eval < 1e-3 on 5/5 seeds (Sven 95.6 epochs / 0.751 s, SOAP 151.4 / 0.874, L-BFGS 135.4 / 1.413) and at N=340 Sven reaches it on 5/5. I reproduced all four numbers from the raw curves independently. (The \u00a78 conclusion states it correctly \u2014 \"only 3 of 13 methods reach 1e-3 at P/N=4.0\" \u2014 so the two prose blocks disagree with each other.)",
    "suggested_fix": "Rewrite the clause as \"a different target, on which only 3 of 13 methods reach 1e-3 at P/N=4 and none below P/N=1\", and compute that count in the cell instead of asserting it."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/batchsize_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/batchsize_analysis.ipynb",
    "line": 898,
    "issue": "\u00a78 claims Sven's step time is \"*non-monotone* in $B$ (17.4 ms at B=8, a 10.4 ms minimum at B=16, 18.0 ms at B=256) ... at this model size the step is dominated by capture and the $B\\times B$ eigh, not by $B$ itself\". The non-monotonicity is an artifact of comparing across arms whose SELECTED config differs: the B=8 pick is rtol=1e-5, which costs ~1.8x more per step than any other rtol. At FIXED rtol the step time rises monotonically with B (recomputed from `losses.avg_batch_time_train`): rtol=1e-3 \u2192 9.67, 10.37, 10.55, 12.67, 16.35, 17.41 ms for B = 8\u2026256; rtol=1e-2 \u2192 9.70 \u2026 17.34; rtol=1e-5 \u2192 17.23 \u2026 32.31. So the step DOES scale with B, and the stated mechanism is drawn from a confound. (Peak memory, by contrast, is rtol-independent and monotone \u2014 18.67 \u2192 22.82 MB \u2014 so that part of the bullet is sound.)",
    "suggested_fix": "Add a fixed-rtol step-time panel/row (one line per rtol vs B) and restate: Sven's step time rises ~1.8x from B=8 to B=256 at fixed rtol, and separately rtol=1e-5 roughly doubles the step at every B; drop the \"non-monotone / not driven by B\" mechanism claim."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 414,
    "issue": "The two per-arm workhorse tables print a header that says \"\u00b1 1 std over seeds on the _std columns\" but their COLS list contains no _std column at all (overparam line 414; batchsize_analysis.ipynb line 269), and the conclusions then quote bare ranks as facts. Paired-by-seed checks (same model seeds = same init and data order, n=5) show several headline placements are statistical ties: MNIST N=2500 Sven\u2212PolyakSGD \u0394=\u22120.00033\u00b10.00251 (t=\u22120.13), \u2212SGD t=\u22120.44, \u2212SGDm t=\u22120.55; N=5000 \u2212SGD t=\u22120.83; N=10000 \u2212SGD t=\u22120.99; polynomial N=170 \u2212SGDm t=\u22120.40; batchsize B=64 \u2212SOAP \u0394=\u22120.00125\u00b10.01855 (t=\u22120.07); B=32 \u2212PolyakSGD t=\u22121.59. So \"Sven is 1st of 13 at P/N = 11.0, 5.5 and 2.8\" and \"1st of 12\u201313 at B=16,32,64\" rest on margins far inside the seed spread (only B=16, t=\u22124.34, is clear). By contrast the losing arms ARE significant (MNIST N=20000 vs MuonW t=+2.51; B=128/256 vs MuonW t=+1.96/+3.62).",
    "suggested_fix": "Print the _std columns the header promises, and quote the rank-1/rank-2 gaps with the paired seed difference (analysis/paired.py is the existing implementation) \u2014 e.g. \"1st, but within noise of PolyakSGD/SGD/SGDm\" \u2014 in both conclusions."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/kappa_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/kappa_analysis.ipynb",
    "line": 686,
    "issue": "\u00a76 says the k=32 matched-step spreads \"6.8%, 3.5% and 11.0% \u2014 small, but far above noise, and not in a consistent direction (\u03ba=2 worst at 0.25, \u03ba=3 best at 0.5, \u03ba=1 best at 1.0)\". No noise comparison is made anywhere in the notebook, and the middle cell is pure noise: paired by the 5 shared model seeds at k=32, eff step 0.5, \u03ba1\u2212\u03ba2 = \u22120.00024\u00b10.00145 (t=\u22120.17), \u03ba2\u2212\u03ba3 = +0.00179\u00b10.00225 (t=+0.80), \u03ba1\u2212\u03ba3 t=+0.77 \u2014 all p>0.4, while the per-seed std (0.0035\u20130.0038) exceeds the spread itself. The other two steps are real (eff 0.25: \u03ba1\u2212\u03ba2 t=+3.72; eff 1.0: \u03ba1\u2212\u03ba2 t=\u22124.39), so the headline \"truncation breaks the identity\" survives, but the \"not in a consistent direction\" argument is built on the one cell that is indistinguishable from seed noise.",
    "suggested_fix": "Add a paired-by-seed difference column (or CI) to `matched_step_table` output and say 2 of 3 matched steps differ significantly while eff step 0.5 does not; drop the \"inconsistent direction \u21d2 mechanism\" inference."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/microbatch_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/microbatch_analysis.ipynb",
    "line": 1105,
    "issue": "\u00a79 claims \"The rank the update used falls exactly as advertised \u2014 $B/\\mu B$ to the digit (toy 11.1 \u2192 1.00, polynomial 27.3 \u2192 1.00, MNIST label-reg 64 \u2192 1)\". Only MNIST label-reg matches (rtol=1e-4 does not cut): 64/32/16/8/4/2/1. Toy has B=32 but rank_eff 11.06 at \u03bcB=1 and 11.55 at \u03bcB=2 (rtol-limited, and non-monotone); polynomial 27.25 at \u03bcB=1 (B=32); MNIST-CE (rtol=0.1) is 10.94/9.42/7.78/5.86/3.72/1.99/1.00 against B/\u03bcB = 64/32/16/8/4/2/1 \u2014 it never follows B/\u03bcB. All reproduced from `svd_summary.num_nonzero_svs_epoch`. Two further errors in the same bullet set: \"degrading monotonically with \u03bcB in both cases\" is false for toy (4.54e-4 at \u03bcB=16 \u2192 4.04e-4 at \u03bcB=32), and the quoted \"225\u00d7 (2.02e-6 \u2192 4.54e-4)\" is the \u03bcB=16 value, not the 1\u2192B=32 endpoint the sentence describes (200\u00d7, 4.04e-4).",
    "suggested_fix": "State the rank as min(rtol-limited rank, B/\u03bcB) \u2014 exact only where B/\u03bcB binds and exactly B/\u03bcB on MNIST-label-reg \u2014 and fix the toy numbers: non-monotone, 200x at \u03bcB=B with a 225x maximum at \u03bcB=16."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/kappa_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/kappa_analysis.ipynb",
    "line": 694,
    "issue": "\u00a76 concludes \"\u03ba=1 is then the **most** step-tolerant of the three, still training at effective step 1.5 where \u03ba=2 and 3 have already stopped improving\", from the \u00a73 print \"largest effective step that still trains\" (cell 8, line 416). That table compares the three \u03ba over unequal grids: the lr list {0.125\u20261.5} gives \u03ba=1 effective steps up to 3.0, \u03ba=2 up to 1.5 and \u03ba=3 only up to 1.0. \u03ba=3 has NO run at effective step 1.5, so it cannot be shown to have \"stopped improving\" there, and its printed ceiling of 1.0 is the grid edge, not a stability limit.",
    "suggested_fix": "Mark the per-\u03ba effective-step coverage in that table (\u03ba=1 \u22643.0, \u03ba=2 \u22641.5, \u03ba=3 \u22641.0) and weaken the claim to what the grid supports: at k=32 \u03ba=1 still trains at eff step 1.5 where \u03ba=2 blows up; \u03ba=3 was never tested above 1.0."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 1559,
    "issue": "The conclusion's central bullet (\"Where the dependence is real\") quotes validation ranks only \u2014 the metric selection used. The test-loss ranks printed two cells earlier tell a weaker story: MNIST 4, 1, 2, 2, 4, 3 (Sven is 4th of 13 on TEST loss at P/N=11.0, the arm the bullet leads with as 1st of 13, and 4th at P/N=0.69), and the pooled over/under-P/N=1 gap on test is 2.13 vs 3.17 against the quoted validation 1.75 vs 2.67. The work package explicitly asks for \"final val AND test loss\"; the table has it, the paper-facing conclusion does not.",
    "suggested_fix": "Add the test-rank series and the pooled test-rank gap to the same bullet, and note explicitly that Sven's P/N=11 win is on the selection metric while it is 4th on the test outcome."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 652,
    "issue": "The figure `sven_rank_vs_PoverN` (cell 10) carries the title \"Sven improves as the problem becomes more over-parameterised\" while plotting, in the same axes, the toy line at ranks 2, 4, 3, 3 across P/N 3.95\u21920.49 \u2014 which the notebook's own conclusion describes as \"**no** P/N dependence\" with mean rank 3.00 on both sides. A saved PDF/PNG travels without the conclusion, so the title asserts something one of its three curves refutes.",
    "suggested_fix": "Retitle to something the figure supports, e.g. \"Sven's validation rank vs P/N (MNIST and polynomial improve; toy flat)\", or annotate the toy line."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 467,
    "issue": "Rendering defects in three saved figures (checked on the PNGs in analysis/plots_v2/overparam/). In `loss_vs_PoverN` and `time_to_target_vs_PoverN` the two row y-labels are drawn at the same x and overlap each other around the vertical centre (\"Final validation loss (seed mean)\" across \"Final test loss (seed mean)\"; \"Epochs to target\" across \"Synchronised train seconds to target\") \u2014 both are unreadable where they cross. The toy and polynomial panels' x tick labels collide (\"3\u00d710\u20704\u00d710\u2070\"). The 13-method + band legend (fontsize 7, ncol 2, cell 6 line 471 / cell 17 line 1223) is placed inside the MNIST panel on top of the data and error bars, and in `time_to_target` it contains an unlabelled orange marker.",
    "suggested_fix": "Use one shared ylabel per row via `fig.supylabel` or place the label on the left axes only with a smaller font; thin the log x ticks (`LogLocator`/explicit ticks at the four P/N values); move the legend outside the axes (`bbox_to_anchor`) or split it into a first-order / second-order grouping."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/batchsize_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/batchsize_analysis.ipynb",
    "line": 775,
    "issue": "\u00a76 computes 9 edge optima (5 of them Sven) \u2014 including Sven at rtol = 1e-2, the TOP of its rtol grid, in exactly the three arms where it ranks 1st (B=16, 32, 64), Sven at lr = 0.05 (grid bottom) at B=256, and K-FAC at lr=1e-5 (grid bottom) in three arms \u2014 but \u00a78's conclusion never mentions them. The work package asks to \"check remaining edge optima and flag them\", and here the edge coincides with the wins, i.e. the rtol grid rather than the method may be what is measured in the three arms the conclusion leads with.",
    "suggested_fix": "Add an edge-optima bullet to \u00a78 as the overparam notebook has, naming the rtol=1e-2 coincidence with the three rank-1 arms and the K-FAC lr floor."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/paramfrac_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/paramfrac_analysis.ipynb",
    "line": 686,
    "issue": "\u00a76 and \u00a79 both state that \"39 of these 400 runs die inside the masked-Gram `eigh` guard (\\\"no singular value above rtol \u00b7 sigma_max\\\"; the Gram matrix is zero once training has already blown up)\". Counting the `error.message` of every `status: diverged` record: 32 are that guard (toy 1, poly 12, MNIST-CE 9, MNIST-labelreg 10) and 7 are `DivergedError: non-finite training loss at optimizer step N (loss=inf)` (poly 3, MNIST-labelreg 4). The 39/70 totals and \"every one at \u03b7 \u2265 0.5\" are correct, but the benign framing (\"the guard fires once a run has already blown up\") does not cover the 7 direct non-finite-loss divergences.",
    "suggested_fix": "Split the count: 32 masked-Gram guard raises + 7 non-finite training loss = 39 recorded diverged, 70 under the wide rule; keep the guard explanation for the 32."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 161,
    "issue": "Cell 2 stamps `df['P_over_N']` onto the RAW frame, so cell 4's `arm_table` prints \"[style] column 'P_over_N' varies but is not in style.HPARAM_COLUMNS: its values are being AVERAGED OVER\" \u2014 the one such warning left in the five notebooks, re-introducing exactly the noise WP1's acceptance criterion removed (it is harmless numerically, P/N being constant within an n_data arm). The raw-frame column is never used: the figures read `best['P_over_N']` / `ranks[tag]['P_over_N']`, which cells 4 and 21 set themselves.",
    "suggested_fix": "Delete the `df['P_over_N'] = ...` assignment in cell 2 (line 161); nothing downstream reads it."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/microbatch_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/microbatch_analysis.ipynb",
    "line": 1111,
    "issue": "\u00a79 explains the flat memory with \"The full per-sample capture happens before the rows are averaged, so the memory that microbatching is meant to remove is allocated anyway\" \u2014 presented as R1's concern \"confirmed on our own runs\". The evidence is a byte-identical peak (31.363 MB at every \u03bcB on both MNIST scans, 18.856 \u2192 18.626 MB on the synthetic ones), which is equally consistent with `losses.peak_gpu_mem_mb` simply not being set by the Jacobian on these tiny models; the batchsize scan shows the metric does respond to B (18.67 \u2192 22.82 MB), but nothing here separates the two readings.",
    "suggested_fix": "State it as the observation (peak memory does not move with \u03bcB, to the byte, on either MNIST scan) and point at profile_results_v3 / a capture-level measurement for the mechanism, or cite the code path explicitly."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/overparam_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/overparam_analysis.ipynb",
    "line": 1105,
    "issue": "The four toy rows of the edge-optima table (\"Sven k=37 low\", k=75, k=150, k=300) are tie-break artifacts, not optima: at N=150, lr=0.1, rtol=1e-3 the three k values give bit-identical per-seed losses (all five seeds equal; seed mean 1.768394172e-05 for k=37, 75 and 150), so `config_table`'s value-ascending tie-break simply returns the smallest k. They are nonetheless counted in the headline \"14 edge optima, 11 of them Sven\" (and in the summary cell), inflating it; \u00a78 explains the mechanism in prose but the count is not corrected.",
    "suggested_fix": "Flag exact ties in `edge_optima` (e.g. an `n_tied` column comparing the seed-mean to the other grid values) and quote the edge count excluding tied knobs."

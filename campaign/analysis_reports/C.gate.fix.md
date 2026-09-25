@@ -17,7 +17,7 @@
 **Found by my own sweep of all 23 notebooks:** `spectra_analysis` cell 21 and `baselines_analysis` cell 35 carried the same stale "extension is still running" / "flagged provisional"; README's "until v3 has results" conditional. All fixed.
 
 ## Files / verification
-`EXPERIMENTS.md`, `analysis/WHAT_CHANGED.md`, `README.md`, and 5 notebooks (`overparam_analysis`, `legacy_vs_fresh`, `comparisons`, `spectra_analysis`, `baselines_analysis`) **re-executed in place via `campaign/run_cpu_tests.sh`: 0 error cells, 0 unexecuted, 0 `[style]` hits each.** `pytest tests/` (excl. the paper workflow's 4 `test_paper_assets_*`): **1225 passed, 33 skipped, exit 0**. No GPU job submitted; `analysis/paper_assets/` and `iclr_manuscript/` untouched. Scripts: `/n/home11/sambt/iaifi/sv3/agent_lab/gate/{repro,facts,windows,gpt2,edit_nbs,edit_nbs2}.py` (gitignored).
+`EXPERIMENTS.md`, `analysis/WHAT_CHANGED.md`, `README.md`, and 5 notebooks (`overparam_analysis`, `legacy_vs_fresh`, `comparisons`, `spectra_analysis`, `baselines_analysis`) **re-executed in place via `campaign/run_cpu_tests.sh`: 0 error cells, 0 unexecuted, 0 `[style]` hits each.** `pytest tests/` (excl. the paper workflow's 4 `test_paper_assets_*`): **1225 passed, 33 skipped, exit 0**. No GPU job submitted; `analysis/paper_assets/` and `iclr_manuscript/` untouched. Scripts: `/n/home/anon/sven-experiments/agent_lab/gate/{repro,facts,windows,gpt2,edit_nbs,edit_nbs2}.py` (gitignored).
 
 ## Open — hand-offs to the orchestrator (campaign/ is not mine)
 1. **`campaign/ANALYSIS_PLAN.md` §0** still says Sven and plain first-order MLP runs "are" bit-reproducible — the same falsehood I fixed in §8. Replace with a pointer to `EXPERIMENTS.md` §8.

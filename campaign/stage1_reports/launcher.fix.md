@@ -1,7 +1,7 @@
 **FIXER track "launcher" — all 7 findings accepted and fixed; 87 tests green** (`87 passed in 36.01s` via `campaign/run_cpu_tests.sh`; locally 38+18+30).
 
 ## Changed (nothing outside the track)
-`/n/home11/sambt/iaifi/sv3/tools/launch_campaign.py`, `tools/worker_pool.sh`, `tools/reconcile.py`, `campaign/plan_campaign.yaml`, `tests/test_tools_{launch,reconcile,worker_pool}.py`.
+`/n/home/anon/sven-experiments/tools/launch_campaign.py`, `tools/worker_pool.sh`, `tools/reconcile.py`, `campaign/plan_campaign.yaml`, `tests/test_tools_{launch,reconcile,worker_pool}.py`.
 
 | # | fix |
 |---|---|

@@ -6,13 +6,13 @@ All three jobs completed. Final report:
 
 | job | id | where | elapsed | state |
 |---|---|---|---|---|
-| JOB 1 (a,b,c,d,e) | **47037513** | `iaifi_gpu_priority`, holygpu8a27303, 1× A100-SXM4-80GB, 12 cores | 33:07 | COMPLETED 0:0 |
-| JOB 2 (a, CIFAR-slice, d, e) | **47037629** | `gpu_test`, holygpu7c26202, MIG 3g.20gb | 16:21 | COMPLETED 0:0 |
-| JOB 3 (part b on a slice) | **47038158** | `gpu_test`, holygpu7c26203, MIG 3g.20gb | 12:08 | COMPLETED 0:0 |
+| JOB 1 (a,b,c,d,e) | **47037513** | `lab_gpu_priority`, gpunode8a27303, 1× A100-SXM4-80GB, 12 cores | 33:07 | COMPLETED 0:0 |
+| JOB 2 (a, CIFAR-slice, d, e) | **47037629** | `gpu_test`, gpunode7c26202, MIG 3g.20gb | 16:21 | COMPLETED 0:0 |
+| JOB 3 (part b on a slice) | **47038158** | `gpu_test`, gpunode7c26203, MIG 3g.20gb | 12:08 | COMPLETED 0:0 |
 
-3 of 3 jobs, **≈0.9 A100-GPU-hours** of the ~12 allowed. 296 measured processes in 76 groups. JOB 1 sat in `QOSMaxNodePerUserLimit` (the 9 GPT-2 jobs hold 2 nodes in each iaifi QOS) and started at 13:36, 17 min after submission; JOB 3 was added because all 32 iaifi A100s were allocated and a MIG slice can answer the `empty_cache`/allocator axes.
+3 of 3 jobs, **≈0.9 A100-GPU-hours** of the ~12 allowed. 296 measured processes in 76 groups. JOB 1 sat in `QOSMaxNodePerUserLimit` (the 9 GPT-2 jobs hold 2 nodes in each lab QOS) and started at 13:36, 17 min after submission; JOB 3 was added because all 32 lab A100s were allocated and a MIG slice can answer the `empty_cache`/allocator axes.
 
-**Files** (all under `/n/home11/sambt/iaifi/sv3/bench/probe_campaign/`, nothing else touched): `probe_plan.py` (measurement plan + `choose_best_b`), `probe_run.py` (one measurement, snapshot guard, `empty_cache` monkeypatch, file barrier), `probe_driver.py`, `analyse.py`, `make_snapshot.sh`, `job1.sbatch`, `job2.sbatch`, `job3.sbatch`, `test_probe_campaign.py`.
+**Files** (all under `/n/home/anon/sven-experiments/bench/probe_campaign/`, nothing else touched): `probe_plan.py` (measurement plan + `choose_best_b`), `probe_run.py` (one measurement, snapshot guard, `empty_cache` monkeypatch, file barrier), `probe_driver.py`, `analyse.py`, `make_snapshot.sh`, `job1.sbatch`, `job2.sbatch`, `job3.sbatch`, `test_probe_campaign.py`.
 Snapshot `…/sv3_campaign_scratch/probe_snapshot` (sv3 `558463c`, sven `ca8742b`); results `…/sv3_campaign_scratch/probe_results/` (`jsonl/`, `logs/`, `env/`, `profiler/`, `slurm/`, `progress.log`, `best_b.json`). One command: `.venv/bin/python bench/probe_campaign/analyse.py`. Tests: **`28 passed in 2.61s`**. Every measurement recorded `sven`/`experiments` resolving inside the snapshot ("snapshot provenance: OK for every measurement").
 
 ## The headline: `empty_cache` is a 4.5x speedup on CIFAR Sven
@@ -70,7 +70,7 @@ T = (processes that ran) / inflation, i.e. standalone-runs-worth of work per GPU
 ## Surprises
 
 1. **CUDA-event timing is unusable for co-tenancy.** MNIST-Adam `step_ms` *fell* from 1.01 to 0.22 ms going from NPROC 1 to 6 while wall time rose 1.13→1.87 ms: on a time-sliced GPU the wait before `e0` executes is invisible to the events. Using `step_ms` would have reported T=28 instead of 3.6. Every NPROC/sharding decision must use `wall_ms`; `analyse.py` flags `EVENT-TIME-UNUSABLE` when wall/event > 1.5.
-2. **Host CPU, not the GPU, sets the cheap-MLP step time.** Identical MNIST-Adam config: 1.13 ms on the quiet `gpu_test` node vs **4.58 ms** on the 4/4-occupied iaifi node. That is the mechanism behind the cost scout's "not physical" 0.34–0.64 sharded/standalone ratios, and it means C-T1/phase-5 timing runs must pin the node or co-run a calibration load. Cross-node MLP step times are not comparable.
+2. **Host CPU, not the GPU, sets the cheap-MLP step time.** Identical MNIST-Adam config: 1.13 ms on the quiet `gpu_test` node vs **4.58 ms** on the 4/4-occupied lab node. That is the mechanism behind the cost scout's "not physical" 0.34–0.64 sharded/standalone ratios, and it means C-T1/phase-5 timing runs must pin the node or co-run a calibration load. Cross-node MLP step times are not comparable.
 3. **MPS: the binary does exist** at `/usr/bin/nvidia-cuda-mps-control` on GPU nodes (the scout could only check a CPU node), but Compute Mode is `Default` and `GresTypes=gpu` only, so it stays out of scope — for the prerequisites, not for a missing binary.
 4. `gpu_test` nodes are A100-SXM4-**40GB** parents sliced 8 ways (19.62 GB usable per slice), not 80GB. Slice SM clock stayed pinned at 1410 MHz; the A100 idles at 210 MHz and reaches 1410 under load.
 

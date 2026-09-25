@@ -8,7 +8,7 @@
 #   * GPT-2-small: ./submit_gpt2.sh (its own launcher; one full GPU per Sven run).
 # Usage: ./submit_reruns_2026-09-17_part2.sh     DRY=1 to print only. Dedup makes it re-submittable.
 set -u; set -f
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 C=experiments/configs; DRY=${DRY:-0}; NJOBS=0
 sub() {
   local np=$1 cfg=$2; shift 2

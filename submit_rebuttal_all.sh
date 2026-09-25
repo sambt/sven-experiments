@@ -3,7 +3,7 @@
 # Submits every scan as an intra-GPU-sharded job. SLURM queues them under the
 # per-user concurrency limit; run_id dedup makes any job safely re-submittable.
 set -u
-cd /n/home11/sambt/iaifi/sv3
+cd /n/home/anon/sven-experiments
 C=experiments/configs
 sub() { NPROC=$1 sbatch --parsable submit_rebuttal_parallel.sh "$2" "${@:3}"; }
 

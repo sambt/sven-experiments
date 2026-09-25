@@ -1,9 +1,9 @@
 Final state: 4 new files, all tests green, nothing outside my track touched.
 
 ## Files created
-- `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/claims.py` — stdlib-only (no torch/hydra/numpy, 0.19 s import)
-- `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/provenance.py` — torch imported lazily inside `torch_facts()`
-- `/n/home11/sambt/iaifi/sv3/tests/test_claims.py`, `/n/home11/sambt/iaifi/sv3/tests/test_provenance.py` — both load the modules by path (the package `__init__` imports torch)
+- `/n/home/anon/sven-experiments/experiments/experiment_code/claims.py` — stdlib-only (no torch/hydra/numpy, 0.19 s import)
+- `/n/home/anon/sven-experiments/experiments/experiment_code/provenance.py` — torch imported lazily inside `torch_facts()`
+- `/n/home/anon/sven-experiments/tests/test_claims.py`, `/n/home/anon/sven-experiments/tests/test_provenance.py` — both load the modules by path (the package `__init__` imports torch)
 
 ## Acceptance tests (observed summaries)
 `.venv/bin/python -m pytest tests/test_claims.py tests/test_provenance.py -q` → **`21 passed, 1 skipped in 4.93s`** (locally; 3x on a CPU job via `campaign/run_cpu_tests.sh`: `21 passed, 1 skipped` in 6.05/4.79/4.74 s). With the Lustre probe enabled: **`22 passed in 28.47s`**.
@@ -11,7 +11,7 @@ Final state: 4 new files, all tests green, nothing outside my track touched.
 | test | asserts |
 |---|---|
 | `test_eight_process_race_claims_each_run_once` | 8 forked workers, 2,000 run_ids, shuffled orders, released simultaneously by a barrier: union of wins = all ids, no id twice, 2,000 claim files, ≥2 workers won. **local tmp: 43,986 try_claim/s, 5,498 claims/s** |
-| `test_eight_process_race_on_lustre` (skipped unless `SV3_CLAIMS_LUSTRE_ROOT` is set) | same race on `/n/holystore01/.../sv3_campaign_scratch/claims_probe/`: **1,236 try_claim/s, 155 claims/s** (2,000 claims in 12.9 s). Exactly-once held. Dir created, race dir removed by the test, probe dir `rmdir`ed — no leftovers. 15k campaign claims ≈ 2 min of aggregate metadata work |
+| `test_eight_process_race_on_lustre` (skipped unless `SV3_CLAIMS_LUSTRE_ROOT` is set) | same race on `/n/labstore01/.../sv3_campaign_scratch/claims_probe/`: **1,236 try_claim/s, 155 claims/s** (2,000 claims in 12.9 s). Exactly-once held. Dir created, race dir removed by the test, probe dir `rmdir`ed — no leftovers. 15k campaign claims ≈ 2 min of aggregate metadata work |
 | `test_stale_takeover_has_exactly_one_winner` | 4-process race on one backdated claim: exactly 1 winner, `took_over`, `restarts==1`, `took_over_from.pid` = dead holder, live claim not re-claimable, a second death escalates to gen 2 / `restarts==2` |
 | `test_stale_takeover_race_over_many_runs` | 4 workers over **600** stale claims at once: no double takeover, none missed, on disk exactly gen 0 + gen 1 per run and never a gen 2 |
 | `test_release_frees_the_claim`, `test_release_does_not_drop_a_claim_taken_over_by_somebody_else` | release is idempotent; a hung worker that wakes up cannot delete its successor's claim |

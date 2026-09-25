@@ -1,6 +1,6 @@
 ## TRACK sven-opt — done
 
-**Files changed:** `/n/home11/sambt/iaifi/sv3/sven/sven/opt/sven.py` (+250/−77). **Created:** `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_logging.py` (18 tests). No other file touched.
+**Files changed:** `/n/home/anon/sven-experiments/sven/sven/opt/sven.py` (+250/−77). **Created:** `/n/home/anon/sven-experiments/sven/tests/test_torch_logging.py` (18 tests). No other file touched.
 
 ### Implementation
 New on `Sven` (inherited by both Gram classes): attr `log_this_step=True`, attr `step_count`, ctor kwarg `empty_cache: bool = True`, `_maybe_empty_cache()` (all 4 `torch.cuda.empty_cache()` sites now route through it), `_gram_fp64(J)` (`J Jᵀ` in fp64, accumulated over blocks of ≤`_GRAM_BLOCK_ELEMS`=2²³ Jacobian entries — `J.double()` never materialised), `_spectrum_from_gram(G) -> (sigma, sigma², U)` (fp64 `eigh` + flips, bit-identical to the old inline code), `_sv_min_kept(sigma, filt)`, `_record_rank(kept)`, `_log_step(...)`, `finalize_svd_info() -> dict[str, Any]` (idempotent; numpy arrays; `svd_info` stays readable the old way). `svd_info` gained `step, utr, update_norm, resid_norm, sv_min_kept`; `num_nonzero_svs` still per step.

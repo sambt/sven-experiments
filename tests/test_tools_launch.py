@@ -84,7 +84,7 @@ plan: tiny
 results_root: {root}
 lanes:
   a100:
-    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    partition: "lab_gpu_priority,lab_gpu,gpu"
     gres: "gpu:1"
     mem: 64G
     time: "24:00:00"
@@ -596,7 +596,7 @@ def test_dry_run_prints_the_sbatch_line_and_writes_nothing(sandbox, capsys):
     lines = [l for l in out.splitlines() if "$ sbatch" in l]
     assert len(lines) == 2                            # n_jobs: 2
     for i, line in enumerate(lines):
-        assert "-p iaifi_gpu_priority,iaifi_gpu,gpu" in line
+        assert "-p lab_gpu_priority,lab_gpu,gpu" in line
         assert "--gres=gpu:1" in line
         assert "-c 14" in line                        # max(12, 4) + 2
         assert "--mem=64G" in line
@@ -868,13 +868,13 @@ def test_the_chain_gets_control_back_before_the_wall_clock(sandbox):
     assert "RENEW BLOCK REACHED" in out, out
 
 
-def test_logs_default_to_holystore_not_to_the_nfs_home(sandbox):
+def test_logs_default_to_labstore_not_to_the_nfs_home(sandbox):
     """One log per (job x pool x item x NPROC) plus a hydra dir each is O(10^4) files for
-    the full plan; /n/home11 is a 95 G NFS home at 84%."""
-    assert launch.DEFAULT_LOG_DIR.startswith("/n/holystore01/")
+    the full plan; /n/home is a 95 G NFS home at 84%."""
+    assert launch.DEFAULT_LOG_DIR.startswith("/n/labstore01/")
     assert "/n/home" not in launch.DEFAULT_LOG_DIR
     pool = open(os.path.join(TOOLS, "worker_pool.sh")).read()
-    assert "WORKER_LOG_ROOT:-/n/holystore01/" in pool
+    assert "WORKER_LOG_ROOT:-/n/labstore01/" in pool
     assert "PYTHONDONTWRITEBYTECODE=1" in pool      # nothing writes into the snapshot
 
 

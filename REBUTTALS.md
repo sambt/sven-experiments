@@ -20,17 +20,17 @@ it's important signal.
 
 ## 2. Environment (uv)
 
-Home dir was ~94% full, so the venv lives on holystore and is symlinked as `.venv`:
+Home dir was ~94% full, so the venv lives on labstore and is symlinked as `.venv`:
 
 ```bash
-# venv:  /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_venv   (symlinked as ./.venv)
-source /n/home11/sambt/iaifi/sv3/.venv/bin/activate      # or use .venv/bin/python directly
+# venv:  /n/labstore01/LABS/anon_lab/Users/anon/sv3_venv   (symlinked as ./.venv)
+source /n/home/anon/sven-experiments/.venv/bin/activate      # or use .venv/bin/python directly
 ```
 
 Contents: torch 2.9.1+cu128, torchvision, `sven` (editable from ./sven), hydra/omegaconf/
 numpy/pandas/matplotlib/scipy/seaborn/tqdm, **torch_optimizer 0.3.0** (Shampoo),
 **kfac-pytorch 0.4.2** (K-FAC). SOAP is vendored at `experiments/optimizers/soap.py` (zero deps).
-`torch.optim.Muon` and `AdamW` are native. UV cache: `/n/holystore01/.../uv_cache`.
+`torch.optim.Muon` and `AdamW` are native. UV cache: `/n/labstore01/.../uv_cache`.
 
 Slurm: use **`submit_rebuttal.sh`** (added) — it runs `.venv/bin/python` so Shampoo/K-FAC are
 available. The old `submit_experiment.sh` uses the `jax` conda env, which lacks those two

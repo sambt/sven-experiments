@@ -3,11 +3,11 @@
 ## Files changed
 | file | change |
 |---|---|
-| `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/grid.py` | `_quiet(verbose)` wraps the copied `process_hparam_config` in `redirect_stdout` (F7: `verbose=False` is now truly silent, copy stays byte-identical so the drift guard still works); `RunSpec.__hash__ = None` + docstring "not hashable; key on run_id" (F6) |
-| `/n/home11/sambt/iaifi/sv3/experiments/experiment_code/generic_scan.py` | F8: `else: # hig` → `elif spec.family == "hig":` + final `else: raise AssertionError(f"execute: unhandled family ...")`; except-label now `hp.get('optim_name', spec.family)` so that raise cannot become a KeyError |
-| `/n/home11/sambt/iaifi/sv3/tests/test_grid.py` | +10 tests (101→111); drift guard, shard test and docstring rewritten |
-| `/n/home11/sambt/iaifi/sv3/tests/golden/legacy_grid_equiv.py` | **new** — the order-oracle producer, committed (F1). SHA pinned to `58fc8e4` (not `HEAD`), `--freeze` required to rewrite goldens, documents the one fragility (it imports against the live `experiment_utils.py`) |
-| `/n/home11/sambt/iaifi/sv3/tests/golden/scan_smoke.sh` | **new** — the end-to-end driver (F2), parameterised workdir, refuses to run inside the repo (verified: `refusing to run inside the repo: .../tests/golden/nope`) |
+| `/n/home/anon/sven-experiments/experiments/experiment_code/grid.py` | `_quiet(verbose)` wraps the copied `process_hparam_config` in `redirect_stdout` (F7: `verbose=False` is now truly silent, copy stays byte-identical so the drift guard still works); `RunSpec.__hash__ = None` + docstring "not hashable; key on run_id" (F6) |
+| `/n/home/anon/sven-experiments/experiments/experiment_code/generic_scan.py` | F8: `else: # hig` → `elif spec.family == "hig":` + final `else: raise AssertionError(f"execute: unhandled family ...")`; except-label now `hp.get('optim_name', spec.family)` so that raise cannot become a KeyError |
+| `/n/home/anon/sven-experiments/tests/test_grid.py` | +10 tests (101→111); drift guard, shard test and docstring rewritten |
+| `/n/home/anon/sven-experiments/tests/golden/legacy_grid_equiv.py` | **new** — the order-oracle producer, committed (F1). SHA pinned to `58fc8e4` (not `HEAD`), `--freeze` required to rewrite goldens, documents the one fragility (it imports against the live `experiment_utils.py`) |
+| `/n/home/anon/sven-experiments/tests/golden/scan_smoke.sh` | **new** — the end-to-end driver (F2), parameterised workdir, refuses to run inside the repo (verified: `refusing to run inside the repo: .../tests/golden/nope`) |
 | `tests/golden/{toy_1d_scan,rebuttal_batchsize_polynomial_scan}.order.txt` | headers now name the committed producer + SHA; the 780 / 2640 ids are byte-identical (sha256-checked) |
 
 ## Acceptance evidence — `111 passed in 4.60s` (CPU node) / `111 passed in 4.53s` (local); single summary line for the file

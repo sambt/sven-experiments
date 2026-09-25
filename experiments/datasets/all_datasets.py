@@ -151,7 +151,7 @@ class MNISTDataset:
     ``split_seed``; ``test_dataset`` is the official test set (C-E1).  ``n_train``
     subsamples the **train** part only.  Normalisation constants are the published
     full-train statistics and are deliberately not recomputed for the 50k split."""
-    def __init__(self, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/mnist/",digits=None,n_train=None,subsample_seed=0,
+    def __init__(self, ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/torch/mnist/",digits=None,n_train=None,subsample_seed=0,
                  n_val=10_000, split_seed=1234):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
@@ -388,7 +388,7 @@ class CIFAR10Dataset:
     ``split_seed``; ``test_dataset`` is the official test set (C-E1).  ``n_train``
     subsamples the **train** part only.  Channel statistics are the published
     full-train values and are deliberately not recomputed for the 45k split."""
-    def __init__(self, for_mlp=False, ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/torch/cifar10/",
+    def __init__(self, for_mlp=False, ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/torch/cifar10/",
                  n_train=None, subsample_seed=0, n_val=5_000, split_seed=1234):
         if not os.path.isdir(ROOT):
             ROOT = "./torch_datasets/"
@@ -431,7 +431,7 @@ class CharTextDataset:
     sequences (for the critical-batch / data-scaling studies).
     """
     def __init__(self,
-                 ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/shakespeare/",
+                 ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/shakespeare/",
                  block_size=128, val_fraction=0.1, test_fraction=0.1,
                  n_train=None, subsample_seed=0, split_seed=None):
         path = os.path.join(ROOT, "input.txt")
@@ -506,7 +506,7 @@ class TokenBinDataset:
     files, so there is no split seed; ``token_counts.json`` (if present) is recorded.
     """
     def __init__(self,
-                 ROOT="/n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/openwebtext_gpt2",
+                 ROOT="/n/labstore01/LABS/anon_lab/Users/anon/datasets/openwebtext_gpt2",
                  block_size=1024, n_train_blocks=None, val_blocks=200, test_blocks=None,
                  vocab_size=50304, split_seed=None):
         self.block_size = block_size

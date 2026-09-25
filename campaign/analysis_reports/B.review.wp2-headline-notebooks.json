@@ -2,81 +2,81 @@
  "findings": [
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/baselines_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/baselines_analysis.ipynb",
    "issue": "Closing cell 34 asserts \"**The budget objection does not survive the distinct-trajectory count.**\" The notebook's own section 5 (cell 17) says the opposite at equal budget. Toy, expected best seed-mean val at n=8: Sven 1.413e-3 vs AdamW 1.948e-5, Adam 1.698e-5, SOAP 4.325e-6, HIG 1.046e-5, KFAC 2.552e-5, SGD 4.458e-5 - i.e. 12 of 14 baselines beat Sven at the SAME n, and Sven needs n>=64 (4.57e-7) to pass them. MNIST-LR: Sven at n=128 (0.05215) is still worse than MuonW at n=8 (0.04999). MNIST-CE: Sven at n=32 (0.1199) worse than MuonW at n=8 (0.1041). Only polynomial supports the claim. I recomputed the order statistics from the raw jsonl (finite-population E[min of n], diverged configs scored at the scan's worst seed mean 4.72111): Sven 0.960387 / 0.00141259 / 5.15064e-05 / 2.3386e-06 / 4.56477e-07 / 2.92664e-07, AdamW 1.94804e-05, SOAP 4.3253e-06, HIG 1.04599e-05 - identical to budget.py, so the curves are right and the prose is wrong. The distinct-trajectory fractions (0.475-0.66) show Sven's grid buys LESS per point, which strengthens the objection rather than answering it. Sections titled \"is Sven just better searched?\" in all four MLP notebooks also never answer their own question, and closing_numbers() computes no best-of-n quantity, so the claim is not backed by any printed number.",
    "suggested_fix": "Add the equal-budget number to hf.closing_numbers (e.g. Sven's best-of-n at n=8 and the number of baselines that beat it at that n) and rewrite the bullet honestly: at a small equal budget Sven is behind most of the field on 3 of 4 scans and only wins once the budget reaches ~64 trials; the distinct-trajectory count says the extra grid points are partly redundant, not that the objection fails."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/toy_1d_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/toy_1d_analysis.ipynb",
    "issue": "The closing \"What this scan shows\" cell (cell 37, identical text in polynomial_analysis, mnist_analysis and mnist_analysis_labelRegression) states \"On the steps and examples axes Sven is ahead of that field; on the time axis the ordering can change\". The time-to-target tables printed two sections earlier in the same notebooks contradict this on all four scans (epochs to the pre-declared median-method target): toy Sven 4.67 vs HIG 2.2 (and HIG's final val is 287x lower); polynomial Sven 7.29 vs HIG 3.53, Muon 6.0, SOAP 6.67; MNIST-LR Sven 9.2 vs Muon 6.0, MuonW 6.0, HIG 7.0; MNIST-CE Sven 9.8 vs Polyak SGD 3.6, AdamW 5.8, HIG 6.0. Sven is 2nd-4th on the steps/examples axes, not ahead of the field, and the sentence is a template that is not conditioned on the scan.",
    "suggested_fix": "Compute the statement instead of asserting it: add e.g. `sven_rank_epochs_to_target` (rank of Sven's epochs among the methods that reached the median target) to hf.closing_numbers and phrase the bullet as \"Sven is `sven_rank_epochs_to_target` of `n_reached_target` on the steps axis, behind `ttt_fastest_method`\"."
   },
   {
    "severity": "high",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/baselines_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/baselines_analysis.ipynb",
    "issue": "Closing cell 34: \"`sven_ms_per_step` ms per step, which is the same order as SOAP / Shampoo / HIG and well below Stochastic L-BFGS, K-FAC and JD\" is wrong on 3 of the 4 scans it summarises, per the efficiency tables the same notebook loads. ms/step: MNIST-CE Sven 3.998 vs Shampoo 128.9 and HIG 70.29 (32x and 18x, not \"the same order\"), and L-BFGS 3.112 - i.e. Sven is ABOVE L-BFGS, not well below; MNIST-LR Sven 4.028 vs Shampoo 127.5, HIG 73.75, L-BFGS 4.413 (9% above Sven); polynomial Sven 3.443 vs L-BFGS 2.958 (again above). The claim holds only on toy (Sven 3.40, SOAP 2.98, Shampoo 3.43, HIG 4.01, L-BFGS 5.87). K-FAC is also named although it has no selected configuration on either MNIST scan, so it is absent from those efficiency tables.",
    "suggested_fix": "Replace the hand-written ordering with computed neighbours (e.g. print the methods immediately above and below Sven in `ms_per_step` per scan from the efficiency table) or restrict the sentence to the scan it is true on."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/headline_tables.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/headline_tables.ipynb",
    "issue": "Section 7's markdown (cell 27) hard-codes CIFAR-CE numbers while the scan is flagged PROVISIONAL three cells above: \"53.0% against a baseline range of 56.8-77.9% (SGD+momentum 56.8% and Polyak SGD 63.2% ... the other eight span 68.6-77.9%)\", \"Sven 0.82, the highest of the eleven; the baselines span 0.005-0.65\" and \"Sven's selected configuration (`k=128, lr=0.1, rtol=0.01`)\". All are correct today (I recomputed from cifar10_resnet_ce_scan_confirm: Sven acc 0.52976, baselines 0.56774-0.77930, eight in 0.68642-0.77930; train_eval Sven 0.818639, baselines 0.00462-0.65107), but the phase-B brief requires every CIFAR-CE cell to update on re-execution, and the extension is already beating the pick - k=128, lr=0.1, rtol=0.1 averages 1.36504 over 4 landed seeds against the selected point's 1.40281 over 5. After re-selection this prose will contradict the tables printed above it. The implementer's report claims \"None of my notebooks hard-codes a CIFAR number\", which is not true of this notebook (owned by WP2 in phase B and re-executed here).",
    "suggested_fix": "Move these numbers into the preceding code cell (they are all columns of hl.confirmation_table / hl.ranking_summary + hf.selected_sven) and reference them qualitatively in the markdown, as the four MLP notebooks do."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/headline_figs.py",
+   "file": "/n/home/anon/sven-experiments/analysis/headline_figs.py",
    "line": 152,
    "issue": "The PROVISIONAL banner's remediation instruction is incomplete and following it silently produces a wrong table. provisional_banner() prints \"Re-run tools/select_best.py and re-execute this notebook once they land\" (baselines cell 6 prints the same). If the CIFAR-CE selection moves - which the landed extension runs suggest it will - `cifar10_resnet_ce_scan_confirm/` contains no runs of the new configuration, headline.selected_runs() matches 0 rows, and the confirmation table shows Sven 0/5 finished with val_conf NaN; ranking_summary sorts NaN last, so the rank matrix would report Sven 11/11 on validation without any error. ANALYSIS_PLAN decision 5 requires re-running timing/diag/confirm for CIFAR-CE Sven when the selected config changes.",
    "suggested_fix": "Extend the banner text to \"...re-run tools/select_best.py, then the {scan}_confirm/_timing passes for any method whose selected configuration changed, then re-execute\", and make a zero-row match raise or print an explicit warning rather than yielding a NaN row that ranks last."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/headline_figs.py",
+   "file": "/n/home/anon/sven-experiments/analysis/headline_figs.py",
    "line": 342,
    "issue": "Every synchronised-time panel contains a phantom horizontal segment. curve_axis() deliberately puts the pre-training validation point at x=0 (correct), and plot_curves then calls ax.set_xscale('log'), whose matplotlib default is nonpositive='clip': x=0 is transformed to log10 = -1000 rather than masked (verified: ax.get_xaxis().get_transform().transform([0.]) -> -1000.0), so the segment from the pre-training point to the first epoch enters the axes at essentially the epoch-1 loss and is drawn as a flat line from the left edge to the first real measurement. Visible in every right-hand panel of confirm_val_curves_three_axes.{pdf,png} and baselines/val_curves_three_axes_*.png - e.g. MNIST-LR Shampoo appears flat at 0.2 out to 100 s, MNIST-CE SOAP flat at 600 out to 10 s, toy Sven flat at 0.7 out to ~1 s - which reads as data at times where the method was not yet measured. Accuracy/test curves are affected the same way; train curves (no pre-training point) are not.",
    "suggested_fix": "Use `ax.set_xscale('log', nonpositive='mask')` in plot_curves, or drop the x<=0 sample when the axis is logarithmic; the existing test that pins x[0]==0.0 stays valid."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/toy_1d_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/toy_1d_analysis.ipynb",
    "issue": "The timing-join cell (cell 22 in all four MLP notebooks) prints a column literally named `bit_reproduced` without its tolerance, and toy reports it True for 14 of 15 methods (Sven True at max_rel_dev 2.63e-5, HIG the only False). headline.timing_join_report's threshold is tol=1e-3, i.e. the column means \"reproduced to within 1e-3\", not bit-identical; the cell's own print statement immediately afterwards says \"No bit-reproducibility is claimed anywhere in this notebook\", and the campaign fact is that no MLP run is bit-reproducible across GPU types. As printed, a reader takes toy Sven/Adam/Muon/SOAP as bit-reproducible.",
    "suggested_fix": "Print `tj.attrs['tol']` with the table and rename the column in the notebook view (e.g. `reproduced_within_1e-3`), or add one line stating the threshold above each of the four tables."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/mnist_analysis_labelRegression.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/mnist_analysis_labelRegression.ipynb",
    "issue": "The confirmation pass is not GPU-homogeneous on the two MNIST scans and no cell discloses it, although every headline rank and paired test is built from it. From the raw records: mnist_scan_labelRegression_confirm ran Sven's 5 seeds on A100-SXM4-80GB while MuonW (rank 1, 0.049817) and HIG (rank 2, 0.052981) ran on A100-40GB MIG 3g.20gb - the Sven-HIG gap is 0.55%; mnist_scan_ce_confirm is 38 MIG / 32 80GB (Sven, Muon, MuonW, HIG, Adam, RMSprop, SGDm on MIG; AdamW, L-BFGS, Polyak SGD, SGD on 80GB), so four of the paired differences cross hardware. The same notebooks measure Sven's cross-GPU deviation at up to 1.26e-3 (label-reg) and 3.8e-2 (CE) relative - the latter is ~0.0043 absolute, about a third of the smallest paired difference reported as significant on MNIST-CE - yet section 6's prose attributes the cross-GPU caveat to \"the scan vs the timing pass\" only. (toy, polynomial and both CIFAR confirm passes ARE homogeneous.)",
    "suggested_fix": "Add a gpu_name column (or a one-line homogeneity check) to hf.summary_cell for the confirmation pass, and qualify the MNIST rank statements where the compared methods ran on different GPU types."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/mnist_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/mnist_analysis.ipynb",
    "issue": "Templated robustness prose asserts a pattern the scan does not show. Cell 27's comment and the closing cell's bullet both say \"Section 7 shows *where*: at or near the bottom of the `rtol` grid, worse as the learning rate grows\" in mnist_analysis (Sven 0 of 800 grid runs diverged - the heatmap is entirely 0%), mnist_analysis_labelRegression (1 of 640) and polynomial_analysis (4 of 720). The pattern is real only on toy, where I confirmed it exactly from the raw records: 194/900, all at rtol <= 1e-4 and k >= 4, rising monotonically with lr (12/30 at lr 0.01 to 20/30 at lr 1.0 for rtol 1e-6; 0/30 at rtol 1e-3 and 1e-2). Stating a divergence pattern under a table of zeros undercuts the honesty the section is there to provide.",
    "suggested_fix": "Make the sentence conditional on the scan's own counts (e.g. print the rtol/lr cells with a non-zero fraction and say \"no Sven divergence anywhere on this grid\" when the count is 0), which hf.sven_divergence_grid already returns."
   },
   {
    "severity": "medium",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/toy_1d_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/toy_1d_analysis.ipynb",
    "issue": "Section 7's markdown (present verbatim in all four MLP notebooks) hard-codes \"campaign-wide Sven has 39 recorded against **688 of its 7,825 on-grid runs**\". Recomputing over all 22 on-grid result directories with the same is_diverged rule gives 688 of **7,862** today: the CIFAR-CE rtol extension has already added 37 Sven runs (182 now in cifar10_resnet_ce_scan, 0 diverged) and ~8 more are pending, so the denominator quoted from EXPERIMENTS.md section 7 is already stale and will move again. The fraction is materially unchanged (8.8%), but the number is presented as exact in four paper-facing notebooks.",
    "suggested_fix": "Either compute it in the preceding code cell (the loader can sum n_runs/n_diverged for Sven over the scan list) or cite it as \"EXPERIMENTS.md section 7, pre-extension counts\"."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/toy_1d_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/toy_1d_analysis.ipynb",
    "issue": "FOCUS_LR = 0.05 (cell 3) while toy's selected Sven configuration is lr = 0.01, so the one k-sweep figure (cell 13, val_loss_k_sweep_lr0.05_rtol0.0001) is not the slice through the optimum; the other three notebooks set FOCUS_LR to the selected lr. Only the figure title discloses the difference.",
    "suggested_fix": "Set FOCUS_LR from hf.selected_sven(SCAN)[0]['lr'], or add the selected-lr slice as a second panel."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/toy_1d_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/toy_1d_analysis.ipynb",
    "issue": "Garbled sentence in the closing cell on the two regression scans: \"The test loss and\\n outcome in section 2 rank it the\\n same way or close to it\" - the template drops \"accuracy\" where there is none and leaves \"The test loss and outcome\" (toy_1d_analysis cell 37, polynomial_analysis cell 37).",
    "suggested_fix": "Fix the template's singular/plural branch."
   },
   {
    "severity": "low",
-   "file": "/n/home11/sambt/iaifi/sv3/analysis/mnist_analysis.ipynb",
+   "file": "/n/home/anon/sven-experiments/analysis/mnist_analysis.ipynb",
    "issue": "The closing markdown cells quote variable NAMES in backticks (`sven_rank_val`, `best_val`, `sven_grid_frac`, ...) rather than the values, so \"What this scan shows\" cannot be read without mentally substituting from the dict printed in the cell above. This satisfies the letter of the brief (numbers computed, prose qualitative) but the section that is meant to be the paper-facing summary reads as an unrendered template in all five notebooks.",
    "suggested_fix": "Have the preceding cell emit the same bullets as formatted Markdown (e.g. IPython.display.Markdown with the values substituted), keeping the markdown cell as the template source."
   }
