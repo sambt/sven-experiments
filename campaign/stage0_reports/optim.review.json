@@ -1,0 +1,55 @@
+{
+ "findings": [
+  {
+   "severity": "high",
+   "file": "experiments/experiment_code/optim_factory.py",
+   "line": 186,
+   "issue": "muon_param_groups sends the FIRST Linear/Conv (the \"input layer\") to AdamW whenever the model has no nn.Embedding (rule 3, lines 158-160; implemented at 184-187). C-B5 does not say that: it says \"Hidden 2-D weights only: embeddings, the output head and all 1-D parameters go to AdamW\", and Muon practice (torch's own docstring: \"bias and embedding\"; Keller Jordan / modded-nanogpt) keeps the first hidden projection in Muon. Measured consequence on the repo's real models (ran muon_param_groups + numel): MLP(784,[32,32,32],10), i.e. every MNIST headline scan at mlp_width=32 -> Muon gets 2,048 of 27,562 params (7.4%); AdamW gets 92.6% (net.0.weight = 25,088 params is the whole model). At mlp_width=128 it is 24.3% / 75.7%. So the fixed \"Muon\" baseline on the MNIST headline scans is AdamW on 92% of the parameters plus two 32x32 matrices - which is exactly the F13 criticism (\"on ResNet 'Muon' is AdamW plus one fc layer\") that C-B5 exists to remove, re-created on a different workload, and a reviewer will level the same objection at the rerun. Two further effects of the same rule: (a) a model with only two projection layers now raises ValueError(\"no hidden weight matrix\") (optim_factory.py:217-223, tests line 195) where the spec rule would give one Muon matrix; (b) tests/test_optim_factory.py:130-131 asserts net.0.weight lands in adamw, so the test suite locks the deviation in. Under the spec rule MNIST coverage would be 98.8%.",
+   "suggested_fix": "Delete the `if not has_embedding: to_adamw.add(projections[0][0])` branch (optim_factory.py:186-187) and rule 3 from the docstring, so only embeddings, the last projection (head) and non-projection/1-D params go to AdamW; update tests/test_optim_factory.py:128-131 (Muon = net.0/2/4.weight), 173-174 (conv1 -> MuonConv), 168 (only fc.weight is >=2-D in AdamW) and 195-197 accordingly. If the input-layer exclusion is actually wanted, it needs explicit user sign-off (it is not in CONTRACTS.md or C-B5) and the variant string must name it (e.g. \"hidden2d_noinput+...\") so the records are not silently mislabelled."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/optim_factory.py",
+   "line": 138,
+   "issue": "The recorded variant cannot distinguish the constructions that will actually be compared, and is excluded from the run hash. MUON_VARIANT_HIDDEN2D/_CONV_FLAT encode only \"hidden2d\" + \"match_rms_adamw\" - not the input-layer rule, not the group rule version - and the implementer's integrator note says muon_variant \"need not enter run_hash\". grid.run_hash (experiments/experiment_code/grid.py:584-613) hashes spec.record_extra, and C-R3 dedup (CONTRACTS.md:41-44) skips any run whose marker carries the current hash8 with status ok/diverged. So if the grouping rule or adjust_lr_fn is changed after the first Muon runs land (very likely, see the high finding), every finished Muon/MuonW run is skipped as up to date and the campaign silently mixes two Muon definitions inside one scan.",
+   "suggested_fix": "Put a constant rule token in record_extra for optim_name in (Muon, MuonW) at the grid level (grid.py, not owned - report it to the integrator), e.g. `muon_rule: \"hidden2d+convflat:match_rms_adamw:v1\"`, so it enters run_hash; and make MUON_VARIANT_* spell out the rule actually implemented (input layer in/out) rather than just \"hidden2d\"."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/optim_factory.py",
+   "line": 140,
+   "issue": "The effective Muon learning rate moves by 2-14x relative to every legacy Muon run, and the comment describing the legacy construction is wrong. torch's _adjust_lr (site-packages/torch/optim/_muon.py:74-86) treats adjust_lr_fn=None as \"original\", i.e. the legacy runs already scaled lr by sqrt(max(1, out/in)) - not \"no lr adjustment\" as optim_factory.py:140-142 (and the implementer's report) state; MUON_VARIANT_LEGACY=\"all2d+adamw:none\" will therefore be relabelled in the manuscript with a false claim. Computed multipliers, legacy -> new (0.2*sqrt(max(A,B))): nanoGPT n_embd=128 attn (128,128) 1 -> 2.26, mlp.0 (512,128) 2 -> 4.53, mlp.2 (128,512) 1 -> 4.53; GPT-2 small 1|2 -> 11.09; resnet18 layer4 kernel flattened (512,4608) -> 13.58 (legacy Muon never touched a conv at all). The configs that run Muon give it 4 lr points (mnist_scan_ce.yaml:24 [1e-4..1e-1], exp_nanogpt_speedrun.yaml:28 [1e-4..3e-3]); a 2-14x hotter effective step moves the optimum 1-2 grid points down, so the Muon/MuonW optimum will sit on or below the lowest grid point (C-B3 \"grids must contain their optimum\") and the top points will diverge - wasted runs in a 5-day, ~16k-run campaign, and the same applies to the CIFAR configs where Muon is about to be added under O6.",
+   "suggested_fix": "Fix the comment at optim_factory.py:140-142 (legacy = adjust_lr_fn=None = the \"original\" rule sqrt(max(1, out/in)), which for lm_head/tok_emb was ~8x). Tell the integrator to extend lrs for Muon/MuonW downward by at least two half-decades (or give them their own lrs_muon list) in mnist_scan_*, exp_nanogpt_speedrun and the CIFAR headline configs before launch."
+  },
+  {
+   "severity": "medium",
+   "file": "tests/test_optim_factory.py",
+   "line": 326,
+   "issue": "Copy fidelity of the non-Muon branches is not test-protected. The only guard is test_signature_matches_experiment_utils, which compares ast.dump of the argument lists of two functions and pytest.skips as soon as the integrator removes them from experiment_utils.py - it would pass unchanged if a whole branch (Shampoo, KFAC, LBFGS kwarg filtering, PolyakSGD, the getattr fallthrough) had drifted. The implementer's claim that both factories build identical optimizers for Adam/AdamW/SGD/RMSprop/Lion/SOAP/LBFGS/PolyakSGD was verified out-of-band and is not reproducible in CI. (I diffed the two regions by hand: they are in fact faithful today, so this is a missing guard, not a live defect.)",
+   "suggested_fix": "Add a parametrized test that builds each name the campaign actually runs from both experiment_utils.build_standard_optimizer and optim_factory.build_standard_optimizer on one MLP and asserts equal type plus equal param_groups[i] minus \"params\", with the same `pytest.skip` when experiment_utils no longer defines the function."
+  },
+  {
+   "severity": "low",
+   "file": "experiments/experiment_code/optim_factory.py",
+   "line": 225,
+   "issue": "_build_muon reads `kwargs.get(\"weight_decay\", 0.0)` rather than resolve_weight_decay(optim_name, ...), so build_standard_optimizer(model, \"MuonW\", lr) with no weight_decay kwarg runs the Muon half at wd 0.0 while the AdamW half gets 0.01 - contradicting the scope decision \"MuonW at 0.1 ... in EVERY scan\" (CONTRACTS.md:96). Legacy had the same hole and grid.py always passes a resolved float, and the two call sites that pass no weight_decay (generic_scan.py:491 jd inner optimizer, optimizer_profile.py:301) only use Adam/Muon today, so it is latent.",
+   "suggested_fix": "`weight_decay = resolve_weight_decay(optim_name, kwargs.get(\"weight_decay\"))` in _build_muon (keeps the explicit-value path byte-identical)."
+  },
+  {
+   "severity": "low",
+   "file": "experiments/optimizers/muon_conv.py",
+   "line": 116,
+   "issue": "MuonConv.__init__ drops torch.optim.Muon's `isinstance(lr, Tensor) and lr.numel() != 1` check and step() drops `_to_scalar(lr)` (torch/optim/_muon.py:102-103, 302). With a tensor lr (an LR scheduler or a tensor-lr config) the failure surfaces as an obscure error inside `p.add_(..., alpha=<Tensor>)` instead of at construction, and the claim that the two are interchangeable (docstring line 98) stops holding.",
+   "suggested_fix": "Copy the two lines from torch: the Tensor-lr validation in __init__ and `lr = _to_scalar(group[\"lr\"])` (or a local float(lr)) in step."
+  },
+  {
+   "severity": "low",
+   "file": "experiments/experiment_code/optim_factory.py",
+   "line": 177,
+   "issue": "Head/input detection relies on nn.Module registration order (`projections[-1]` = head). It is correct for all seven models tested, including resnet18_pretrained_functional where `model.fc = nn.Linear(...)` keeps fc's position and replace_batchnorm only substitutes BN modules - but a model that registers its classifier before later blocks would silently orthogonalise its head with no test failing. Also untested: resnet18_pretrained_functional itself (the model exp_finetune_cifar_smallN.yaml actually runs Muon/MuonW on) is never grouped in the tests; resnet18_functional stands in for it.",
+   "suggested_fix": "Cheap guard: after picking the head, assert its out_features/out_channels equals the model's output width, or at minimum add `resnet18_pretrained_functional` to _MODEL_BUILDERS behind a `pytest.importorskip`/offline-weights guard so the finetune study's real module order is covered."
+  }
+ ],
+ "tests_run": "Ran the track's own suite twice locally (no SLURM needed, ~20 s each): `/n/home11/sambt/iaifi/sv3/.venv/bin/python -m pytest tests/test_optim_factory.py -q` -> \"45 passed in 19.86s\" and \"45 passed in 20.43s\" (implementer reported 45 passed in 26.33s / 24.43s - same count). Also ran an ad-hoc probe (scratchpad script) that calls muon_param_groups on MLP(784,[32,32,32],10), MLP(784,[128]*3,10), MLP(6,[16]*3,1), MLP(1,[16]*3,1) and prints per-group parameter counts plus the match_rms_adamw vs original lr multipliers - this produced the numbers in findings 1 and 3. Hand-diffed experiment_utils.py:879-1019 against optim_factory.py:36-305 (copy is faithful; only the documented changes) and torch/optim/_muon.py against muon_conv.py (algorithm, constants and update order match; only the two lr-scalar guards are missing). Confirmed no edits outside the three owned files: `git status` shows them untracked and `git diff experiments/experiment_code/experiment_utils.py` contains no factory/Muon/SGDm/ScheduleFree changes.",
+ "verdict": "needs_fixes"
+}

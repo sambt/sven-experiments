@@ -1,0 +1,9 @@
+# genuine dataset-overparam: 11M params, small labelled set (P >> N). n_train
+# overridden per run in the scan config / launcher. Val = 5,000 held-out train images
+# by split_seed, test = the official 10,000 (C-E1); split_seed is a THIRD seed, distinct
+# from subsample_seed (= ${data_seed} in exp_finetune_cifar_smallN.yaml).
+_target_: experiments.datasets.CIFAR10Dataset
+for_mlp: false
+n_train: 500
+n_val: 5000
+split_seed: 1234

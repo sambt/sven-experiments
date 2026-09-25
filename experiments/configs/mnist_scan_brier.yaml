@@ -1,0 +1,45 @@
+# Softmax-then-squared-error ("Brier score") variant of the headline MNIST
+# label-regression scan: loss_i = ||softmax(f(x_i)) - onehot(y_i)||^2.
+#
+# This is a DIFFERENT objective from `mnist_scan_labelRegression` (the paper's
+# raw-output ||f(x) - onehot(y)||^2, Sec. 4); results are not comparable across
+# the two. The grid mirrors the headline scan so the comparison is apples to
+# apples, but note (see _brier in generic_scan.py):
+#   * keep kappa = 2 -- with kappa < 2 the fp32 loss reaches exactly 0 once the
+#     softmax saturates and the residual loss**(kappa/2) NaNs out;
+#   * the best lr/rtol from the raw-output scan do NOT transfer (saturated
+#     samples drop out of the Gram matrix; expect a smaller lr to win).
+# Own config name => own experiment_results/ dir; run_ids also carry a
+# `_lossbrier` suffix and every row records `loss`.
+defaults:
+  - dataset: mnist
+  - model: mlp_mnist
+  - _self_
+
+name: scan
+mode: both
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 64
+mlp_width: 32
+result_id_fields: [mlp_width]
+loss: brier
+use_gram: true
+
+k_values: [1, 2, 4, 8, 16, 32, 48, 64]
+lrs: [0.05,0.1,0.5,1.0]
+rtol: [1e-4, 1e-3, 1e-2, 1e-1]
+svd_mode: [torch]
+variable_k: false
+
+lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
+optimizers_standard: [Adam, AdamW, SGD, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+lrs_lbfgs: [0.1, 0.5, 1.0]
+lbfgs_max_iter: [1, 2, 3]
+lbfgs_line_search_fn: [strong_wolfe]
+lbfgs_history_size: [2, 5, 10]
+
+loader_seed: 3000
+model_seeds: [3000, 3001, 3002, 3003, 3004]

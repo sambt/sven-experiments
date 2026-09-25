@@ -1,0 +1,90 @@
+{
+ "findings": [
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 767,
+   "issue": "The shared per-seed init checkpoint is name-collided across models and is never retired. `save_init_state(scan_dir/ckpt/init_mseed{model_seed}.pt, init_state)` names it by the model seed alone; `checkpointing.save_init_state` skips an existing file (`overwrite=False`, checkpointing.py:329); and `claims.ARTEFACT_TEMPLATES` (claims.py:127-131) does not list it, so `move_to_stale` never retires it. (a) A scan dir holding more than one model keeps only the FIRST item's initialisation -- exactly the `result_id_fields: [mlp_width, n_data]` layout of `rebuttal_overparam_*` (rebuttal_overparam_mnist_scan.yaml:37-38, and CONTRACTS' own note 'the run_id via result_id_fields: [mlp_width, n_data]'). (b) After a generation change that alters the model, the surviving `init_mseed*.pt` belongs to the retired generation. No record names the file, so C-L4 cannot detect either case. REPRODUCED: two `run_grid` passes in one scan dir, `hidden_dims: [4]` then `[8]`, `model_seeds: [5]`, `checkpoints: final` -> `ckpt/init_mseed5.pt` holds only the 4-wide init (`net.0.weight (4,1)`); the 25-param runs have no initial state stored anywhere and nothing says so.",
+   "suggested_fix": "Name it per model generation, e.g. `ckpt/init_mseed{seed}.{sha8(rcfg['model'])}.pt`, and put the path on the record as `ckpt_init_file` so offline tools do not have to guess it. Passing `overwrite=True` is not enough (it would make every run of a 600-run scan rewrite the file); the name must carry the generation."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 762,
+   "issue": "`rewrite_each_epoch=(common['n_params'] > _REWRITE_CKPT_ABOVE_PARAMS)` (threshold 1e6, line 380) keys the flush policy on the parameter count and so misses the one run the C-L3 design names. nanoGPT is 826,368 params (exp_nanogpt_speedrun.yaml:25) with `checkpoints: epochs` and `num_epochs: 50`, i.e. BELOW the threshold: `Checkpointer` accumulates 51 CPU-fp32 states (~169 MB) in `self.states` and writes nothing until `flush()` at the end, so a 12 h timeout or a preemption loses every checkpoint -- precisely the case checkpointing.py's docstring promises to protect ('Long runs (ResNet, GPT) rewrite the file at each epoch end so a timeout loses little'). At NPROC=3 that is ~0.5 GB of host RAM per GPU in checkpoint buffers. Conversely CIFAR ResNet18 (~11.2M params, `checkpoints` defaults to `final`, `num_epochs: 20`) gets `rewrite_each_epoch=True` and rewrites a 45 MB single-slot file 20 times per run (~0.9 GB of write traffic per run, ~590 GB per 655-run scan).",
+   "suggested_fix": "Add the policy and the run length to the condition, e.g. `rewrite_each_epoch=((checkpoint_policy in ('epochs', 'log') and ctx.num_epochs > 1) or common['n_params'] > _REWRITE_CKPT_ABOVE_PARAMS)`, so an accumulating policy always flushes per epoch and the `final` single-slot case is a deliberate choice rather than a side effect of model size."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 1219,
+   "issue": "A hard-killed worker's in-flight runs are skipped by an immediately requeued job and the pass still exits 0. `claim is None -> counts['claimed_elsewhere'] += 1; continue` and the walk never returns to that spec (no mop-up pass), while the dead worker's claim is younger than `CLAIM_TIMEOUT_S` (600 s) so `try_claim` treats it as live. REPRODUCED: SIGKILL a worker mid-run, requeue in the same second -> `claimed_elsewhere 1, ok 5`, **exit 0**, 5 of 6 records, and a leftover `claims/<run>.claim` + `started/<run>.started`. CONTRACTS says 'Exit code 0 when nothing is left to claim', but here work IS left; `tools/worker_pool.sh`'s header treats 0 as success including 'every item was already finished', so nothing in the job distinguishes 'done' from 'skipped six runs a dead sibling held'.",
+   "suggested_fix": "After the walk, if `counts['claimed_elsewhere']`, rebuild the index and do one more pass, and print an explicit `[incomplete] N run(s) still claimed elsewhere` line so the pool log and reconcile can see it. If the pool must keep treating non-zero as a crash, at minimum make the incomplete line unmissable and have reconcile's `claimed_live` count gate resubmission."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/claims.py",
+   "line": 152,
+   "issue": "`oom` and `error` are retried with no cap, and the done marker cannot count attempts: `done_path` is `{run_id}.{hash8}.{status}`, one file per (hash, status), so one failed attempt and five hundred are indistinguishable on disk. Under `scheduler: claims` every worker of every job walks the whole grid, so a deterministically failing grid point is re-attempted for the entire campaign. Two live triggers: a CIFAR-Sven OOM at large k (NPROC=1, `gram_capture: full`), and any linalg failure whose message is not one of the three tokens in `_DIVERGED_MESSAGE_TOKENS` (generic_scan.py:418-419) -- e.g. cholesky's 'U(3,3) is zero, singular U' or 'not positive definite' from KFAC/Shampoo -- which lands in `error` rather than `diverged`. `MAX_CLAIM_GENERATIONS` caps takeovers, not retries.",
+   "suggested_fix": "Make failed attempts countable: write `done/{run_id}.{hash8}.{status}.{n}` or a zero-byte `attempts/{run_id}.{hash8}.{n}`, and in `run_grid` treat >= 3 failed attempts of the same hash as final (still reported by reconcile as oom/error). Separately widen `_DIVERGED_MESSAGE_TOKENS` with 'singular', 'not positive definite' and 'cholesky'."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 894,
+   "issue": "`if spec.family != \"svd\" and torch.cuda.is_available(): torch.cuda.empty_cache()` in the failure path excludes exactly the memory-hungry family. Sven is the OOM candidate (CIFAR Sven runs at NPROC=1 with `gram_capture: full` and a B x P Jacobian), so after an `oom` in a Sven run the allocator cache is never dropped and the rest of that worker's walk can cascade into further `oom` records -- which, with the previous finding, are then retried forever. `_finish_losses` only calls `empty_cache()` on the success path. (Pre-existing at HEAD, where a failure merely printed; it matters now that failures are records and are retried.)",
+   "suggested_fix": "Call `torch.cuda.empty_cache()` for every family in the `except` block and keep `torch.compiler.reset()` for svd in the `finally` (they are independent: `compiler.reset()` clears compiled code, not allocator blocks)."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 889,
+   "issue": "ok / diverged / oom / error records do NOT share one curve shape, contrary to part B's report. `_partial_record_on_divergence` (experiment_utils.py:606) finalises the caller's dict only on `DivergedError`, so any other mid-training failure -- Sven's empty-spectrum RuntimeError, a `LinAlgError`, a HIG/KFAC solve failure, an injected error -- leaves `record['losses']` without `total_time`, `avg_epoch_time`, `avg_train_time`, `avg_batch_time_train`, `avg_eval_time` and the C-E5 summary that every `ok` and `diverged` record carries. A notebook doing `rec['losses']['avg_train_time']` raises KeyError on a `diverged`-by-LinAlgError record, and 'guard every mean on status' does not help because the status is the same `diverged`.",
+   "suggested_fix": "In `execute`'s `except`, after recovering `losses`, fill the same keys (expose a public `experiment_utils.finish_losses(losses, t0)` and call it with the `timing` start, or set the five scalars to nan and `losses.update(summarize_curves(losses))`), so the curve dict has one schema for all four statuses."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/grid.py",
+   "line": 499,
+   "issue": "The run-id-neutrality evidence in part A's report is stale. Re-running the comparison (HEAD's `grid.py` vs the working tree, all 46 top-level configs x 6 modes) gives 264 identical AND **12 differing** (config, mode) pairs, not '264 (config, mode) pairs, 0 differ': `cifar10_resnet_ce_scan`, `cifar10_resnet_scan_labelRegression` and `rebuttal_fig5_cifar_paramfrac_scan` regain `_bnbatch` on their svd run_ids, and `exp_finetune_cifar_smallN` gains `_bnfrozen` on its baselines. The changes are CORRECT -- those three configs were committed with `bn_mode: batch` before `grid.py` understood the key, and `_bnbatch` is what the legacy names carry (analysis/legacy_repair/cifar10_resnet_ce_scan.parquet: `svd_bs128_k128_lr0.1_rtol0.0001_svdtorch_mseed4000_lseed4000_gram_bnbatch`) -- but the report reads as 'nothing moved', which is how a reviewer misses a real run_id change.",
+   "suggested_fix": "Restate the claim as '264 identical + 12 intended `bn_mode` changes, verified against the legacy parquet names', and pin it: add a test that asserts the suffix for those four configs (the `tests/golden/*` machinery and the RE-FREEZING block already exist for this)."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/grid.py",
+   "line": 765,
+   "issue": "`run_hash` keys on config only, so a mid-campaign code change is invisible and a mid-campaign config change with two live snapshots ping-pongs. Neither repo's git sha is in the payload (by design per C-R3) and `MUON_RULE_TOKEN` is the only code-level rule that is -- so a `sven` bugfix redeployed mid-campaign leaves one scan dir holding results from two code generations with no marker and nothing to re-run the old half, while `tools/reconcile.py` classifies purely from the `done/`/`started/`/`claims/` listings and never compares the records' `git_sha`, so the mix is undetectable. Conversely a CONFIG edit while an older snapshot's jobs are still queued makes the two generations retire each other's results in a loop (`_stale_hashes_now` -> `move_to_stale` -> re-run, in both directions), with only `_stale/` growth as a symptom.",
+   "suggested_fix": "Add an operator-controlled `code_generation` key to the hash payload, bumped by hand on a semantically breaking redeploy (cheap, explicit, keeps ordinary redeploys free); and have reconcile report the distinct `git_sha` / `sven_git_sha` values per scan and flag any scan with more than one."
+  },
+  {
+   "severity": "medium",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 1006,
+   "issue": "`tmp = f\"{path}.tmp{os.getpid()}\"` in `_save_resolved_config` is pid-only, the exact hazard `checkpointing._atomic_save` added a uuid for ('identically configured SLURM nodes hand out the same pids'). Under `scheduler: claims` many jobs on many nodes legitimately serve one work item and all write the same `configs/{job}.yaml`; two colliding pids interleave the same temp file and the loser's `os.replace` raises `FileNotFoundError`, which propagates out of `_save_resolved_config` -> `run_grid` before that worker executes a single run.",
+   "suggested_fix": "`tmp = f\"{path}.tmp.{os.getpid()}.{uuid.uuid4().hex[:8]}\"`, and treat a `FileNotFoundError` from `os.replace` as 'another worker won' (return the path) instead of re-raising."
+  },
+  {
+   "severity": "low",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 838,
+   "issue": "`track_param_norm` never reaches the lbfgs and polyak branches: the svd (line 817), standard (827), jd (863) and hig (873) calls all pass `track_param_norm=ctx.track_param_norm`, the LBFGS and PolyakSGD calls to `train_loop_standard` do not. A config with `track_param_norm: true` therefore silently produces no `param_norm` curve for those two families.",
+   "suggested_fix": "Add `track_param_norm=ctx.track_param_norm` to the lbfgs and polyak `train_loop_standard` calls (the loop already accepts it)."
+  },
+  {
+   "severity": "low",
+   "file": "experiments/experiment_code/generic_scan.py",
+   "line": 928,
+   "issue": "The C-E5 summary is written twice from two places: `_finish_losses` puts `val_final`/`val_best`/`val_best_index`/`val_last3_mean` inside `losses` (experiment_utils.py:623) and `execute` puts the same four keys at the top level of the record. Two sources of truth for the same numbers, and on a non-DivergedError failure only the top-level copy exists (see the ok/diverged/error shape finding), so they can disagree within one scan.",
+   "suggested_fix": "Keep the record-level copy (which is what the analysis columns read) and drop `losses.update(summarize_curves(losses))` from `_finish_losses`, or vice versa -- but only one."
+  },
+  {
+   "severity": "low",
+   "file": "pyproject.toml",
+   "line": 33,
+   "issue": "The working tree's `pyproject.toml` carries changes beyond the integrator's stated ownership ('pyproject.toml ([tool.pytest.ini_options] pythonpath only)'): `nbconvert>=7.17.1` added to `[dependency-groups] dev` with a `make_plots.sh` rationale, plus a modified `uv.lock`. The pytest `pythonpath` change itself is correct and verified (bare `.venv/bin/pytest tests/test_grid.py` now passes: 116 passed).",
+   "suggested_fix": "Have whoever owns `make_plots.sh` claim the nbconvert + uv.lock change in their report before the orchestrator commits, and note that the deploy snapshot's env needs a `uv sync` once it lands."
+  }
+ ],
+ "tests_run": "All test runs from a temporary working directory with an absolute SV3_RESULTS_ROOT under the session scratchpad; the real experiment_results/ symlink was never written (every scan dir I created was under /tmp/claude-66176/.../scratchpad/adv, and no test calls scan()).\\n\\n1. Runner + grid tests, via campaign/run_cpu_tests.sh (CPU SLURM job): `.venv/bin/python -m pytest tests/test_runner_training.py tests/test_runner_lifecycle.py tests/test_grid.py -q` -> **148 passed, 2 warnings in 26.36s** (log slurm_logs/devtests/devtest-fsOhiv.out).\\n2. Full sv3 suite, via campaign/run_cpu_tests.sh: `.venv/bin/python -m pytest tests/ -q` -> **704 passed, 29 skipped, 27 warnings in 86.24s**, exit 0 (log slurm_logs/devtests/devtest-tCE2H2.out). Part B's report said 685 passed; the tree has grown since, and it is green.\\n3. Bare-pytest check (the [tool.pytest.ini_options] pythonpath claim): `.venv/bin/pytest tests/test_grid.py -q` -> **116 passed in 6.62s**.\\n4. Torch-free import: `import experiments.experiment_code.grid` leaves torch out of sys.modules; `experiments.experiment_code.__all__ == ['execute','run_grid','scan','set_seed']`.\\n\\nAdversarial experiments I ran myself (all in temp roots):\\n5. TWO REAL CONCURRENT WORKERS (subprocesses, real `execute`, not the stubbed test): 10-run SGD grid, one scan dir -> 5+5 executions, 0 duplicates, 10 jsonl + 10 npz + 10 ckpt + 10 done markers, claims/ and started/ empty, every record matched by its `{run_id}.{hash8}.{status}` marker.\\n6. CRASH CONSISTENCY: (A) jsonl+marker removed with the npz left behind -> re-executed and recovered; (B) truncated jsonl with no marker -> re-executed and recovered; (C) marker present with the jsonl deleted -> skipped forever and classified `ok` by tools/reconcile.py (narrow: only reachable by manual deletion, since move_to_stale moves the marker last -- not filed as a finding, reconcile is not the integrator's file).\\n7. SIGKILL + IMMEDIATE REQUEUE: killed a worker mid-run, requeued in the same second -> `claimed_elsewhere 1, ok 5`, exit 0, 5/6 records, leftover claim + started marker (filed as a medium).\\n8. MEMORY over many runs in one process: 120 Sven-Gram runs, dense spectra logging, `checkpoints: log` -> RSS flat at 628 MB from run 20 to run 120 (no growth from checkpoints, svd_info, loaders or heartbeat threads).\\n9. DEDUP COST: mnist_scan_ce mode=all -> 1360 specs, expand_grid 6 ms, all 1360 run_hashes 22 ms (16 us each), 1360 unique; done_index is one listdir per process plus one per 200 runs; try_claim costs ~2 syscalls per contested spec. No per-run JSON reads anywhere on the dedup path.\\n10. CROSS-DEVICE: read every write path -- `_write_json_atomic` (mkstemp in the target dir), `checkpointing._atomic_save`, `_save_resolved_config`, `move_to_stale` (within scan_dir) -- all rename inside one directory, so a results root on another filesystem never hits EXDEV; claims._move's EXDEV fallback is defensive only.\\n11. RUN-ID NEUTRALITY, re-measured independently: HEAD's grid.py vs the working tree over all top-level configs x 6 modes -> 264 identical, 12 differing (filed as a medium); the 12 verified correct against analysis/legacy_repair/cifar10_resnet_ce_scan.parquet.\\n12. MANIFEST NAME COLLISIONS: computed `_manifest_job_name` for all 304 campaign/plan_campaign.yaml items -> 0 collisions across different overrides (part B's disclosed hazard does not bite the current plan).\\n13. SHARED INIT CHECKPOINT: two run_grid passes with different `hidden_dims` and the same model seed in one scan dir -> ckpt/init_mseed5.pt holds only the first model's init (filed as a medium).\\n14. Failure-classification coverage read against the real raisers: sven/opt/sven.py:475 does emit 'no singular value above rtol' (matched); DivergedError-first order is correct; gap found for cholesky/'singular U'/'not positive definite' messages (folded into the retry-cap finding).",
+ "verdict": "needs_fixes"
+}

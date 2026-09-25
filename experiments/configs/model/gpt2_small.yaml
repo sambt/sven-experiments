@@ -1,0 +1,8 @@
+# GPT-2 small, UNTIED embeddings + no dropout -> stays on the fast Gram hooks path.
+# ~163M params (124M + untied lm_head). vocab_size injected at runtime from the dataset.
+_target_: experiments.nn.NanoGPT
+block_size: 1024
+n_layer: 12
+n_head: 12
+n_embd: 768
+tie_weights: false

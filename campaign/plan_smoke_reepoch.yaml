@@ -1,0 +1,48 @@
+# Gate-1 check (i): change `num_epochs` for ONE small item and nothing else.
+#
+# Same results root and same snapshot as campaign/plan_smoke.yaml, same config, same
+# seed, same grid -- only `num_epochs=3` instead of 2. `grid.run_hash` covers
+# `num_epochs`, so both runs of this item get a new hash8, and the C-R3 rule must
+# re-execute exactly these two runs and move the previous generation's jsonl / npz /
+# ckpt / marker under `{scan}/_stale/{old_hash8}/`. Every other run of the matrix must
+# be untouched.
+#
+#   tools/launch_campaign.py campaign/plan_smoke_reepoch.yaml --snapshot <snap> --submit --time 00:20:00
+version: 1
+plan: smoke_reepoch
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_campaign_scratch/smoke_74987054
+
+lanes:
+  # the a100 lane, not gpu_test: this check is about the runner's stale-generation logic,
+  # and on the night of Gate 1 the gpu_test nodes were draining
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    cpus: 4
+    mem: 32G
+    time: "00:20:00"
+
+work_lists:
+  - name: smoke_reepoch
+    phase: P0
+    lane: a100
+    n_jobs: 1
+    note: "the masked / unmasked toy param-fraction pair, at num_epochs=3"
+    items:
+      - {config: toy_1d_paramfrac_scan, nproc: 2,
+         overrides: "mode=svd num_epochs=3 model_seeds=[1000] param_fractions=[0.5,1.0] k_values=[32] lrs=[0.5] rtol=[1e-3]"}
+
+  # The polyak family was the one family whose deliberate blow-up in plan_smoke.yaml
+  # (`polyak_f_star=-1e5`, `polyak_max_lr=1e3`) stayed FINITE: 2 epochs took it to a val
+  # loss of 4.3e4, and `stop_on_nonfinite` fires on non-finite, not on large. A cap three
+  # decades higher makes the step actually overflow, so every one of the six families has
+  # a `diverged` record from a real GPU run. `maxlr` is in the run_id, so this is a new
+  # run and the finite one stays where it is (it is a legitimate grid point).
+  - name: smoke_polyak_diverge
+    phase: P0
+    lane: a100
+    n_jobs: 1
+    note: "the polyak family's diverged record"
+    items:
+      - {config: toy_1d_scan, nproc: 1,
+         overrides: "mode=standard optimizers_standard=[PolyakSGD] num_epochs=2 model_seeds=[1000] +polyak_f_star=[-100000.0] +polyak_max_lr=[1000000.0]"}

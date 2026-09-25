@@ -15,29 +15,62 @@ input_dim: 6
 degree: 4
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
+
+# Headline scan => full per-step checkpoint ladder (C-L3/C-L4). 673 params, ~0.5 MB/run.
+checkpoints: log
 
 k_values: [1,2,4,8,16,32]
 lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3: the Sven optimum here is k=32 (=B, a method boundary, not a grid edge) at the
+# SMALLEST rtol -> extend the rtol grid down by one decade (1e-5).
+# C-B3 extension round (user-approved, 2026-09-19): the finished scan reverses that -- over
+# its 480 svd runs the optimum is rtol 1e-2, the TOP edge (0.1175 at k=32, lr 0.5;
+# `rtol:EDGE-HIGH`), and 1e-5 earns nothing. The added 1e-5 stays (it is on disk and it
+# brackets the optimum from below); the top edge gets its two half-decade points. lr (0.5)
+# is interior and k=B is a method boundary, so neither grows.
+rtol: [1e-5, 1e-4, 1e-3, 1e-2, 3e-2, 1e-1]
 svd_mode: [torch]
-kappa: 2
+variable_k: false
 
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
-lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1,2,5,10]
+# C-B3, one baked-in extension round; shared by every standard optimizer (see toy_1d_scan
+# for the full rationale). Here specifically: KFAC best = the old 1e-4 bottom edge,
+# SGD (0.1) and Shampoo (0.1) the old top edge, plus the match_rms_adamw Muon shift.
+# C-B3 extension round (user-approved, 2026-09-19): the extension above did not go far
+# enough for KFAC, which is still best on the NEW bottom edge -- seed-mean final val 0.1728
+# at 1e-5, 0.1872 at 3e-5, 0.3405 at 1e-4 (`lr:EDGE-LOW`), monotone all the way down, while
+# everything above 1e-4 diverges (2874 at 1e-3). Two more half-decade points. Every other
+# optimizer on this scan is interior, so the two points are bracketing, not searching.
+lrs_standard: [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
+#optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
+# Consolidated: this scan now includes the full modern baseline suite (the extra
+# optimizers formerly in rebuttal_baselines_*). NOTE the results dir also holds the
+# earlier CORE-only runs, which used a different loader seed / LBFGS grid, so the
+# directory documents all runs rather than being a single reproducible Cartesian grid.
+# SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list, so AdamW=0.01, MuonW=0.1,
+# Adam / Muon stay the wd=0 baselines (scope update).
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# C-B3 extension round: L-BFGS is best at lr 1.0, the top edge (0.2395, 3/5 seeds finite;
+# `lr:EDGE-HIGH`) -> two half-decade points. Unlike the two CIFAR scans, where a single
+# bracketing point was chosen because each L-BFGS run costs ~0.04 GPU-h, an MLP L-BFGS run
+# here is seconds, so the edge gets the full pair.
+lrs_lbfgs: [0.1, 0.5, 1.0, 2.0, 4.0]
+lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: [2, 5, 10]
 
-# Jacobian Descent (torchjd) hyperparameters
+# Jacobian Descent (torchjd) hyperparameters (mode: jd / all)
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]
-lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]
 
-# Half-Inverse Gradients hyperparameters
-lrs_hig: [0.05, 0.1, 0.5, 1.0]
-tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+# Half-Inverse Gradients hyperparameters (mode: hig / all)
+# C-B3 shift (see toy_1d_scan for the per-scan evidence): lr >= 0.5 produced no records
+# here at all and is dominated where it did run (mnist_scan_ce); tau best = the 1e-2 top
+# edge here (0.0030 at lr 0.1 / tau 1e-2).
+lrs_hig: [0.005, 0.015, 0.05, 0.1, 0.25]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
-loader_seed: 82464
-model_seeds: [5310, 5311, 5312, 5313, 5314, 5315, 5316, 5317, 5318, 5319]
-data_seed: 57728
+loader_seed: 2000
+model_seeds: [2000, 2001, 2002, 2003, 2004]
+data_seed: 2000

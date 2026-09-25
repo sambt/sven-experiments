@@ -1,0 +1,41 @@
+# Fig-5 rebuttal: ResNet18/CIFAR-10 parameter-fraction scan on the exact Gram backend.
+# The paper ran this via randomized_v2 SVD of the (128, ~11M) Jacobian because the
+# classic pipeline was intractable at this P; the Gram trick computes the identical
+# update exactly and cheaply, so we can add seeds and report accuracy / peak memory /
+# step time. Sven-only (param-fraction is a Sven-specific story). >=3 seeds (R1 ask).
+defaults:
+  - dataset: cifar10
+  - model: resnet_cifar10
+  - _self_
+
+name: scan
+mode: svd
+device: cuda
+print_config: true
+
+num_epochs: 20
+batch_size: 128
+loss: label_regression
+
+use_gram: true
+# hooks capture with elementwise masking (the default mask_mode) reproduces the paper's
+# random-parameter-subset Fig-5 exactly and runs on the fast path: BatchNorm is fine under
+# elementwise (only "rows" mode can't split it). O(B*n_active) per layer, fraction-scaling.
+gram_capture: full              # one jacrev over all params = full (B,P) Jacobian -> Gram (batch-stat BN needs chunked/full, not hooks)
+# C-E2: same policy as the CIFAR headline scans -- batch statistics for every optimizer.
+# Supersedes `gram_freeze_norm_stats: false`; grid.py derives that boolean from `bn_mode`.
+bn_mode: batch
+
+# SET POINT, STILL TENTATIVE -- MUST BE RE-POINTED BEFORE LAUNCH (grid_inventory 5.5).
+# These three values are the pre-Gram "classic" best; bench/best_configs.json has no CIFAR
+# entry at all, and EXPERIMENTS.md:108-109 documents k=128, lr=0.1, rtol=1e-4 for the same
+# figure. Re-derive them from the BN-fixed cifar10_resnet_scan_labelRegression headline
+# scan (phase 3) and edit these three lines; do not launch phase 4 on the tentative values.
+k_values: [64]
+lrs: [1.0]
+rtol: [1e-3]
+svd_mode: [torch]     # irrelevant under Gram (eig of G replaces the SVD of J)
+param_fractions: [0.05, 0.1, 0.25, 0.5, 1.0]
+
+loader_seed: 4000
+model_seeds: [4000, 4001, 4002]

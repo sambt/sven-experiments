@@ -15,16 +15,19 @@ input_dim: 6
 degree: 4
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
 
+# Sven-only ablation on a <1k-param MLP: `log` (steps 0,1,2,4,... + every epoch end) is
+# ~0.5 MB/run, so the offline-spectra ladder is free here.
+checkpoints: log
 # Param fraction sweep: Jacobian columns from ~673 to frac*673
 param_fractions: [0.1, 0.25, 0.5, 0.75, 1.0]
 
 k_values: [32]
-lrs: [0.5]
-rtol: [1e-2]
-svd_mode: [randomized, torch, randomized_v3]
-use_rmsprop: false
+lrs: [0.05, 0.1, 0.5, 1.0]
+rtol: [1e-3]   # headline scan 2026-09-12: 1e-3 ~ 1e-4 best, 1e-2 20% worse
+svd_mode: [torch]
 
-loader_seed: 82464
-model_seeds: [5310, 5311, 5312, 5313, 5314, 5315, 5316, 5317, 5318, 5319]
-data_seed: 57728
+loader_seed: 2000
+model_seeds: [2000, 2001, 2002, 2003, 2004]
+data_seed: 2000

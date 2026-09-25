@@ -1,0 +1,17 @@
+\begin{tabular}{llrrrrrrrrl}
+\toprule
+method & display & n\_timing & n\_joined & max\_rel\_dev & median\_rel\_dev & bit\_reproduced & n\_diverged\_only\_in\_timing & n\_diverged\_only\_in\_scan & max\_rel\_dev\_raw & worst\_run\_raw \\
+\midrule
+Sven & Sven & 5 & 5 & 0.03215 & 0.01997 & False & 0 & 0 & 0.03215 & svd\_bs128\_k128\_lr0.5\_rtol0.3\_svdtorch\_mseed4000\_lseed4000\_gram\_bnbatch \\
+Adam & Adam & 5 & 5 & 0.09787 & 0.05606 & False & 0 & 0 & 0.09787 & std\_bs128\_lr0.001\_optimAdam\_mseed4001\_lseed4000 \\
+AdamW & AdamW & 5 & 5 & 0.1241 & 0.07331 & False & 0 & 0 & 0.1241 & std\_bs128\_lr0.01\_optimAdamW\_wd0.01\_mseed4003\_lseed4000 \\
+LBFGS & Stochastic L-BFGS & 5 & 5 & 0.1572 & 0.0861 & False & 0 & 0 & 0.1572 & std\_bs128\_lr2.0\_optimLBFGS\_mi2\_hs5\_lsstrong\_wolfe\_mseed4000\_lseed4000 \\
+Muon & Muon & 5 & 5 & 0.1216 & 0.05746 & False & 0 & 0 & 0.1216 & std\_bs128\_lr0.01\_optimMuon\_mseed4004\_lseed4000 \\
+MuonW & MuonW & 5 & 5 & 0.09216 & 0.02801 & False & 0 & 0 & 0.09216 & std\_bs128\_lr0.01\_optimMuonW\_wd0.1\_mseed4004\_lseed4000 \\
+PolyakSGD & Polyak SGD & 5 & 5 & 0.02632 & 0.01329 & False & 0 & 0 & 0.02632 & std\_bs128\_optimPolyakSGD\_fstar0.0\_maxlr1.0\_eps1e-08\_mseed4000\_lseed4000 \\
+RMSprop & RMSprop & 5 & 5 & 0.05678 & 0.0421 & False & 0 & 0 & 0.05678 & std\_bs128\_lr0.001\_optimRMSprop\_mseed4002\_lseed4000 \\
+SGD & SGD & 5 & 5 & 0.08894 & 0.01573 & False & 0 & 0 & 0.08894 & std\_bs128\_lr3.0\_optimSGD\_mseed4003\_lseed4000 \\
+SGDm & SGD + momentum & 5 & 5 & 0.2077 & 0.1433 & False & 0 & 0 & 0.2077 & std\_bs128\_lr0.3\_optimSGDm\_mseed4002\_lseed4000 \\
+SOAP & SOAP & 5 & 5 & 0.06642 & 0.03683 & False & 0 & 0 & 0.06642 & std\_bs128\_lr0.01\_optimSOAP\_mseed4004\_lseed4000 \\
+\bottomrule
+\end{tabular}

@@ -13,16 +13,19 @@ batch_size: 32
 mlp_width: 16
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
 
+# Sven-only ablation on a <1k-param MLP: `log` (steps 0,1,2,4,... + every epoch end) is
+# ~0.5 MB/run, so the offline-spectra ladder is free here.
+checkpoints: log
 # Microbatch sweep: effective Jacobian rows = 32/mb
 microbatch_sizes: [1, 2, 4, 8, 16, 32]
 
-k_values: [16]
-lrs: [0.05]
+k_values: [32]
+lrs: [0.05, 0.1, 0.5, 1.0]
 rtol: [1e-3]
-svd_mode: [randomized, torch, randomized_v3]
-use_rmsprop: false
+svd_mode: [torch]
 
-loader_seed: 51159
-model_seeds: [4310, 4311, 4312, 4313, 4314, 4315, 4316, 4317, 4318, 4319]
-data_seed: 54631
+loader_seed: 1000
+model_seeds: [1000, 1001, 1002, 1003, 1004]
+data_seed: 1000

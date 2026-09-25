@@ -14,11 +14,31 @@ mlp_width: 32
 result_id_fields: [mlp_width]
 loss: label_regression
 
-k_values: 64
-lrs: 0.5
+use_gram: true
+gram_capture: hooks
+# Sven-only checkpoint ladder (as in the MNIST headline scans); baselines keep `final`.
+checkpoints_svd: log
+
+# C-X1 (F29): at k = B and a fixed lr the kappa step is exactly 2/kappa times the kappa=2
+# step in the untruncated full-row-rank solve, i.e. the old 3-point scan was an lr sweep in
+# disguise. Two fixes, both here:
+#   * retune lr per kappa. The lr list is chosen so that three effective steps
+#     2*lr/kappa are realised by ALL THREE kappas, which is what makes the comparison
+#     "same step, different kappa" and not "different step":
+#         2*lr/kappa = 0.25  <- lr 0.125 / 0.25  / 0.375 at kappa 1 / 2 / 3
+#         2*lr/kappa = 0.5   <- lr 0.25  / 0.5   / 0.75
+#         2*lr/kappa = 1.0   <- lr 0.5   / 1.0   / 1.5
+#     A FULL lr x kappa match would need S/2, S, 3S/2 in the grid for every S and cost
+#     15 lrs (450 runs); three matched triples plus the surrounding points is the cheap
+#     version. lr 0.5 is kept because it is the legacy set point (the 15 runs on disk).
+#   * add a slice where TRUNCATION BINDS: k=32 < B=64 (k=64 = B is the old, non-binding
+#     slice and stays for continuity). At k=64 the matched triples are the whole story;
+#     at k=32 kappa also changes WHICH directions survive the cut.
+k_values: [32, 64]
+lrs: [0.125, 0.25, 0.375, 0.5, 0.75, 1.0, 1.5]
 rtol: 1e-4
 svd_mode: [torch]
-kappa: [1, 1.5, 2, 2.5, 3]
+kappa: [1, 2, 3]
 
-loader_seed: 51159
-model_seeds: [6310, 6311, 6312, 6313, 6314, 6315, 6316, 6317, 6318, 6319]
+loader_seed: 3000
+model_seeds: [3000, 3001, 3002, 3003, 3004]

@@ -1,1 +1,5 @@
+# Official train -> 50,000 train / 10,000 val by split_seed; test = official test set (C-E1).
+# n_train (if set by the scan config) subsamples the train part only.
 _target_: experiments.datasets.MNISTDataset
+n_val: 10000
+split_seed: 1234      # fixed; independent of the model, loader and subsample seeds

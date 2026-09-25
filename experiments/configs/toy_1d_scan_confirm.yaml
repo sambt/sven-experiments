@@ -1,0 +1,29 @@
+# Confirmation companion of toy_1d_scan (Phase 5, pass D: CHANGES_NEEDED.md 4.2).
+# The selected configuration of every method (bench/best_configs.json ->
+# campaign/plan_phase5.yaml) on FRESH model seeds -- the numbers to report, so that the
+# headline table is not read off the seeds the hyperparameters were tuned on. Results land
+# in experiment_results/toy_1d_scan_confirm/.
+defaults:
+  - toy_1d_scan
+  - _self_
+
+# base + 100 .. base + 104: disjoint from the scan's tuning seeds, and `derive_loader_seed`
+# makes the data order follow the model seed, so these are fresh data orders too.
+model_seeds: [1100, 1101, 1102, 1103, 1104]
+
+# Confirmation reports final val / test numbers, not trajectories: no checkpoint ladder
+# (`checkpoints_svd` must be cleared or the svd family would keep the parent's `log`),
+# and the per-epoch svd summary instead of the full per-step arrays.
+checkpoints: final
+checkpoints_svd: null
+svd_info: summary
+
+# C-A/F25/F27: this scan also gets 3 DATA seeds, and `data_seed` is NOT part of the
+# run_id -- it reaches the run only through `dataset.seed: ${data_seed}` and through
+# `grid.run_hash`. Two data seeds would therefore write the same run_id under two
+# different run hashes, and the C-R3 rule would have each job retire the other's finished
+# result to `_stale/` and re-run it, for ever. Putting `data_seed` in
+# `result_id_fields` puts it in the run_id (`_mlp_width16_data_seed2001`), which is one
+# line here versus one extra results directory and one extra config per replicate.
+# Only the _confirm config does this: the parent scan's run_ids are unchanged.
+result_id_fields: [mlp_width, data_seed]

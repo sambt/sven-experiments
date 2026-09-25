@@ -1,0 +1,21 @@
+\begin{tabular}{llrrrrrrrrl}
+\toprule
+method & display & n\_timing & n\_joined & max\_rel\_dev & median\_rel\_dev & bit\_reproduced & n\_diverged\_only\_in\_timing & n\_diverged\_only\_in\_scan & max\_rel\_dev\_raw & worst\_run\_raw \\
+\midrule
+Sven & Sven & 5 & 5 & 2.63e-05 & 2.936e-07 & True & 0 & 0 & 2.63e-05 & svd\_bs32\_mlp\_width16\_k32\_lr0.01\_rtol0.0001\_svdtorch\_mseed1002\_lseed1000\_gram \\
+Adam & Adam & 5 & 5 & 3.547e-06 & 3.8e-07 & True & 0 & 0 & 3.547e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimAdam\_mseed1000\_lseed1000 \\
+AdamW & AdamW & 5 & 5 & 1.681e-06 & 1.031e-06 & True & 0 & 0 & 1.681e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimAdamW\_wd0.01\_mseed1002\_lseed1000 \\
+HIG & HIG & 5 & 5 & 0.2093 & 0.01375 & False & 0 & 0 & 0.2093 & hig\_bs32\_mlp\_width16\_lr0.005\_tau1e-06\_mseed1002\_lseed1000 \\
+JD & JD (UPGrad) & 5 & 5 & 9.177e-07 & 6.325e-07 & True & 0 & 0 & 9.177e-07 & jd\_bs32\_mlp\_width16\_lr0.01\_aggUPGrad\_innerAdam\_mseed1000\_lseed1000 \\
+KFAC & KFAC & 5 & 5 & 2.305e-06 & 5.691e-07 & True & 0 & 0 & 2.305e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimKFAC\_mseed1004\_lseed1000 \\
+LBFGS & Stochastic L-BFGS & 5 & 5 & 4.747e-07 & 6.872e-08 & True & 0 & 0 & 4.747e-07 & std\_bs32\_mlp\_width16\_lr0.03\_optimLBFGS\_mi3\_hs10\_lsstrong\_wolfe\_mseed1000\_lseed1000 \\
+Muon & Muon & 5 & 5 & 1.597e-06 & 1.068e-06 & True & 0 & 0 & 1.597e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimMuon\_mseed1003\_lseed1000 \\
+MuonW & MuonW & 5 & 5 & 4.057e-07 & 2.097e-07 & True & 0 & 0 & 4.057e-07 & std\_bs32\_mlp\_width16\_lr0.001\_optimMuonW\_wd0.1\_mseed1002\_lseed1000 \\
+PolyakSGD & Polyak SGD & 5 & 5 & 1.088e-06 & 2.121e-07 & True & 0 & 0 & 1.088e-06 & std\_bs32\_mlp\_width16\_optimPolyakSGD\_fstar0.0\_maxlr1.0\_eps1e-08\_mseed1000\_lseed1000 \\
+RMSprop & RMSprop & 5 & 5 & 2.29e-06 & 1.935e-07 & True & 0 & 0 & 2.29e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimRMSprop\_mseed1000\_lseed1000 \\
+SGD & SGD & 5 & 5 & 7.585e-07 & 4.404e-07 & True & 0 & 0 & 7.585e-07 & std\_bs32\_mlp\_width16\_lr0.3\_optimSGD\_mseed1001\_lseed1000 \\
+SGDm & SGD + momentum & 5 & 5 & 1.593e-06 & 8.655e-07 & True & 0 & 0 & 1.593e-06 & std\_bs32\_mlp\_width16\_lr0.1\_optimSGDm\_mseed1002\_lseed1000 \\
+SOAP & SOAP & 5 & 5 & 4.207e-06 & 1.193e-06 & True & 0 & 0 & 4.207e-06 & std\_bs32\_mlp\_width16\_lr0.001\_optimSOAP\_mseed1001\_lseed1000 \\
+Shampoo & Shampoo & 5 & 5 & 2.136e-06 & 6.128e-07 & True & 0 & 0 & 2.136e-06 & std\_bs32\_mlp\_width16\_lr0.1\_optimShampoo\_mseed1000\_lseed1000 \\
+\bottomrule
+\end{tabular}

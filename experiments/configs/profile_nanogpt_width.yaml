@@ -1,0 +1,25 @@
+# Memory / step-time profile for nanogpt_width (see experiments/optimizer_profile.py). Inherits the
+# dataset, model, loss and seeds of `exp_nanogpt_speedrun`; the scan grids in it are ignored here.
+#   PYTHONPATH=. python -m experiments.optimizer_profile --config-name profile_nanogpt_width
+defaults:
+  - exp_nanogpt_speedrun
+  - _self_
+
+arch: nanogpt_width
+profile:
+  warmup_steps: 10
+  num_steps: 50
+  min_steps: 10          # always measure at least this many steps ...
+  max_seconds: 120       # ... but stop early once this much measured time has elapsed
+  max_warmup_seconds: 120
+  staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
+  # v2 (2026-09-17) is frozen as the before-table of the `empty_cache` fix; this run
+  # writes v3. $SV3_PROFILE_ROOT overrides this (optimizer_profile.output_root).
+  output_dir: profile_results_v3
+base: {batch_size: 64, k_fraction: 1.0, lr: 0.1, rtol: 1e-3}   # k = number of rows; lr/rtol do not affect cost
+# Model-size scaling: 4-layer nanoGPT, embedding width 64 -> 512 (P ~ 0.2M -> 12.7M).
+studies:
+  width:
+    key: model.n_embd
+    values: [64, 128, 256, 384, 512]
+    methods: [gram_hooks, gram_full, classic, AdamW, Adam, SGD, Muon, SOAP, Shampoo, LBFGS1, JD]

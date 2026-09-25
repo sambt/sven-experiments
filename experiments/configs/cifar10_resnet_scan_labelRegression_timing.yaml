@@ -1,0 +1,15 @@
+# Standalone-timing companion of cifar10_resnet_scan_labelRegression: identical
+# settings/seeds (inherited below), but each job runs ONE (optimizer, best-setting) pair
+# alone on a GPU (NPROC=1) so wall times are not inflated by shard contention. Results land
+# in experiment_results/cifar10_resnet_scan_labelRegression_timing/ with the SAME run_ids as
+# the scan, so analysis.scan_analysis.attach_standalone_times can join them onto scan rows.
+#
+# NPROC=1 is also the production setting for CIFAR Sven (gpu.probe.md: T=0.98 at 2 co-tenants
+# with empty_cache off), so a Sven timing run here measures the same thing the scan does; the
+# CIFAR first-order baselines run 4-up in the scan and 1-up here, which is exactly the
+# contention this companion scan exists to quantify. Both need
+# PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True and empty_cache=false (the default) or the
+# numbers are 4.5x too slow and dominated by allocator variance.
+defaults:
+  - cifar10_resnet_scan_labelRegression
+  - _self_

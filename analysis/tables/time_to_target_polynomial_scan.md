@@ -1,0 +1,47 @@
+| target | target_value | display | n_runs | n_reached | n_never_reached | n_diverged | elig_conf | all_reached | epochs | epochs_std | steps | examples | sync_train_s | standalone_s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| easy (2x median) | 0.4345 | Sven | 15 | 15 | 0 | 0 | True | True | 2.267 | 1.944 | 707.2 | 2.263e+04 | 6.864 | 3.012 |
+| easy (2x median) | 0.4345 | Adam | 15 | 15 | 0 | 0 | True | True | 3.733 | 2.658 | 1165 | 3.727e+04 | 3.499 | 2.166 |
+| easy (2x median) | 0.4345 | AdamW | 15 | 15 | 0 | 0 | True | True | 3.733 | 2.658 | 1165 | 3.727e+04 | 3.574 | 2.166 |
+| easy (2x median) | 0.4345 | HIG | 15 | 15 | 0 | 0 | True | True | 1.333 | 0.6172 | 416 | 1.331e+04 | 6.021 | 1.869 |
+| easy (2x median) | 0.4345 | JD (UPGrad) | 15 | 15 | 0 | 0 | True | True | 5.067 | 2.738 | 1581 | 5.059e+04 | 11.52 | 10.2 |
+| easy (2x median) | 0.4345 | KFAC | 15 | 15 | 0 | 0 | True | True | 8.6 | 3.602 | 2683 | 8.586e+04 | 70.22 | 16.54 |
+| easy (2x median) | 0.4345 | Stochastic L-BFGS | 15 | 1 | 1 | 13 | False | False | 6 | 0 | 1872 | 5.99e+04 | 20.97 | 7.162 |
+| easy (2x median) | 0.4345 | Muon | 15 | 15 | 0 | 0 | True | True | 2.467 | 0.9904 | 769.6 | 2.463e+04 | 4.01 | 2.414 |
+| easy (2x median) | 0.4345 | MuonW | 15 | 15 | 0 | 0 | True | True | 3.067 | 1.534 | 956.8 | 3.062e+04 | 5.053 | 2.965 |
+| easy (2x median) | 0.4345 | Polyak SGD | 15 | 15 | 0 | 0 | True | True | 5.467 | 4.612 | 1706 | 5.458e+04 | 5.894 | 3.424 |
+| easy (2x median) | 0.4345 | RMSprop | 15 | 15 | 0 | 0 | True | True | 2.933 | 1.751 | 915.2 | 2.929e+04 | 2.849 | 1.628 |
+| easy (2x median) | 0.4345 | SGD | 15 | 14 | 1 | 0 | True | False | 7.643 | 6.271 | 2385 | 7.631e+04 | 6.045 | 4.034 |
+| easy (2x median) | 0.4345 | SGD + momentum | 15 | 14 | 1 | 0 | True | False | 6.786 | 4.543 | 2117 | 6.775e+04 | 6.144 | 3.565 |
+| easy (2x median) | 0.4345 | SOAP | 15 | 15 | 0 | 0 | True | True | 1.867 | 0.9155 | 582.4 | 1.864e+04 | 3.634 | 2.145 |
+| easy (2x median) | 0.4345 | Shampoo | 15 | 2 | 13 | 0 | True | False | 20 | 0 | 6240 | 1.997e+05 | 116.7 | 27.25 |
+| median method | 0.2173 | Sven | 15 | 14 | 1 | 0 | True | False | 7.286 | 5.03 | 2273 | 7.274e+04 | 21.21 | 9.681 |
+| median method | 0.2173 | Adam | 15 | 10 | 5 | 0 | True | False | 10.2 | 2.658 | 3182 | 1.018e+05 | 9.334 | 5.918 |
+| median method | 0.2173 | AdamW | 15 | 10 | 5 | 0 | True | False | 11.2 | 3.853 | 3494 | 1.118e+05 | 10.65 | 6.499 |
+| median method | 0.2173 | HIG | 15 | 15 | 0 | 0 | True | True | 3.533 | 2.134 | 1102 | 3.528e+04 | 16.11 | 4.952 |
+| median method | 0.2173 | JD (UPGrad) | 15 | 13 | 2 | 0 | True | False | 12.69 | 4.27 | 3960 | 1.267e+05 | 28.62 | 25.56 |
+| median method | 0.2173 | KFAC | 15 | 10 | 5 | 0 | True | False | 15.5 | 2.838 | 4836 | 1.548e+05 | 126.3 | 29.81 |
+| median method | 0.2173 | Stochastic L-BFGS | 15 | 0 | 2 | 13 | False | False |  |  |  |  |  |  |
+| median method | 0.2173 | Muon | 15 | 10 | 5 | 0 | True | False | 6 | 1.333 | 1872 | 5.99e+04 | 9.585 | 5.871 |
+| median method | 0.2173 | MuonW | 15 | 10 | 5 | 0 | True | False | 8.4 | 1.713 | 2621 | 8.387e+04 | 13.16 | 8.12 |
+| median method | 0.2173 | Polyak SGD | 15 | 11 | 4 | 0 | True | False | 10 | 3.225 | 3120 | 9.984e+04 | 10.7 | 6.264 |
+| median method | 0.2173 | RMSprop | 15 | 10 | 5 | 0 | True | False | 8.7 | 2.791 | 2714 | 8.686e+04 | 7.928 | 4.83 |
+| median method | 0.2173 | SGD | 15 | 6 | 9 | 0 | True | False | 17.5 | 2.588 | 5460 | 1.747e+05 | 11.99 | 9.237 |
+| median method | 0.2173 | SGD + momentum | 15 | 9 | 6 | 0 | True | False | 16.89 | 2.619 | 5269 | 1.686e+05 | 15.14 | 8.873 |
+| median method | 0.2173 | SOAP | 15 | 12 | 3 | 0 | True | False | 6.667 | 4.735 | 2080 | 6.656e+04 | 12.4 | 7.66 |
+| median method | 0.2173 | Shampoo | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | Sven | 15 | 6 | 9 | 0 | True | False | 15.67 | 3.204 | 4888 | 1.564e+05 | 44.76 | 20.82 |
+| hard (0.5x median) | 0.1086 | Adam | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | AdamW | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | HIG | 15 | 11 | 4 | 0 | True | False | 8.273 | 3.69 | 2581 | 8.259e+04 | 34.31 | 11.59 |
+| hard (0.5x median) | 0.1086 | JD (UPGrad) | 15 | 1 | 14 | 0 | True | False | 20 | 0 | 6240 | 1.997e+05 | 45.02 | 40.28 |
+| hard (0.5x median) | 0.1086 | KFAC | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | Stochastic L-BFGS | 15 | 0 | 2 | 13 | False | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | Muon | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | MuonW | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | Polyak SGD | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | RMSprop | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | SGD | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | SGD + momentum | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | SOAP | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |
+| hard (0.5x median) | 0.1086 | Shampoo | 15 | 0 | 15 | 0 | True | False |  |  |  |  |  |  |

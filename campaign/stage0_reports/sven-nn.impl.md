@@ -1,0 +1,31 @@
+All runs are in. Final state verified: full sven suite green, both new files green.
+
+## TRACK sven-nn — done
+
+**Changed:** `/n/home11/sambt/iaifi/sv3/sven/sven/nn/sven_wrapper.py` (BN policy + C-R4), `/n/home11/sambt/iaifi/sv3/sven/sven/nn/gram_wrapper.py` (uses the base policy; `_frozen_norm_stats` removed from here), `/n/home11/sambt/iaifi/sv3/sven/pyproject.toml` (`[tool.pytest.ini_options]`: `testpaths=["tests"]`, `addopts="-ra"`), first lines of the four `sven/tests/test_jax_*.py` (`pytest.importorskip("jax")`).
+**Created:** `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_bn_policy.py`, `/n/home11/sambt/iaifi/sv3/sven/tests/test_torch_param_fraction_record.py`.
+
+**Observed pytest lines** (via `campaign/run_cpu_tests.sh`): new files `32 passed in 3.58s`; whole sven suite `161 passed, 5 skipped in 6.79s` (was 129 passed/1 skipped torch-only, and `pytest tests/` used to error at collection — the 4 jax modules now skip).
+
+**Acceptance tests (all in test_torch_bn_policy.py unless noted)**
+- `test_batch_mode_updates_stats_exactly_once_gram[full|chunked]` / `..._classic`: after `loss_and_grad` + `SvenGram.step()` (incl. `delta_from_w`) / `Sven.step()`, every BN's `running_mean`/`running_var` are **bitwise** the value `F.batch_norm` itself produces from exactly one update (references built by replaying the kernel on cloned pre-step buffers, BN inputs captured by pre-hooks), plus an assertion that the two-update value differs by >1e-6 so the test discriminates. `chunked` asserts ≥3 jacrev groups.
+- `test_evaluate_is_eval_mode_and_side_effect_free[classic|gram × batch|frozen]`: every buffer bitwise unchanged, every module's `training` flag restored, output bitwise equal to the module's own `.eval()` forward, and a fixed example's prediction unchanged when its companions are replaced (bitwise) or removed (atol 1e-12).
+- `test_frozen_mode_writes_no_buffer[hooks|chunked|full]`, `test_frozen_restores_each_modules_own_mode`, `test_no_norm_stat_updates_restores_flags_and_modes`: frozen writes nothing in train or eval; a BN the caller left in `.eval()` is still in eval after a step; flags/modes restored per module.
+- `test_batch_mode_gram_and_update_match_explicit_batch_stats[full|chunked]` and `..._classic_jacobian_...`: `gram == J_ref J_refᵀ` (<1e-10) and `delta_from_w(w) == J_refᵀw` (rel <1e-9) against a **buffer-free** reference model whose norm is `F.batch_norm(x, None, None, w, b, True, …)` — same kernel, provably no buffer, so the capture normalisation is proven unchanged.
+- `test_torch_param_fraction_record.py`: `mean_actual_param_fraction` equals the mean of the per-step values and lies in [0.5f, 1.5f] for elementwise/tensor/rows × both wrappers; `actual_param_fraction == mask.sum()/n_params` every step; elementwise now reports `int(f·n)/n` instead of 1.0 (F31); unmasked reports 1.0 with nothing accumulated.
+- Guards: `test_stock_batchnorm_rejected_on_batch_stat_path`, `test_hooks_capture_rejects_batch_mode_norm_layers`, `test_bn_mode_resolution_and_alias`.
+
+**API added** (on `SvenWrapper`, inherited by `GramSvenWrapper`): kwargs `bn_mode: str|None`, `freeze_norm_stats: bool|None` (conflicting pair raises); `_DEFAULT_BN_MODE` = `"batch"` (SvenWrapper) / `"frozen"` (GramSvenWrapper); attr `bn_mode`; `freeze_norm_stats` is now a **read-only property**; `no_norm_stat_updates()`, `update_norm_running_stats(batch) -> bool`, `mean_actual_param_fraction` (float property); private `_pass_norm_stats()`, `_frozen_norm_stats()` (moved here, no-op unless frozen), `_eval_mode()`, `_norm_stat_modules()`, `_check_batch_stat_norms()`.
+
+**Integrator — call sites in files I do not own**
+1. `sven/sven/opt/sven.py:408` (`SvenGramReg._rows_jvp`) calls `self.model._frozen_norm_stats()`, which is a **no-op under `bn_mode="batch"`** → that `jvp` would add a second stat update. Change to `self.model._pass_norm_stats()`. It is the only remaining unsuppressed `torch.func` transform.
+2. `sven/sven/opt/sven.py:140` (`variable_k`) needs **no** change: `evaluate_and_loss` now supplies the no-write capture normalisation.
+3. sv3: `generic_scan.py:519` / `optimizer_profile.py:205` keep working via the alias; to plumb the C-E2 config key pass `bn_mode=…` instead (the classic `SvenWrapper` accepts it too). `experiment_utils.py:306/354/453` `model.evaluate(xb)` are all validation loops → now eval-mode, which is the F2 fix; no signature change. C-R4 records should read `train_model.mean_actual_param_fraction`.
+
+**Deviations (with reasons)**
+- `evaluate_and_loss` uses the *capture's* normalisation, not unconditionally train-mode: train-mode batch stats under `batch` (as the contract says), frozen/eval under `frozen`, so the line search can't accept/reject against a different normalisation than the Jacobian it steps along.
+- Stock-BN guard narrowed to a **train-mode** stock `_BatchNorm` (`training and track_running_stats`). Unnarrowed it broke 3 existing tests that legitimately run an eval-mode stock BN through the default-`batch` `SvenWrapper` reference pipeline. Note: because `no_norm_stat_updates` sets `track_running_stats=False`, the in-place `num_batches_tracked.add_` is now skipped, so a train-mode stock BN would in fact survive `jacrev` — the guard is conservative and the concrete path it protects is item 1.
+- `update_norm_running_stats` does not force train mode; it runs only if some norm layer with running stats is in train mode with tracking on. Forcing it (first attempt) advanced the buffers of deliberately frozen BNs, which the eval-mode capture then read — 2 test failures. So "skip when no norm layer has running stats" is implemented as "skip unless a layer would actually be written".
+- The explicit update forward is a plain `self.model(x)` (not `functional_call`), so `num_batches_tracked` now advances on the batch path (scout item 4). This changes checkpointed buffers vs today's always-zero and makes `momentum=None` meaningful.
+- Mask sampling stays ahead of the stat forward in both wrappers so the RNG stream is byte-identical to before (C-S1-relevant).
+- Adding `[tool.pytest.ini_options]` makes `sven/` the pytest rootdir for paths under it; sv3's root `pyproject.toml` has no pytest table, so sv3's own `pytest tests/` is unaffected. I did not touch `sven/sven/opt/`.

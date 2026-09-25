@@ -1,0 +1,13 @@
+# GPT-2 BPE token stream (FineWeb-edu sample-10BT), 250M train / 8M val / 8M test tokens
+# from DISJOINT documents of one shared iterator (C-D2; the v1 directory had val as a
+# prefix of train -- F4). Written by experiments/data_prep/prepare_tokens.py and checked
+# with tools/check_token_split.py (2026-09-18: DISJOINT; 3/7,729 val and 4/7,932 test
+# documents also occur in train, 0.04% -- exact duplicates of FineWeb-edu itself, not a
+# split bug: no document occurs twice inside a split). vocab_size padded to 50304.
+_target_: experiments.datasets.TokenBinDataset
+ROOT: /n/holystore01/LABS/iaifi_lab/Users/sambt/datasets/fineweb_edu_gpt2_v2
+block_size: 1024
+n_train_blocks: 210000   # ~215M tokens/run -> ~9.3h Sven @ B=16 (safe under 12h)
+val_blocks: 200
+test_blocks: 200
+vocab_size: 50304

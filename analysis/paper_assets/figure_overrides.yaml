@@ -1,0 +1,22 @@
+allseed_curves_ce:
+  ylim:
+    0:
+    - null
+    - 1.0
+    1:
+    - null
+    - 1.0
+headline_curves_all:
+  exclude:
+    mnist_scan_labelRegression:
+    - SOAP
+headline_curves:
+  ylim:
+    1:
+    - null
+    - 0.2
+    4:
+    - null
+    - 0.2
+  xlabel:
+    4: Training time (s), standalone run

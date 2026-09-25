@@ -1,0 +1,7 @@
+# vocab_size / block_size injected at runtime from the dataset (see generic_scan).
+_target_: experiments.nn.NanoGPT
+block_size: 128
+n_layer: 4
+n_head: 4
+n_embd: 128
+tie_weights: false   # untied -> stays on the fast Gram hooks path

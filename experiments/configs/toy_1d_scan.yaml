@@ -13,29 +13,69 @@ batch_size: 32
 mlp_width: 16
 result_id_fields: [mlp_width]
 loss: mse
+use_gram: true
+
+# Headline scan => full per-step checkpoint ladder (C-L3/C-L4: offline spectra from
+# checkpoints). 593 params, so `log` (steps 0,1,2,4,... + every epoch end) is ~0.5 MB/run.
+checkpoints: log
 
 k_values: [1,2,4,8,16,32]
-lrs: [0.05, 0.1, 0.5, 1.0]
-rtol: [1e-4, 1e-3, 1e-2]
+# C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 360 finished
+# svd runs (campaign/reconcile_2026-09-19.txt): the Sven optimum is k=32, lr 0.05, rtol 1e-4
+# -- `k:EDGE-HIGH lr:EDGE-LOW rtol:EDGE-LOW`. k=B is a method boundary, not a grid edge, so
+# only lr and rtol grow, each by two half-decade points DOWNWARD. This is the scan where
+# Sven's headline number comes from (4.799e-07, second only to HIG), so its two open edges
+# are the most consequential in the campaign.
+lrs: [0.01, 0.02, 0.05, 0.1, 0.5, 1.0]
+rtol: [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
 svd_mode: [torch]
-kappa: 2
+variable_k: false
 
-lrs_standard: [1e-4, 1e-3, 1e-2, 1e-1]
-optimizers_standard: [Adam, SGD, PolyakSGD, RMSprop, LBFGS]
-lrs_lbfgs: [0.1, 0.5, 1.0]
-lbfgs_max_iter: [1,2,5,10]
+# C-B3, one baked-in extension round (bench/best_configs.json, 2026-09-18). This shared
+# list is used by every standard optimizer (grid.py: `lrs_standard`), so it must bracket
+# all of their optima at once:
+#   * down to 1e-5: Adam/RMSprop/Muon/SOAP/JD sit on the old 1e-4 edge on MNIST-CE and
+#     KFAC on polynomial; Muon/MuonW also moved because adjust_lr_fn=match_rms_adamw
+#     makes their effective step 1.1-13.6x larger at the same lr (optim.fix.md (c)).
+#   * up to 1.0: SGD (best 0.1) and Shampoo (best 0.1) sit on the old top edge here.
+lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
+#optimizers_standard: [Adam, AdamW, SGD, RMSprop, LBFGS, PolyakSGD, Lion, Muon, ScheduleFreeAdamW, ScheduleFreeSGD]
+# Consolidated: this scan now includes the full modern baseline suite (the extra
+# optimizers formerly in rebuttal_baselines_*). NOTE the results dir also holds the
+# earlier CORE-only runs, which used a different loader seed / LBFGS grid, so the
+# directory documents all runs rather than being a single reproducible Cartesian grid.
+# SGDm (C-B2) = SGD with momentum 0.9; no weight_decays list anywhere, so AdamW runs at
+# 0.01 and MuonW at 0.1 while Adam / Muon stay the wd=0 baselines (scope update).
+optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
+# C-B3 extension round: unlike every other scan, L-BFGS is best at the BOTTOM of its lr
+# grid here (0.0002459 at lr 0.1, 4/5 seeds finite; `lr:EDGE-LOW`), so this list grows
+# downward by two half-decade points. The top stays at 1.0: nothing on this scan wants it.
+lrs_lbfgs: [0.01, 0.03, 0.1, 0.5, 1.0]
+lbfgs_max_iter: [1, 2, 3]
 lbfgs_line_search_fn: [strong_wolfe]
-lbfgs_history_size: [1,2,5,10]
+lbfgs_history_size: [2, 5, 10]
 
-# Jacobian Descent (torchjd) hyperparameters
+# Jacobian Descent (torchjd) hyperparameters (mode: jd / all)
 aggregators_jd: [UPGrad]
 inner_optimizers_jd: [Adam]
-lrs_jd: [1e-4, 1e-3, 1e-2, 1e-1]
+lrs_jd: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1]   # C-B3: JD best is the 1e-4 edge here and on MNIST-CE
 
-# Half-Inverse Gradients hyperparameters
-lrs_hig: [0.05, 0.1, 0.5, 1.0]
-tau_hig: [1e-8, 1e-6, 1e-4, 1e-2]
+# Half-Inverse Gradients hyperparameters (mode: hig / all)
+# C-B3 for HIG is a SHIFT, not a growth, and the reason differs per scan (legacy records,
+# seed-mean final val): lr >= 0.5 produced NO records at all here, on polynomial or on
+# mnist_scan_labelRegression, and on mnist_scan_ce all 40 of its runs completed but are
+# dominated -- 0.1035 at lr 0.05 / tau 1e-2, 0.1735 at lr 0.5, 0.2023 at lr 1.0 (up to
+# 47.4 at the small taus). So 0.5/1.0 go, 0.005/0.015 arrive below the MNIST optimum
+# (0.05, the old bottom edge on both MNIST scans), and 0.25 stays so the toy/polynomial
+# optimum (0.1) is interior. tau: best is the 1e-2 top edge on 3 of the 4 MLP scans
+# (mnist_scan_ce, mnist_scan_labelRegression, polynomial) -> extend up two half-decades.
+# C-B3 extension round (user-approved, 2026-09-19): the shift landed HIG's optimum on the
+# new bottom edge here -- 4.707e-09 at lr 0.005 / tau 1e-6, the best number of any method on
+# any MLP scan and `lr:EDGE-LOW` -- so the bottom gets its two half-decade points. tau (1e-6)
+# is interior. The other three MLP scans keep the shifted list: their HIG optimum is 0.05.
+lrs_hig: [0.0005, 0.0015, 0.005, 0.015, 0.05, 0.1, 0.25]
+tau_hig: [1e-8, 1e-6, 1e-4, 1e-2, 3e-2, 1e-1]
 
-loader_seed: 51159
-model_seeds: [4310, 4311, 4312, 4313, 4314, 4315, 4316, 4317, 4318, 4319]
-data_seed: 54631
+loader_seed: 1000
+model_seeds: [1000, 1001, 1002, 1003, 1004]
+data_seed: 1000

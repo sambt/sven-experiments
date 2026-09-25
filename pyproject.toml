@@ -1,0 +1,75 @@
+[project]
+name = "sven-experiments"
+version = "0.1.0"
+description = "Experiment harness and rebuttal studies for the Sven optimizer"
+readme = "REBUTTALS.md"
+requires-python = ">=3.12"
+
+# Pinned to the working cu128 GPU environment on the Linux cluster; on macOS the
+# same versions come from PyPI (CPU/MPS wheels) — see the platform-marked
+# [tool.uv.sources] below, which route torch/torchvision to the cu128 index only
+# on Linux and fall back to the default index everywhere else.
+dependencies = [
+    "sven",
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+    "hydra-core==1.3.4",
+    "omegaconf==2.3.1",
+    "numpy==2.4.4",
+    "pandas==3.0.5",
+    "matplotlib==3.11.1",
+    "scipy==1.18.0",
+    "seaborn==0.13.2",
+    "tqdm==4.69.0",
+    # Reviewer-requested baseline optimizers:
+    "torch-optimizer==0.3.0",   # Shampoo (pulls pytorch-ranger)
+    "kfac-pytorch",             # K-FAC (git; see [tool.uv.sources])
+    "tiktoken>=0.14.0",
+    "datasets>=5.0.1",
+    "torchjd[quadprog-projector]>=0.17.0",
+]
+
+[dependency-groups]
+# ipykernel: notebook kernel for VS Code / Jupyter (`uv sync` installs it into
+# .venv, which VS Code then offers as a kernel).
+# nbconvert: `./make_plots.sh` re-executes every analysis notebook with
+# `.venv/bin/jupyter nbconvert --execute`; without it the venv has `jupyter` (from
+# jupyter-core) but no `nbconvert` subcommand, and the `jupyter` on PATH outside
+# the venv cannot even import jupyter_core.
+# Synced by default; both are harmless on the cluster.
+dev = [
+    "ipykernel>=6.29",
+    "nbconvert>=7.17.1",
+]
+
+[tool.uv.sources]
+# The Sven package lives in ./sven and is developed in-tree: editable install.
+sven = { path = "sven", editable = true }
+# GPU builds of torch/torchvision from the PyTorch cu128 wheel index on Linux only;
+# on other platforms (macOS arm64, etc.) no source is selected, so uv resolves them
+# from the default index (PyPI), which ships CPU/MPS wheels.
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
+# K-FAC has no PyPI release with the API we use; pin the git revision.
+kfac-pytorch = { git = "https://github.com/gpauloski/kfac-pytorch", rev = "869cf110334e5a6e9ea054bafdc4558313a821e8" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# The experiment code is imported as the `experiments` package from the repo root
+# (see [tool.uv] package = false), so pytest must put the root on sys.path itself:
+# without this, `.venv/bin/pytest tests/` fails at collection and only
+# `python -m pytest` (which adds "" to sys.path) works.
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+# This is a workspace-style project: the experiment code is imported as the
+# `experiments` package from the repo root, not built into a wheel.
+[tool.uv]
+package = false
+# sven/pyproject.toml pins torch==2.8.0; the working cluster env uses 2.9.1+cu128
+# and sven runs fine against it. Force the working version repo-wide so the
+# editable sven dependency does not drag the resolution back to 2.8.0.
+override-dependencies = ["torch==2.9.1", "torchvision==0.24.1"]

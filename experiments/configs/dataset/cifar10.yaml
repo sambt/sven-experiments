@@ -1,2 +1,6 @@
+# torchvision CIFAR-10: official train -> 45,000 train / 5,000 val by split_seed,
+# test = official test set (C-E1). No augmentation; published channel statistics.
 _target_: experiments.datasets.CIFAR10Dataset
-train_fraction: 1.0
+for_mlp: false
+n_val: 5000
+split_seed: 1234      # fixed; independent of the model, loader and subsample seeds

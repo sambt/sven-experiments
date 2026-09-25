@@ -1,1 +1,5 @@
 plots/
+plots_v2/
+# Cached checkpoint Jacobian spectra (tools/compute_ckpt_spectra.py, C-L4):
+# regenerable npz, tens of MB per scan.
+ckpt_spectra/

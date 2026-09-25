@@ -1,0 +1,20 @@
+# Confirmation companion of cifar10_resnet_ce_scan (Phase 5, pass D: CHANGES_NEEDED.md 4.2).
+# The selected configuration of every method (bench/best_configs.json ->
+# campaign/plan_phase5.yaml) on FRESH model seeds -- the numbers to report, so that the
+# headline table is not read off the seeds the hyperparameters were tuned on. Results land
+# in experiment_results/cifar10_resnet_ce_scan_confirm/.
+defaults:
+  - cifar10_resnet_ce_scan
+  - _self_
+
+# base + 100 .. base + 104: disjoint from the scan's tuning seeds, and `derive_loader_seed`
+# makes the data order follow the model seed, so these are fresh data orders too.
+model_seeds: [4100, 4101, 4102, 4103, 4104]
+
+# Confirmation reports final val / test numbers, not trajectories: no checkpoint ladder
+# (`checkpoints_svd` must be cleared or the svd family would keep the parent's `log`),
+# and the per-epoch svd summary instead of the full per-step arrays.
+checkpoints: final
+checkpoints_svd: null
+svd_info: summary
+

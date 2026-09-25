@@ -1,0 +1,228 @@
+{
+ "findings": [
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:130 (Intro) and :419 (Conclusion)",
+   "issue": "Unsupported significance claim. Intro: \"Sven reaches a lower final validation loss than Adam, AdamW, SGD, SGD with momentum and RMSprop on all four of our perceptron tasks, with paired per-seed margins clearing a 95% confidence interval.\" Conclusion repeats it (\"by margins that clear a 95% paired interval\"). I recomputed all 20 paired differences from the confirmation records (toy_1d/polynomial/mnist_LR/mnist_CE _confirm, paired by model x data seed, Student-t): 8 of 20 intervals COVER ZERO. On MNIST label regression 4 of the 5 are ties (Sven-Adam -0.00516, CI [-0.01356,+0.00323]; AdamW [-0.01186,+0.00273]; SGD [-0.00609,+0.00215]; SGDm [-0.00467,+0.00074]); on 1D, SGD [-0.00327,+0.00110] and RMSprop [-0.00064,+0.00009] are ties; on MNIST-CE, SGD and SGDm are ties. The paper's own macros say so: \\numMnistLRNResolvedWorse=4 of 11.",
+   "suggested_fix": "Rewrite both sentences to the macro-backed form already used in Sec. 4.1: \"lower on all four, with \\numPolyNResolvedWorse{} of \\numPolyNPairedMethods{} margins resolved on the polynomial task and \\numMnistLRNResolvedWorse{} of \\numMnistLRNPairedMethods{} on MNIST\". Do not assert blanket 95% resolution."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_cifar.tex:23 and fig:cifar_landscape caption (:57)",
+   "issue": "\"Sven's $(\\eta, \\texttt{rtol})$ landscape ... is smooth and has an interior optimum under both objectives ... the poor result is not a tuning accident at a grid edge.\" False for cross-entropy after the re-selection. The CIFAR-CE Sven grid (195 records, 39 configs) sweeps rtol in {1e-4,1e-3,1e-2,0.03,0.1,0.3} and the selection of record is rtol=0.3 -- the LARGEST value on the axis; lr=0.5 is likewise the largest lr sampled at rtol=0.3 (lr=1.0 exists only at rtol<=0.01). The selection therefore sits at the corner of the extension block in both axes, which is exactly the situation the extension was added to fix. (Grid seed-means: (128,0.5,0.3)=1.3552, next (128,0.1,0.1)=1.3589 -- a near-tie one seed-std apart.)",
+   "suggested_fix": "Replace with an explicit disclosure: the CE optimum sits on the extended rtol edge and at the largest lr sampled there, so the CE result is bounded by the grid; state that the runner-up cell is within one seed std. Keep the interior-optimum claim for label regression only."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_overparam.tex:96",
+   "issue": "\"On MNIST the test ranks across the six arms are \\numOverparamMnistLRRanksTest{}, i.e. Sven is first or second at the three most over-parametrized points.\" The macro expands to \"4, 1, 2, 2, 4, 3\" and \\numOverparamMnistLRPn is \"11, 5.51, 2.76, 1.38, 0.689, 0.551\" (most over-parametrized first, confirmed against n_train in rebuttal_overparam_mnist_scan: N=2500..50000). The three most over-parametrized arms are therefore ranks 4, 1, 2 -- Sven is FOURTH at the most over-parametrized point. This is the appendix that answers R1's central request, so the misreading lands on the paper's key rebuttal claim.",
+   "suggested_fix": "State it as it is: \"first or second at the second, third and fourth arms (P/N = 5.51, 2.76, 1.38) and fourth at P/N = 11\", and drop \"the trend the theory predicts is therefore present\" or weaken it to the mean-rank statement that the macros do support."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_overparam.tex:98",
+   "issue": "Two errors in one sentence. (a) \"Two differences in the sweep *are* resolved, and one of them is against us: \\numOverparamLossSigList{}\" -- the macro lists TWO arms, both of them losses (\"Random Polynomial at N=675 against Stochastic L-BFGS (t=11.1) and MNIST (label reg.) at N=40000 against MuonW (t=4.39)\"; the macro comment reads \"every arm where a rival beats Sven by a resolved paired margin\"). Counting \\numOverparamGapSigWhere (Toy 1D vs Adam, in Sven's favour) there are three resolved differences, two against. (b) \"The loss to MuonW at MNIST's most over-parametrized point\" -- N=40000 is P/N=0.689, i.e. UNDER-parametrized and the second-least over-parametrized arm. The rhetorical point (\"at the very arm where the theory is most favourable to Sven\") is therefore inverted.",
+   "suggested_fix": "\"Three differences are resolved and two are against us\"; and identify the MuonW loss as occurring at P/N = 0.689, an under-parametrized arm -- which removes rather than strengthens the theory framing."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_profiling.tex:34 (caption of fig:cost_memory, referenced from Sec. 4.2 at :403)",
+   "issue": "Caption: \"over five architectures spanning \\numToyParams{} to $163$ million parameters, at each method's selected configuration, measured in the standalone timing pass.\" The generator (analysis/paper_assets/main.py:426, F3_SCANS) reads the timing passes of toy_1d, polynomial, mnist_labelRegression, exp_nanogpt_speedrun and cifar10_resnet_labelRegression -- top x value 11,181,642 parameters. GPT-2-small (163,109,376) has no timing pass at all (one epoch, one seed, no companion passes), so the figure cannot and does not reach 163 M. A reader takes the parity claim to have been demonstrated three orders of magnitude further than it was.",
+   "suggested_fix": "Change to \"593 to 11 million parameters\" (or add the macro for the ResNet parameter count) and say that GPT-2-small is absent because it has no standalone timing pass; the GPT-2 cost numbers live in App. L."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:427 (Limitations)",
+   "issue": "Cross-source cost comparison. \"A step costs ... \\numCifarLRSvenMsStep{}~ms against \\numProfCifarAdamMsStep{}~ms on ResNet18\" = 177 ms against 23.7 ms, a 7.5x ratio. But 177 ms is the standalone TIMING pass (verified: avg_batch_time_train 176.95 ms in cifar10_resnet_scan_labelRegression_timing) while 23.7 ms is the PROFILE set point (profile_results_v3/profile_cifar, batch_size__Adam__B128, median step 23.75 ms). Same-source Adam in the timing pass is 6.50 ms, so the true ratio is 27x. App. Q itself warns \"the absolute milliseconds here are not the wall-clock numbers of Table 1 ... Where the two are quoted together, the source of each is named\" -- and here neither source is named. The mix understates Sven's cost penalty by 3.6x in the very paragraph that is supposed to disclose it.",
+   "suggested_fix": "Quote both numbers from the timing pass (\\numCifarLRSvenMsStep vs a new \\numCifarLRAdamMsStep macro) or both from the profile (\\numProfCifarFullMsStep vs \\numProfCifarAdamMsStep), and name the pass."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_cifar.tex:19",
+   "issue": "Stale failure diagnosis after the CIFAR-CE re-selection. \"Under cross-entropy it reaches \\numCifarCESvenTrainEval{} against a median of \\numCifarCEMedianTrainEval{}, i.e. it does not fit the training data either --- an optimisation failure.\" The macros are now 0.1586 vs 0.09618 (I reproduce 0.158563 from the five k=128/lr=0.5/rtol=0.3 confirm runs). At 1.65x the median, Sven's training-subset loss is 8th of 11 -- and better than MuonW's 0.3106, the method that wins the scan on validation loss, and better than SGD's 0.3555. The \"optimisation failure\" reading was built on the previous selection (train_eval 0.8186, 8.5x the median; see campaign/analysis_reports/B.fix.wp4b-large-models.md \"train_eval 0.819 vs median 0.096 -> under-optimisation\") and was not re-derived.",
+   "suggested_fix": "Re-derive the two-failure narrative against the new selection, or drop it: on the current numbers the winner fits the training subset less well than Sven, so train-eval does not separate the two objectives the way the text claims."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_spectra.tex:30 (vs :28 and app_gram.tex:218)",
+   "issue": "Self-contradicting mechanism. \"On three scans it [the kept energy] is pinned at 100% throughout, because \\texttt{rtol} sits below the round-off floor and nothing above the floor is discarded.\" The three pinned scans are MNIST-LR, CIFAR-LR and nanoGPT (I reproduce 100%->100% for all three from the diag npz files), and all three have selected rtol = 1e-3, which is ABOVE the measured floor of 3.45e-4 (= sqrt(eps_f32); I reproduce median sv_noise_floor/sv_max = 3.45e-4 on every scan). The paper's own macro \\numSpectraRtolBelowFloor = 1, and the paragraph above plus App. D.4 both say \"1 of the seven scans\" (singular: \"on that scan the cut is nominal\"). The one scan that is below the floor (1D, rtol=1e-4) is not pinned -- its kept energy falls, 92.1%->91.5%.",
+   "suggested_fix": "Give the real reason: on those three scans rtol=1e-3 cuts (almost) nothing because the resolved spectrum is flat enough that nearly all B singular values clear rtol*sigma_1, so k (=B on nanoGPT) is what limits the rank. Keep the round-off-floor explanation for the 1D scan only."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:340 (Sec. 3, K-FAC paragraph)",
+   "issue": "\"Empirically it does not survive the regime at all --- on both MNIST scans all \\numMnistLRKfacRuns{} of its runs fail inside the eigendecomposition of its Kronecker factors (Appendix P).\" The MNIST failure is real (I verified 40/40 on each MNIST scan, status=diverged, error _LinAlgError from linalg.eigh). But \"the regime\" is P > B, and K-FAC completes 35 of 50 polynomial runs and 34 of 40 1D runs in exactly that regime (P=673/593, B=32), and ranks 7 of 15 and 6 of 15 on those scans. So the sentence's causal attribution -- that K-FAC's Kronecker Fisher cannot survive over-parametrization -- is contradicted by the paper's own scans.",
+   "suggested_fix": "Narrow to what was measured: K-FAC's Kronecker eigendecomposition fails on both MNIST scans (40/40 each) while completing on the two synthetic scans, so the failure tracks the MNIST factor sizes and not over-parametrization per se. Keep the theoretical damping/min-norm argument, which stands on its own."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:166, :343 (x2), :421 (x2); sections_v2/app_exp_details.tex:87, :152, :204",
+   "issue": "Unmarked edits -- changed text left black, against the binding rule \"every edit in blue ... Unchanged text stays black and byte-identical\" (campaign/PAPER_CONTRACTS.md). A word-level diff of the black text (markup stripped) against iclr2026_conference.tex finds, in the main body: (1) Alg. 1 caption rewritten (\"considers only the k largest singular values, and sets singular values that are a factor of rtol smaller than the largest singular value to zero\" -> \"keeps the k largest singular values and zeroes those a factor rtol below the largest\"); (2) Sec. 3 \"maintain Kronecker-factored preconditioning matrices, accumulating second moment statistics over time rather than computing a per-step spectral decomposition as Sven does\" -> \"maintain Kronecker-factored preconditioners accumulated over time, rather than a per-step spectral decomposition\"; (3) Sec. 3 Levenberg-Marquardt sentence rewritten and the claim \"at significantly lower wall-time cost\" silently removed; (4) Conclusion \"(weight decay, ... and adaptive scaling among them)\" -> \"--- weight decay, ... adaptive scaling ---\"; (5) Conclusion \"Sven adds to this toolkit a principled mechanism ... and can be composed with these existing techniques\" -> \"Sven adds a principled mechanism ... and composes with them\". In App. C three subsection titles changed unmarked (\"Datasets\"->\"Datasets and Splits\", \"Model Architecture\"->\"Model Architectures\", \"Hyperparameter Scans\"->\"Hyperparameter Grids\").",
+   "suggested_fix": "Either revert each to the byte-identical original or wrap the changed span in \\new{}. Item (3) removes a claim, so it must be blue (or kept with a % OLD: note) rather than silently rewritten."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/sections_v2/app_profiling.tex:16",
+   "issue": "The profile's measurement protocol is described from the retired v2 profile. \"...moves fifteen pre-loaded batches to the device, records a resident memory baseline, takes five warm-up steps and then measures ten optimizer steps, reporting the amortised mean step time over the last 80% of them.\" Every one of the 720 records in profile_results_v3 carries profile = {staged_batches: 8, warmup_steps: 10, num_steps: 50} (I checked all 720; the counter is unanimous). So the reported profile stages 8 batches, warms up 10 steps and measures 50. The \"last 80%\" figure also cannot be checked against the numbers as stated.",
+   "suggested_fix": "Regenerate the sentence from the records (8 staged batches, 10 warm-up steps, 50 measured steps) -- ideally as macros so a re-profile updates it -- and restate what the reported step time is the mean over."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:692 and :715 (App. N, black text)",
+   "issue": "Retained black text contradicts the revision's central new claims. App. N opens \"While the computational cost in the over-parametrized limit is only a factor of $k$ higher than SGD, the memory requirements can be significantly higher ... computing the Jacobian requires storing a number of model copies equal to the batch size\" -- both statements are exactly what Sec. 2.3 and App. D now retract (cost independent of k; M never formed). The \"Batched Parameters\" paragraph at :715 still asserts \"this could dramatically reduce our memory overhead, with savings proportional to the number of parameter batches\", which App. K/N's own results refute (memory falls by 0.515x at f=0.05, and the step gets 1.71-2.42x slower; I reproduce 22965->11816 MB and 187->321-453 ms from rebuttal_fig5_cifar_paramfrac_scan).",
+   "suggested_fix": "These paragraphs changed materially, so they may be rewritten in blue: state the k-independence of the Gram path up front, and mark the parameter-batching promise as the hypothesis that the Results subsection then refutes."
+  },
+  {
+   "severity": "high",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:111 (abstract), :394 (Sec. 4.1)",
+   "issue": "\"Every first-order ... baseline\" is defined so as to exclude the baselines that beat Sven. The abstract claims a lower validation AND test loss than \"every first-order and every Kronecker-factored baseline on all four multi-layer-perceptron tasks\", while MuonW beats Sven on both MNIST scans (0.04982 vs 0.05328; 0.10458 vs 0.11337) and Muon also beats it on MNIST-CE (0.10672), all verified from the confirm records. Muon/MuonW use gradient information only, so a reviewer -- R2 in particular, who asked specifically about Muon -- will read them as first-order and the claim as false. The honest enumeration already exists in the Intro (Adam, AdamW, SGD, SGDm, RMSprop).",
+   "suggested_fix": "Replace \"every first-order and every Kronecker-factored baseline\" with the explicit list (\"Adam, AdamW, SGD, SGD with momentum, RMSprop, SOAP, Shampoo and K-FAC\") wherever it appears, so the exclusion of the orthogonalizing methods is visible rather than definitional."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:396 (Sec. 4.1)",
+   "issue": "Survivorship caveat given for the wrong scan. Sec. 4.1 quotes \"\\numMnistLRSvenTargetEpochs{} to \\numMnistLRAdamTargetEpochs{} on MNIST\" (9.2 vs 12.7 epochs) and then supplies reach counts only for the polynomial task (\\numPolyAdamTargetReached=14 of 15 vs Sven 15 of 15). The MNIST case is far more lopsided and is not disclosed: \\numMnistLRAdamTargetReached = 3 of \\numMnistLRAdamTargetRuns = 5, against Sven's 5 of 5. App. E's own rule says \"a mean over the runs that arrived is not comparable with a mean over a different subset\".",
+   "suggested_fix": "Add the MNIST reach counts to the same sentence (macros already exist), or quote the epoch comparison only where both methods arrive on all runs."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_budget.tex:15",
+   "issue": "The stated redundancy mechanism is the opposite of what the data show on the scan the paragraph cites. \"A Sven grid point at which the \\texttt{rtol} cut already falls below the rank cap $k$ produces the same trajectory as every larger $k$ at the same $(\\eta,\\texttt{rtol})$.\" On MNIST label regression I grouped the 128 Sven configs by identical val curves at seed 3000: 29 collision groups, ALL 29 of them same-$k$ with rtol varying (e.g. (k=16, lr=0.05) is identical at rtol = 1e-4, 1e-3, 1e-2, 1e-1), and ZERO groups of the same-rtol/varying-$k$ kind the text describes. The count itself is right (60-62 distinct curves per seed, mean 60.8 of 128 = 47.5%, matching \\numBudgetMnistLRSvenDistinct and \\numBudgetSvenDistinctFracMin).",
+   "suggested_fix": "State the direction the data show: where $k$ binds, the whole rtol axis below the $k$-th singular value repeats one trajectory. Both directions follow from the rank law, but name the one that produces the quoted 47.5%."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:328 (Sec. 2.3), sections_v2/app_gram.tex:369",
+   "issue": "\\numCifarLRSvenMemVsBest and \\numCifarLRSvenWallVsBest are described as ratios to \"the best baseline\", but they are ratios to the LEANEST and FASTEST baseline, which on CIFAR-10 label regression is SGD -- the method ranked last of 11 on quality. Verified from cifar10_resnet_scan_labelRegression_timing: 22964.58/402.88 = 57.0 (SGD/Polyak are the leanest) and 62.85/2.747 = 22.9 (SGD is the fastest). Against the actual best method, MuonW, the ratios are 51.3x memory and 11.2x wall time. App. J gets the labels right (\"the leanest method\", \"\\numCifarLRFastestName\"); Sec. 2.3 and App. D.7 do not.",
+   "suggested_fix": "Say \"the leanest/fastest baseline\" in Sec. 2.3 and App. D.7 (matching App. J), or add macros for the ratios against \\numCifarLRBestName."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:403 (Sec. 4.2)",
+   "issue": "Internally contradictory sentence: \"The kept fraction of the batch residual \\emph{rises} over training wherever the cut bites, from \\numPolySvenEnergyFirst{}\\% to \\numPolySvenEnergyFinal{}\\% on the polynomial scan, but falls on two scans, substantially so on CIFAR-10 cross-entropy.\" If it falls on two scans it does not rise wherever the cut bites. My recomputation from the diag files: rises on polynomial (92.3->99.6) and MNIST-CE (31.0->95.2), falls on 1D (92.1->91.5) and CIFAR-CE (90.1->76.7), pinned at 100% on the other three.",
+   "suggested_fix": "\"...rises on two of the four scans where the cut bites (polynomial 92.3->99.6%, MNIST cross-entropy 31.0->95.2%) and falls on the other two, substantially so on CIFAR-10 cross-entropy (90.1->76.7%).\""
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_spectra.tex:26",
+   "issue": "Prose asserts a binding cut the generated table denies. \"$k$ binds on \\numSpectraKBinds{}\" reads \"k binds on 2\", but the per-scan macros for those same two scans are \\numMnistLRSvenBinds = \"neither\" and \\numNanogptSvenBinds = \"neither\", and tab:spectra-mechanism prints \"neither\" in the Binds column. A reader comparing the sentence with the table sees a contradiction. (The macro's own comment says \"scans on which rtol never binds (k = B, or k binds)\" -- a different quantity from \"k binds\".)",
+   "suggested_fix": "\"...rtol binds on 5 of the 7 scans; on the remaining 2 neither cut is active, because the full resolved spectrum survives (on nanoGPT k = B).\""
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:427 (Limitations), sections_v2/app_robustness.tex:19",
+   "issue": "Divergence mechanism overstated. Limitations: \"It diverges when \\texttt{rtol} falls below the numerical floor of the Gram matrix, on \\numDivSvenDivFrac{} of \\numDivSvenNRuns{} on-grid runs.\" But App. P's own macro \\numDivPolySvenRtols expands to \"$10^{-5}$, $0.001$\", and rtol = 1e-3 is well ABOVE the measured float32 floor (3.45e-4, \\numSpectraNoiseFloorRel). So the polynomial grid's failures are not all explained by the floor, and the causal \"when\" is too strong.",
+   "suggested_fix": "\"It diverges at the tight end of the rtol axis, mostly but not only below the Gram round-off floor, on 8.7% of 7,890 on-grid runs\" -- and in App. P note the 1e-3 polynomial failures as the exception to the floor mechanism."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:363 (caption of fig:main_results)",
+   "issue": "Mis-sourced justification. \"Stochastic L-BFGS is absent from the polynomial panel: \\numPolyLbfgsDiverged{} of its \\numPolyLbfgsRuns{} runs there diverged\" expands to 204 of 225 -- which is the TUNING-grid count (I reproduce 204/225 from polynomial_scan). The panel draws the five best of the confirmation field, and L-BFGS does have a selected configuration with confirmation runs (2 of 15 finished, rank 14 of 15), so it is absent because it is not in the top five, not because it has no curve. Quoting the tuning-grid divergence rate here reads as if the method could not be run.",
+   "suggested_fix": "\"L-BFGS is outside the five drawn on the polynomial panel (rank \\numPolyLbfgsRank of \\numPolyNMethods, \\numPolyLbfgsFin/\\numPolyLbfgsAtt confirmation runs finished); its grid-level failure rate is in App. P.\""
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_batchsize.tex:148",
+   "issue": "Field-composition inconsistency that makes Sven look first where Sec. 4 says it is second. \"Sven is first at the three intermediate batch sizes\" (\\numBatchsizeSvenRanks = 3,1,1,1,5,4) in a field of \\numBatchsizeNMethods = 13. I enumerated the optimizers in rebuttal_batchsize_polynomial_scan: AdamW, Adam, Muon, RMSprop, SGD, SVD, SOAP, MuonW, SGDm, LBFGS, KFAC, PolyakSGD, Shampoo -- HIG and JD are absent. HIG is the method that beats Sven on the very same task and batch size in Sec. 4 (B=32, HIG 0.08406 vs Sven 0.1388). So App. H reports \"Sven first at B=32\" while Sec. 4/Limitations report \"Sven is not first on any task we ran\", and App. H never says why the field is smaller.",
+   "suggested_fix": "State in App. H that HIG and JD were not run in the batch-size sweep, so its ranks are over a 13-method field and are not comparable with Sec. 4's 15-method ranks."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:427 (Limitations) vs sections_v2/app_overparam.tex:96",
+   "issue": "\"Sven is not first on any task we ran\" is contradicted by the paper's own App. G: \\numOverparamNFirst = 4 -- Sven is first on validation loss in 4 of the 14 over-parametrization arms (and first on test in \\numOverparamNFirstTest). App. G hedges those firsts as statistical ties, which is the right reading, but the Limitations sentence as written is a factual claim about rankings and is false.",
+   "suggested_fix": "\"Sven is not first on any of the seven headline scans\" -- and, if the over-parametrization firsts are to be mentioned, say they are ties at five seeds."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_exp_details.tex:39-59 and :323",
+   "issue": "Two breaches of the numbers-as-macros contract, both in the campaign-totals paragraph. (a) \"the 29 runs of the GPT-2-small comparison ... cost about as much as the 785 runs of the CIFAR-10 cross-entropy grid\" -- 29 and 785 are campaign-derived counts typed by hand, although \\numCampaignCifarCeRuns = 785 and \\numGptTwoNRuns = 29 both exist. (b) numbers_v2_campaign.tex is produced by analysis/paper_assets/campaign.py, which is NOT in paper_assets.common.MODULES (line 65: ('main','reviewer','large','spectra')), so the one re-runnable command does not regenerate it; the fragment then hard-codes \\providecommand fallbacks (24,894 runs / 22 grids / 1,567 GPU-hours / 955 / 612 / 123 / 124) that will silently survive a refresh.",
+   "suggested_fix": "Use \\numGptTwoNRuns and \\numCampaignCifarCeRuns in the prose; add 'campaign' to MODULES so numbers_v2.tex inputs it, and delete the \\providecommand fallback block."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_grids_tables.tex:259 and tables_v2/grid_*.tex; sections_v2/app_exp_details.tex:209",
+   "issue": "Promised grid-edge disclosure does not exist. App. C-continued says the per-scan tables list the selected configuration \"with a flag where that configuration sits at the edge of its own grid\", and App. C:209 says \"which of its axes ended on a grid edge, is reported in Appendix~\\ref{app:additional_results}\" (wrong appendix -- it is App. C-continued). Neither is true: grepping tables_v2/grid_*.tex finds no edge marker of any kind, and edge selections do exist and matter (CIFAR-CE Sven rtol=0.3 = axis maximum; CIFAR-CE SGD lr=3 = axis maximum).",
+   "suggested_fix": "Either add the flag in analysis/paper_assets (a '*' on any selected value at the min or max of its own axis) or delete both promises; and fix the cross-reference to point at App. C-continued."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_additional.tex:20",
+   "issue": "\"Selection optimism\" quoted with the wrong sign. \"its selection optimism is the largest in the campaign (\\numToySvenOptimism{} for Sven, \\numOptimismToyMedian{} for the median method)\" expands to \"-63.4% for Sven, -32.5% for the median method\". A negative gap means the confirmation seeds came out BETTER than the tuning seeds -- pessimism, not optimism. App. F uses the neutral wording (\"the median method moves by ...\"), which is correct.",
+   "suggested_fix": "\"its tuning-to-confirmation gap is the largest in the campaign, and in the favourable direction (-63.4% for Sven, -32.5% for the median method)\" -- or quote |gap| and say which way it goes."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_fig5.tex:14",
+   "issue": "Wrong denominator. \"...at $f \\in \\{0.05, 0.1, 0.25, 0.5, 1\\}$ and \\numFigFiveSeeds{} model seeds per point, \\numFigFiveRuns{} runs in total\" reads \"3 model seeds per point, 30 runs in total\", but 5 fractions x 3 seeds = 15. The 30 counts both configurations on disk (I verified 30 files in rebuttal_fig5_cifar_paramfrac_scan: 15 at k=128/lr=0.5 and 15 at k=64/lr=1.0). The closing paragraph then says the study \"rests on\" 3 seeds and one fixed configuration, i.e. 15 runs.",
+   "suggested_fix": "\"15 runs at the selected configuration, plus 15 at the earlier configuration also drawn in Fig. 22\" -- add a \\numFigFiveRunsSelected macro rather than reusing the two-configuration total."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:396 and sections_v2/app_fig5.tex (whole appendix)",
+   "issue": "A concrete reviewer request is not satisfied. R1 wrote: \"As the paper's most promising observation concerning the memory bottleneck, this result should appear in the main paper rather than Appendix F\", and REBUTTALS.md section 6 promised \"Promote the param-fraction (Fig 5) result to the main text with seeds/accuracy/memory/time.\" In the revision the study is App. K and the main text gives it one subordinate clause (\"parameter masking reduces peak memory at that scale but rescues neither result\"). The content R1 asked for (seeds, accuracy, peak memory, step time, resampling) is all present -- only the placement was not delivered.",
+   "suggested_fix": "Either move the Fig-5 quality/cost pair (or a single two-panel figure) into Sec. 4.2, or state in the submission that the result is in App. K because the main-text budget is 9 pages -- but do not leave a promised promotion silently undone."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:299-303 (Sec. 2.2)",
+   "issue": "R3's fourth question is unanswered. R3: \"Please provide a derivation of (16) from Equations (8) and (15), even if only in the Appendix\"; REBUTTALS.md section 5.4 gives the derivation (dL/dtheta = 2 M^T R, hence the factor 1/2) and section 6 promises \"add the eq-16 natural-gradient derivation to the appendix\". Equation 16 is the line after eqn:MPUnder (confirmed from iclr2026_conference.aux: eqn:update = 8, eqn:MPUnder = 15). The v2 text is byte-identical black here -- \"Substituting this into Equation (8), we find [16], which, up to a normalization, is the same as ...\" -- and grepping the whole manuscript finds no \"2M^T\" step anywhere, in the main text or in App. A/B.",
+   "suggested_fix": "Add two lines in blue (in Sec. 2.2 or App. B): with L = sum (R^alpha)^2, dL/dtheta^j = 2 (M^T R)_j, so substituting M^+ = (M^T M)^{-1} M^T into Eq. (8) gives delta theta^i = -(eta/2) sum_j [(M^T M)^{-1}]^{ij} dL/dtheta^j, and the \"up to a normalization\" is that factor of 1/2."
+  },
+  {
+   "severity": "medium",
+   "location": "campaign coverage: rev2.md question 2",
+   "issue": "R2's second request is unanswered and not acknowledged. R2 asked for \"results on classifier model using CCE loss with using Sven only on intermediate layers\", citing the Muon guidance not to orthogonalize embeddings or classifier heads. No such run exists: App. D.5 documents a tensor-level mask mode that could express it, and App. C:312 states Muon's own grouping, but no experiment applies Sven to hidden layers only on a cross-entropy classifier, and neither App. I (MNIST CE) nor App. N mentions the question.",
+   "suggested_fix": "Either run the tensor-mask arm on MNIST-CE (one configuration, five seeds, and the mask machinery already exists) or add one blue sentence in App. I saying that Sven's per-sample scalar residual makes the Muon head/embedding restriction unnecessary in principle, and that the layer-restricted arm was not run."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/sections_v2/app_gram.tex:321-336 (tab:gram_cost)",
+   "issue": "Legibility and caption placement. The table is set with \\resizebox{\\textwidth}{!} on an 11-column tabular that the integrator's own comment measures as overrunning \\textwidth by ~270 pt at \\small -- roughly a 0.6 scale factor, so the body text lands near 6 pt. The comment itself proposes the better fix. The \\caption also follows the tabular here while every other generated table in the revision puts it first, so the float reads inconsistently.",
+   "suggested_fix": "Drop the \"k range\" and \"x SGD\" columns in analysis/paper_assets/large.py (both recoverable from App. Q) and use \\svnfittable, or split the table by architecture; move \\caption above the tabular to match the other floats."
+  },
+  {
+   "severity": "medium",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:394-396 (Sec. 4.1), sections_v2/app_mnist_ce.tex:59",
+   "issue": "Ranks are quoted with one leader named where two or three methods are ahead. \"\\numMnistLRSvenRank{} of \\numMnistLRNMethods{} and \\numMnistCESvenRank{} of \\numMnistCENMethods{} behind MuonW\" reads \"3 of 14 and 4 of 14 behind MuonW\", then \"those leads are resolved by the same paired test\". From the confirm records: on MNIST-LR both MuonW (0.04982) and HIG (0.05298) are ahead of Sven (0.05328), and HIG's lead is NOT resolved (paired 0.000294, CI [-0.00391,+0.00449]); on MNIST-CE, MuonW (0.10458), Muon (0.10672) and HIG (0.11186) are all ahead of Sven (0.11337). A reader cannot reconcile rank 3 or 4 with a single named leader, and the \"all resolved\" clause is false for HIG on MNIST-LR.",
+   "suggested_fix": "Name every method ahead on each scan, and separate resolved from unresolved leads (MuonW resolved on both MNIST scans; HIG's MNIST-LR lead is a tie). Also reconcile the field sizes -- ranks are out of 14 (K-FAC excluded) while Sec. 4 says the field is \\numNMethodsMlp = 15 and App. F's equal-budget table uses 15."
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/sections_v2/app_budget.tex:21 and :62-70",
+   "issue": "\"Tables~\\ref{tab:paired-mlp} and~\\ref{tab:paired-large} give, for every scan and every method, the mean paired difference...\" -- but the two MNIST scans live in a third float, tab:paired-mnist, which no prose anywhere cites. The caption of tab:paired-mlp also says \"on the two synthetic scans\", so the label name is misleading too.",
+   "suggested_fix": "Cite all three labels in that sentence, and rename tab:paired-mlp to tab:paired-synth."
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/sections_v2/app_budget.tex:15",
+   "issue": "\"\\numBudgetMnistLRSvenDistinct{} distinct trajectories out of \\numBudgetMnistLRSvenGrid{} points\" prints \"60.8 distinct trajectories out of 128\" -- a fractional count. It is a seed mean (I measured 60, 61, 60, 62, 61 distinct val curves at the five tuning seeds), which is legitimate but reads as an arithmetic slip.",
+   "suggested_fix": "\"a seed mean of 60.8 distinct trajectories (60-62) out of 128 grid points\"."
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/tables_v2/: time_to_target.tex, headline_confirm_compact.tex, confirmation_exp_nanogpt_speedrun.tex, spectra_mechanism_main.tex",
+   "issue": "Four generated tables are built but never \\input by the manuscript (I diffed the \\input targets against the directory). The integrator listed three; spectra_mechanism_main.tex is a fourth, left over from the dropped two-column spectra summary. Harmless to the build, but they are dead assets a later refresh will keep regenerating.",
+   "suggested_fix": "Either drop them from analysis/paper_assets or note in CHANGES_v2.md which ones are deliberately unused, so the next agent does not hunt for a missing float."
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/numbers_v2_spectra.tex:121 used in sections_v2/app_spectra.tex:38",
+   "issue": "\\numSpectraStepZeroSpread expands to \"$0$\", so the prose reads \"At the shared initialisation all four optimizers must agree, and they do to $0$\", and the Fig. 15 caption reads \"coincide at the shared initialisation (to $0$)\". \"Agree to 0\" is not idiomatic and undersells an exact-agreement result.",
+   "suggested_fix": "Phrase it as \"agree exactly (largest between-optimizer deviation $0$)\" or quote a bound such as \"to better than $10^{-15}$ relative\"."
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/sections_v2/app_profiling.tex:16, sections_v2/app_gram.tex:350",
+   "issue": "\\numProfComplete = \"complete\" and \"\\numProfNConfigs{} of \\numProfNExpected{} configurations measured\" (720 of 720) gloss over 17 configurations whose status is not ok (8 error, 6 nonfinite, 2 infeasible, 1 oom, from my census of all 720 records). The figure captions do say a missing cell \"names the reason instead of going blank\", so nothing is hidden -- only the word \"complete\" is loose.",
+   "suggested_fix": "\"720 of 720 configurations attempted, 703 of them yielding a measurement; the remaining 17 are OOM or infeasible and are labelled as such in the figures.\""
+  },
+  {
+   "severity": "low",
+   "location": "iclr_manuscript/iclr2026_conference_v2.tex:111 (abstract)",
+   "issue": "The abstract attributes a measurement against AdamW to Adam: \"peak memory is at parity with Adam on perceptrons and \\numNanogptSvenMemVsAdamW{}$\\times$ Adam's on the transformer\". The nanoGPT field is AdamW, Muon, MuonW, SOAP and Sven -- Adam is not run there, and 1.87 is 615.4/329.7 MB against AdamW (verified in exp_nanogpt_speedrun_timing).",
+   "suggested_fix": "\"...and 1.87x AdamW's on the transformer\"."
+  }
+ ],
+ "summary": "Read PAPER_CONTRACTS.md, the full v2 manuscript (791 lines) and all 19 fragments, rev1-3, REBUTTALS sections 5-6, the analysis plan/contracts and the B.fix/A.fix reports. Traced ~40 numbers across every section to the raw records with my own scripts (no imports from analysis/): confirmation/timing/diag jsonl under experiment_results/, bench/best_configs.json, profile_results_v3/, rebuttal_fig5_* and exp_gpt2_small_comparison.\n\nThe macro layer is in excellent shape. Every one of the ~40 values I recomputed matches: polynomial and MNIST confirmation losses and paired intervals, ranks and field sizes, nanoGPT (val 1.715+-0.008, ppl 5.56, paired +0.00218 CI [-0.0226,+0.0269], 20.9/7.22 ms, 615.4/329.7 MB), both CIFAR objectives incl. the new CIFAR-CE selection (1.355+-0.016, acc 58.2, train-eval 0.1586, 177 ms, 22965 MB, 22.9x/57x), GPT-2 (5.198, +39%, 9.25 h, 2517 ms, 36050 MB), Fig-5 at the re-run k=128 configuration, the spectra set (rank law verified independently: 49,040 logged steps, 0 violations; used ranks, kept energies and seed spreads all reproduce), the profile (720 configs) and the divergence counts. The Gram-path re-selection was correctly filtered: 10 Sven runs sit in cifar10_resnet_ce_scan_confirm (old lr0.1/rtol0.01 plus new lr0.5/rtol0.3) and the macros use only the new five. K-FAC's 40/40 MNIST failures are real (_LinAlgError in linalg.eigh). nanoGPT timing/grid twins are bit-identical (max rel dev 0 over 25 pairs). The 4-pass build is clean: 0 errors, 0 undefined refs/citations, no overfull box >10 pt, 92 pages, sec:code on p9; all 45 figure targets and all \\input-ed tables exist; 477 \\num macros used, all defined.\n\nThe defects are in the prose around those numbers, and they cluster in three places. (1) Significance is overstated outside Sec. 4.1: the Intro and Conclusion claim all five first-order margins clear a 95% paired interval on all four perceptron tasks, whereas 8 of 20 intervals cover zero (4 of 5 on MNIST label regression) -- Sec. 4.1's own macros say 4 of 11. (2) Three passages were not re-derived after the refresh: App. J still calls CIFAR-CE an \"optimisation failure\" on a train-eval that is now better than the winning method's, still claims an interior optimum although the new selection sits at the maximum rtol and the maximum lr of the extension block, and App. Q still describes the retired v2 measurement protocol (15/5/10) instead of v3's (8/10/50). (3) Two appendices misread their own macros: App. G claims Sven is first-or-second at the three most over-parametrized MNIST arms when its ranks there are 4,1,2, and calls P/N=0.689 \"MNIST's most over-parametrized point\"; App. O explains three scans' 100% kept energy by an rtol below the round-off floor when its own macro says that holds on one scan, and the one scan it holds for is not among the three. Add a cross-source cost comparison in Limitations (timing-pass 177 ms against profile 23.7 ms, understating the ratio 27x -> 7.5x), a figure caption claiming a parameter range 15x wider than the figure shows, five unmarked black-text rewrites in the main body (violating the binding blue-markup rule), and two retained black paragraphs in App. N that contradict the revision's central claims. Coverage of the reviews is otherwise strong: 14 of 17 concrete requests are answered and locatable; R1's \"put Fig. 5 in the main paper\", R3's \"derive (16)\" and R2's \"Sven on intermediate layers only\" are not.\n\nVerdict: needs_fixes. Nothing here questions the campaign or the numbers -- the fixes are text, two captions, one cross-reference and one macro swap, plus re-deriving three post-refresh paragraphs.",
+ "verdict": "needs_fixes"
+}

@@ -1,0 +1,5 @@
+# Char-level tiny-shakespeare, contiguous 80/10/10 train/val/test by position (C-E1).
+_target_: experiments.datasets.CharTextDataset
+block_size: 128
+val_fraction: 0.1
+test_fraction: 0.1

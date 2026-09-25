@@ -1,0 +1,560 @@
+[reconcile] results root /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments   (the plan's results_root)
+[reconcile] configs      /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs   (the snapshot's)
+[reconcile] grid.py      /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61
+
+=== rebuttal_overparam_toy_1d_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_toy_1d_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   2080 runs   (config grid 2080, manifest-only 0)
+  on disk    2080 jsonl
+  overrides  'mode=svd n_data=150'
+  overrides  'mode=svd n_data=300'
+  overrides  'mode=svd n_data=600'
+  overrides  'mode=svd n_data=1200'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=150'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=300'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=600'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=1200'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=150'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=300'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=600'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=1200'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=150'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=300'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=600'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=1200'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                540           540             0             0             0             0             0             0             0             0
+  polyak                20            20             0             0             0             0             0             0             0             0
+  standard             800           800             0             0             0             0             0             0             0             0
+  svd                  720           720             0             0             0             0             0             0             0             0
+  TOTAL               2080          2080             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    LBFGS           3.219e-06    5/5             1       -         -         -  lr:EDGE-HIGH
+    SVD             1.768e-05    5/5           0.1     150     0.001         -  k:EDGE-HIGH
+    Adam            2.699e-05    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    AdamW           3.578e-05    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    SOAP             0.000189    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    SGDm             0.001421    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    KFAC             0.002192    5/5         0.001       -         -         -  -
+    Muon             0.003118    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    MuonW            0.005416    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    RMSprop          0.005418    5/5          0.01       -         -         -  -
+    PolyakSGD          0.0187    5/5             -       -         -         -  -
+    Shampoo            0.4685    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    SGD                0.8167    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    config keys: Adam=std_bs300_mlp_width16_n_data300_lr0.1_optimAdam; AdamW=std_bs300_mlp_width16_n_data300_lr0.1_optimAdamW_wd0.01; KFAC=std_bs300_mlp_width16_n_data300_lr0.001_optimKFAC; LBFGS=std_bs150_mlp_width16_n_data150_lr1.0_optimLBFGS_mi3_hs10_lsstrong_wolfe; Muon=std_bs300_mlp_width16_n_data300_lr0.1_optimMuon; MuonW=std_bs600_mlp_width16_n_data600_lr0.1_optimMuonW_wd0.1; PolyakSGD=std_bs600_mlp_width16
+  => COMPLETE: 0 run(s) to do
+
+=== rebuttal_overparam_polynomial_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_polynomial_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   2080 runs   (config grid 2080, manifest-only 0)
+  on disk    2080 jsonl
+  overrides  'mode=svd n_data=170'
+  overrides  'mode=svd n_data=340'
+  overrides  'mode=svd n_data=675'
+  overrides  'mode=svd n_data=1350'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=170'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=340'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=675'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=1350'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=170'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=340'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=675'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=1350'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=170'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=340'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=675'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=1350'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                540           540             0             0             0             0             0             0             0             0
+  polyak                20            20             0             0             0             0             0             0             0             0
+  standard             800           800             0             0             0             0             0             0             0             0
+  svd                  720           720             0             0             0             0             0             0             0             0
+  TOTAL               2080          2080             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    LBFGS              0.1244    5/5             1       -         -         -  lr:EDGE-HIGH
+    AdamW              0.2098    5/5          0.01       -         -         -  -
+    Adam               0.2103    5/5          0.01       -         -         -  -
+    SOAP               0.2175    5/5          0.01       -         -         -  -
+    SVD                0.2829    5/5          0.05    1350      0.01         -  k:EDGE-HIGH lr:EDGE-LOW rtol:EDGE-HIGH
+    MuonW              0.2856    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    KFAC               0.3166    5/5         0.001       -         -         -  -
+    RMSprop            0.3181    5/5          0.01       -         -         -  -
+    Muon               0.3253    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    SGDm               0.3262    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    PolyakSGD          0.5571    5/5             -       -         -         -  -
+    SGD                0.6432    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    Shampoo            0.7159    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    config keys: Adam=std_bs1350_mlp_width16_n_data1350_lr0.01_optimAdam; AdamW=std_bs1350_mlp_width16_n_data1350_lr0.01_optimAdamW_wd0.01; KFAC=std_bs1350_mlp_width16_n_data1350_lr0.001_optimKFAC; LBFGS=std_bs1350_mlp_width16_n_data1350_lr1.0_optimLBFGS_mi3_hs10_lsstrong_wolfe; Muon=std_bs1350_mlp_width16_n_data1350_lr0.1_optimMuon; MuonW=std_bs1350_mlp_width16_n_data1350_lr0.1_optimMuonW_wd0.1; PolyakSGD=std_bs6
+  => COMPLETE: 0 run(s) to do
+
+=== rebuttal_overparam_mnist_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_overparam_mnist_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   2400 runs   (config grid 2400, manifest-only 0)
+  on disk    2400 jsonl
+  overrides  'mode=svd n_data=2500'
+  overrides  'mode=svd n_data=5000'
+  overrides  'mode=svd n_data=10000'
+  overrides  'mode=svd n_data=20000'
+  overrides  'mode=svd n_data=40000'
+  overrides  'mode=svd n_data=50000'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=2500'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=5000'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=10000'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=20000'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=40000'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD] n_data=50000'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=2500'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=5000'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=10000'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=20000'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=40000'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC] n_data=50000'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=2500'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=5000'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=10000'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=20000'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=40000'
+  overrides  'mode=standard optimizers_standard=[LBFGS] n_data=50000'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                810           585           225             0             0             0             0             0             0             0
+  polyak                30            30             0             0             0             0             0             0             0             0
+  standard            1200          1148            52             0             0             0             0             0             0             0
+  svd                  360           360             0             0             0             0             0             0             0             0
+  TOTAL               2400          2123           277             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    MuonW             0.04999    5/5         0.001       -         -         -  -
+    SVD                0.0522    5/5           0.5      64    0.0001         -  k:EDGE-HIGH
+    SGD               0.05338    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    LBFGS             0.05359    4/5           0.5       -         -         -  -
+    SGDm              0.05554    5/5          0.01       -         -         -  -
+    Muon               0.0558    5/5         0.001       -         -         -  -
+    PolyakSGD         0.05678    5/5             -       -         -         -  -
+    Adam              0.05683    5/5         0.001       -         -         -  -
+    AdamW             0.05686    5/5         0.001       -         -         -  -
+    RMSprop           0.06054    5/5         0.001       -         -         -  -
+    SOAP              0.06066    4/5         0.001       -         -         -  -
+    KFAC              0.07055    5/5        0.0001       -         -         -  lr:EDGE-LOW
+    Shampoo           0.08268    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    config keys: Adam=std_bs64_mlp_width32_n_data50000_lr0.001_optimAdam; AdamW=std_bs64_mlp_width32_n_data50000_lr0.001_optimAdamW_wd0.01; KFAC=std_bs64_mlp_width32_n_data20000_lr0.0001_optimKFAC; LBFGS=std_bs64_mlp_width32_n_data50000_lr0.5_optimLBFGS_mi3_hs2_lsstrong_wolfe; Muon=std_bs64_mlp_width32_n_data50000_lr0.001_optimMuon; MuonW=std_bs64_mlp_width32_n_data50000_lr0.001_optimMuonW_wd0.1; PolyakSGD=std_bs6
+  => COMPLETE: 0 run(s) to do
+
+=== rebuttal_batchsize_polynomial_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_batchsize_polynomial_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   1680 runs   (config grid 1680, manifest-only 0)
+  on disk    1680 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                 90            44            46             0             0             0             0             0             0             0
+  polyak                30            30             0             0             0             0             0             0             0             0
+  standard            1200          1151            49             0             0             0             0             0             0             0
+  svd                  360           360             0             0             0             0             0             0             0             0
+  TOTAL               1680          1585            95             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    Muon              0.09604    5/5         0.001       -         -         -  -
+    MuonW              0.1023    5/5          0.01       -         -         -  -
+    SVD                 0.104    5/5           0.5       8    0.0001         -  rtol:EDGE-LOW
+    SOAP               0.1052    5/5         0.001       -         -         -  -
+    PolyakSGD          0.1235    5/5             -       -         -         -  -
+    LBFGS              0.1303    3/5             1       -         -         -  lr:EDGE-HIGH
+    AdamW              0.1303    5/5          0.01       -         -         -  -
+    Adam               0.1306    5/5          0.01       -         -         -  -
+    RMSprop            0.1574    5/5         0.001       -         -         -  -
+    SGDm               0.1717    5/5          0.01       -         -         -  -
+    SGD                0.1848    5/5          0.01       -         -         -  -
+    KFAC               0.2023    5/5        0.0001       -         -         -  lr:EDGE-LOW
+    Shampoo            0.5122    5/5           0.1       -         -         -  lr:EDGE-HIGH
+    config keys: Adam=std_bs256_mlp_width16_lr0.01_optimAdam; AdamW=std_bs256_mlp_width16_lr0.01_optimAdamW_wd0.01; KFAC=std_bs128_mlp_width16_lr0.0001_optimKFAC; LBFGS=std_bs64_mlp_width16_lr1.0_optimLBFGS_mi3_hs2_lsstrong_wolfe; Muon=std_bs8_mlp_width16_lr0.001_optimMuon; MuonW=std_bs256_mlp_width16_lr0.01_optimMuonW_wd0.1; PolyakSGD=std_bs8_mlp_width16_optimPolyakSGD_fstar0.0_maxlr1.0_eps1e-08; RMSprop=std_bs8_
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_kappaScan_labelRegression ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_kappaScan_labelRegression
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   210 runs   (config grid 210, manifest-only 0)
+  on disk    210 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  210           210             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD               0.05146    5/5          0.75      32    0.0001         -  k:EDGE-LOW
+    config keys: SVD=svd_bs64_mlp_width32_k32_lr0.75_rtol0.0001_svdtorch_gram_kappa3
+  => COMPLETE: 0 run(s) to do
+
+=== toy_1d_microbatch_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_microbatch_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   120 runs   (config grid 120, manifest-only 0)
+  on disk    120 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  120           120             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD              2.02e-06    5/5           0.1      32     0.001         -  -
+    config keys: SVD=svd_bs32_mlp_width16_k32_lr0.1_rtol0.001_svdtorch_mb1_gram
+  => COMPLETE: 0 run(s) to do
+
+=== toy_1d_paramfrac_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_paramfrac_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   100 runs   (config grid 100, manifest-only 0)
+  on disk    100 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  100            99             1             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD             6.313e-07    5/5           0.1      32     0.001         -  -
+    config keys: SVD=svd_bs32_mlp_width16_k32_lr0.1_rtol0.001_svdtorch_pf0.75_elementwise_gram
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_microbatch_labelreg_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_microbatch_labelreg_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   140 runs   (config grid 140, manifest-only 0)
+  on disk    140 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  140           140             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.0522    5/5           0.5      64    0.0001         -  -
+    config keys: SVD=svd_bs64_mlp_width32_k64_lr0.5_rtol0.0001_svdtorch_mb1_gram
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_paramfrac_labelreg_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_paramfrac_labelreg_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   100 runs   (config grid 100, manifest-only 0)
+  on disk    100 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  100            86            14             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.0522    5/5           0.5      64    0.0001         -  -
+    config keys: SVD=svd_bs64_mlp_width32_k64_lr0.5_rtol0.0001_svdtorch_pf1.0_gram
+  => COMPLETE: 0 run(s) to do
+
+=== polynomial_microbatch_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_microbatch_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   120 runs   (config grid 120, manifest-only 0)
+  on disk    120 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  120           120             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.1199    5/5           0.5      32     0.001         -  -
+    config keys: SVD=svd_bs32_mlp_width16_k32_lr0.5_rtol0.001_svdtorch_mb4_gram
+  => COMPLETE: 0 run(s) to do
+
+=== polynomial_paramfrac_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_paramfrac_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   100 runs   (config grid 100, manifest-only 0)
+  on disk    100 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  100            85            15             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.1557    5/5           0.1      32     0.001         -  -
+    config keys: SVD=svd_bs32_mlp_width16_k32_lr0.1_rtol0.001_svdtorch_pf1.0_gram
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_microbatch_ce_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_microbatch_ce_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   140 runs   (config grid 140, manifest-only 0)
+  on disk    140 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  140           140             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                 0.121    5/5           0.5      64       0.1         -  -
+    config keys: SVD=svd_bs64_mlp_width32_k64_lr0.5_rtol0.1_svdtorch_mb64_gram
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_paramfrac_ce_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_paramfrac_ce_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   100 runs   (config grid 100, manifest-only 0)
+  on disk    100 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                  100            91             9             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.1323    5/5           0.1      64       0.1         -  -
+    config keys: SVD=svd_bs64_mlp_width32_k64_lr0.1_rtol0.1_svdtorch_pf1.0_gram
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_scan_labelRegression ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_scan_labelRegression
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   1360 runs   (config grid 1360, manifest-only 0)
+  on disk    1360 jsonl
+  overrides  'mode=hig'
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=jd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  hig                  150           145             5             0             0             0             0             0             0             0
+  jd                    30            30             0             0             0             0             0             0             0             0
+  lbfgs                135            67            68             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             400           344            56             0             0             0             0             0             0             0
+  svd                  640           640             0             0             0             0             0             0             0             0
+  TOTAL               1360          1231           129             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    MuonW             0.04999    5/5         0.001       -         -         -  -
+    HIG               0.05076    5/5          0.05       -         -      0.03  -
+    SVD               0.05215    5/5           0.5      64     0.001         -  k:EDGE-HIGH
+    SGD               0.05338    5/5           0.1       -         -         -  -
+    LBFGS             0.05359    4/5           0.5       -         -         -  -
+    SGDm              0.05554    5/5          0.01       -         -         -  -
+    Muon               0.0558    5/5         0.001       -         -         -  -
+    PolyakSGD         0.05678    5/5             -       -         -         -  -
+    Adam              0.05683    5/5         0.001       -         -         -  -
+    AdamW             0.05686    5/5         0.001       -         -         -  -
+    JD_UPGrad         0.05756    5/5         0.001       -         -         -  -
+    RMSprop           0.06054    5/5         0.001       -         -         -  -
+    Shampoo           0.08268    5/5           0.1       -         -         -  -
+    SOAP               0.2403    3/5         0.001       -         -         -  -
+    config keys: Adam=std_bs64_mlp_width32_lr0.001_optimAdam; AdamW=std_bs64_mlp_width32_lr0.001_optimAdamW_wd0.01; HIG=hig_bs64_mlp_width32_lr0.05_tau0.03; JD_UPGrad=jd_bs64_mlp_width32_lr0.001_aggUPGrad_innerAdam; LBFGS=std_bs64_mlp_width32_lr0.5_optimLBFGS_mi3_hs2_lsstrong_wolfe; Muon=std_bs64_mlp_width32_lr0.001_optimMuon; MuonW=std_bs64_mlp_width32_lr0.001_optimMuonW_wd0.1; PolyakSGD=std_bs64_mlp_width32_opti
+  => COMPLETE: 0 run(s) to do
+
+=== mnist_scan_ce ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/mnist_scan_ce
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   1360 runs   (config grid 1360, manifest-only 0)
+  on disk    1360 jsonl
+  overrides  'mode=hig'
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=jd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  hig                  150           150             0             0             0             0             0             0             0             0
+  jd                    30            30             0             0             0             0             0             0             0             0
+  lbfgs                135            98            37             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             400           350            50             0             0             0             0             0             0             0
+  svd                  640           640             0             0             0             0             0             0             0             0
+  TOTAL               1360          1273            87             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    MuonW              0.1041    5/5        0.0001       -         -         -  -
+    Muon               0.1061    5/5        0.0001       -         -         -  -
+    HIG                0.1143    5/5          0.05       -         -      0.03  -
+    SGD                0.1222    5/5          0.01       -         -         -  -
+    SVD                0.1231    5/5           0.5       8       0.1         -  rtol:EDGE-HIGH
+    SGDm               0.1237    5/5         0.001       -         -         -  -
+    LBFGS              0.1277    4/5             1       -         -         -  lr:EDGE-HIGH
+    Shampoo            0.1339    5/5           0.1       -         -         -  -
+    RMSprop            0.1401    5/5        0.0001       -         -         -  -
+    PolyakSGD          0.1408    5/5             -       -         -         -  -
+    AdamW              0.1417    5/5         0.001       -         -         -  -
+    Adam               0.1436    5/5        0.0001       -         -         -  -
+    JD_UPGrad          0.1556    5/5        0.0001       -         -         -  -
+    SOAP                0.246    3/5         0.001       -         -         -  -
+    config keys: Adam=std_bs64_mlp_width32_lr0.0001_optimAdam; AdamW=std_bs64_mlp_width32_lr0.001_optimAdamW_wd0.01; HIG=hig_bs64_mlp_width32_lr0.05_tau0.03; JD_UPGrad=jd_bs64_mlp_width32_lr0.0001_aggUPGrad_innerAdam; LBFGS=std_bs64_mlp_width32_lr1.0_optimLBFGS_mi1_hs5_lsstrong_wolfe; Muon=std_bs64_mlp_width32_lr0.0001_optimMuon; MuonW=std_bs64_mlp_width32_lr0.0001_optimMuonW_wd0.1; PolyakSGD=std_bs64_mlp_width32_
+  => COMPLETE: 0 run(s) to do
+
+=== toy_1d_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/toy_1d_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   1080 runs   (config grid 1080, manifest-only 0)
+  on disk    1080 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=jd'
+  overrides  'mode=hig'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  hig                  150           139            11             0             0             0             0             0             0             0
+  jd                    30            30             0             0             0             0             0             0             0             0
+  lbfgs                135            88            47             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             400           381            19             0             0             0             0             0             0             0
+  svd                  360           360             0             0             0             0             0             0             0             0
+  TOTAL               1080          1003            77             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    HIG             4.707e-09    5/5         0.005       -         -     1e-06  lr:EDGE-LOW
+    SVD             4.799e-07    5/5          0.05      32    0.0001         -  k:EDGE-HIGH lr:EDGE-LOW rtol:EDGE-LOW
+    SOAP            4.325e-06    5/5         0.001       -         -         -  -
+    Adam            1.698e-05    5/5         0.001       -         -         -  -
+    AdamW           1.948e-05    5/5         0.001       -         -         -  -
+    KFAC            2.552e-05    5/5         0.001       -         -         -  -
+    Muon            3.079e-05    5/5         0.001       -         -         -  -
+    SGD             4.458e-05    5/5           0.3       -         -         -  -
+    SGDm            4.964e-05    5/5           0.1       -         -         -  -
+    MuonW           5.294e-05    5/5         0.001       -         -         -  -
+    PolyakSGD       9.204e-05    5/5             -       -         -         -  -
+    JD_UPGrad       9.335e-05    5/5          0.01       -         -         -  -
+    RMSprop         0.0001607    5/5         0.001       -         -         -  -
+    Shampoo         0.0002068    5/5           0.1       -         -         -  -
+    LBFGS           0.0002459    4/5           0.1       -         -         -  lr:EDGE-LOW
+    config keys: Adam=std_bs32_mlp_width16_lr0.001_optimAdam; AdamW=std_bs32_mlp_width16_lr0.001_optimAdamW_wd0.01; HIG=hig_bs32_mlp_width16_lr0.005_tau1e-06; JD_UPGrad=jd_bs32_mlp_width16_lr0.01_aggUPGrad_innerAdam; KFAC=std_bs32_mlp_width16_lr0.001_optimKFAC; LBFGS=std_bs32_mlp_width16_lr0.1_optimLBFGS_mi3_hs10_lsstrong_wolfe; Muon=std_bs32_mlp_width16_lr0.001_optimMuon; MuonW=std_bs32_mlp_width16_lr0.001_optimM
+  => COMPLETE: 0 run(s) to do
+
+=== polynomial_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/polynomial_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   1200 runs   (config grid 1200, manifest-only 0)
+  on disk    1200 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,AdamW,SGD,SGDm,RMSprop,Muon,MuonW,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[SOAP,Shampoo,KFAC]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=jd'
+  overrides  'mode=hig'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  hig                  150           147             3             0             0             0             0             0             0             0
+  jd                    30            30             0             0             0             0             0             0             0             0
+  lbfgs                135            21           114             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             400           363            37             0             0             0             0             0             0             0
+  svd                  480           480             0             0             0             0             0             0             0             0
+  TOTAL               1200          1046           154             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    HIG               0.07149    5/5           0.1       -         -    0.0001  -
+    SVD                0.1175    5/5           0.5      32      0.01         -  k:EDGE-HIGH rtol:EDGE-HIGH
+    PolyakSGD          0.1362    5/5             -       -         -         -  -
+    JD_UPGrad          0.1438    5/5         0.001       -         -         -  -
+    SOAP               0.1496    5/5          0.01       -         -         -  -
+    Muon               0.1651    5/5          0.01       -         -         -  -
+    KFAC               0.1728    5/5         1e-05       -         -         -  lr:EDGE-LOW
+    RMSprop            0.1839    5/5          0.01       -         -         -  -
+    Adam               0.1852    5/5          0.01       -         -         -  -
+    AdamW              0.2054    5/5          0.01       -         -         -  -
+    MuonW              0.2061    5/5          0.01       -         -         -  -
+    SGDm               0.2141    5/5          0.01       -         -         -  -
+    SGD                0.2263    5/5           0.1       -         -         -  -
+    LBFGS              0.2395    3/5             1       -         -         -  lr:EDGE-HIGH
+    Shampoo            0.5221    5/5           0.1       -         -         -  -
+    config keys: Adam=std_bs32_mlp_width16_lr0.01_optimAdam; AdamW=std_bs32_mlp_width16_lr0.01_optimAdamW_wd0.01; HIG=hig_bs32_mlp_width16_lr0.1_tau0.0001; JD_UPGrad=jd_bs32_mlp_width16_lr0.001_aggUPGrad_innerAdam; KFAC=std_bs32_mlp_width16_lr1e-05_optimKFAC; LBFGS=std_bs32_mlp_width16_lr1.0_optimLBFGS_mi1_hs2_lsstrong_wolfe; Muon=std_bs32_mlp_width16_lr0.01_optimMuon; MuonW=std_bs32_mlp_width16_lr0.01_optimMuonW_
+  => COMPLETE: 0 run(s) to do
+
+=== cifar10_resnet_scan_labelRegression ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/cifar10_resnet_scan_labelRegression
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   555 runs   (config grid 555, manifest-only 0)
+  on disk    555 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,SGD,SGDm,RMSprop,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=standard optimizers_standard=[AdamW,Muon,MuonW]'
+  overrides  'mode=standard optimizers_standard=[SOAP]'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                180           180             0             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             280           252            28             0             0             0             0             0             0             0
+  svd                   90            90             0             0             0             0             0             0             0             0
+  TOTAL                555           527            28             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    MuonW              0.3456    5/5          0.01       -         -         -  -
+    SOAP               0.3524    5/5          0.01       -         -         -  -
+    Muon               0.3649    5/5          0.01       -         -         -  -
+    AdamW              0.3952    5/5          0.01       -         -         -  -
+    Adam               0.3985    5/5          0.01       -         -         -  -
+    RMSprop            0.4088    5/5         0.001       -         -         -  -
+    LBFGS               0.438    5/5             2       -         -         -  lr:EDGE-HIGH
+    PolyakSGD          0.4541    5/5             -       -         -         -  -
+    SVD                0.4803    5/5           0.5     128     0.001         -  k:EDGE-HIGH
+    SGDm               0.6922    5/5         0.001       -         -         -  -
+    SGD                 0.739    5/5         0.001       -         -         -  -
+    config keys: Adam=std_bs128_lr0.01_optimAdam; AdamW=std_bs128_lr0.01_optimAdamW_wd0.01; LBFGS=std_bs128_lr2.0_optimLBFGS_mi3_hs2_lsstrong_wolfe; Muon=std_bs128_lr0.01_optimMuon; MuonW=std_bs128_lr0.01_optimMuonW_wd0.1; PolyakSGD=std_bs128_optimPolyakSGD_fstar0.0_maxlr1.0_eps1e-08; RMSprop=std_bs128_lr0.001_optimRMSprop; SGD=std_bs128_lr0.001_optimSGD; SGDm=std_bs128_lr0.001_optimSGDm; SOAP=std_bs128_lr0.01_opt
+  => COMPLETE: 0 run(s) to do
+
+=== cifar10_resnet_ce_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/cifar10_resnet_ce_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   655 runs   (config grid 655, manifest-only 0)
+  on disk    655 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[Adam,SGD,SGDm,RMSprop,PolyakSGD]'
+  overrides  'mode=standard optimizers_standard=[LBFGS]'
+  overrides  'mode=standard optimizers_standard=[AdamW,Muon,MuonW]'
+  overrides  'mode=standard optimizers_standard=[SOAP]'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  lbfgs                180           180             0             0             0             0             0             0             0             0
+  polyak                 5             5             0             0             0             0             0             0             0             0
+  standard             320           320             0             0             0             0             0             0             0             0
+  svd                  150           150             0             0             0             0             0             0             0             0
+  TOTAL                655           655             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    MuonW              0.6888    5/5          0.01       -         -         -  -
+    LBFGS               1.014    5/5             2       -         -         -  lr:EDGE-HIGH
+    AdamW               1.093    5/5          0.01       -         -         -  -
+    Muon                1.122    5/5          0.01       -         -         -  -
+    SOAP                1.148    5/5          0.01       -         -         -  -
+    SGDm                1.187    5/5           0.3       -         -         -  -
+    Adam                1.214    5/5         0.001       -         -         -  -
+    RMSprop             1.334    5/5         0.001       -         -         -  -
+    SGD                 1.338    5/5             1       -         -         -  lr:EDGE-HIGH
+    SVD                 1.403    5/5           0.1     128      0.01         -  k:EDGE-HIGH rtol:EDGE-HIGH
+    PolyakSGD           1.782    5/5             -       -         -         -  -
+    config keys: Adam=std_bs128_lr0.001_optimAdam; AdamW=std_bs128_lr0.01_optimAdamW_wd0.01; LBFGS=std_bs128_lr2.0_optimLBFGS_mi2_hs5_lsstrong_wolfe; Muon=std_bs128_lr0.01_optimMuon; MuonW=std_bs128_lr0.01_optimMuonW_wd0.1; PolyakSGD=std_bs128_optimPolyakSGD_fstar0.0_maxlr1.0_eps1e-08; RMSprop=std_bs128_lr0.001_optimRMSprop; SGD=std_bs128_lr1.0_optimSGD; SGDm=std_bs128_lr0.3_optimSGDm; SOAP=std_bs128_lr0.01_optimS
+  => COMPLETE: 0 run(s) to do
+
+=== exp_nanogpt_speedrun ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/exp_nanogpt_speedrun
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   140 runs   (config grid 140, manifest-only 0)
+  on disk    140 jsonl
+  overrides  'mode=svd'
+  overrides  'mode=standard optimizers_standard=[AdamW,Muon,MuonW,SOAP]'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  standard             120           120             0             0             0             0             0             0             0             0
+  svd                   20            20             0             0             0             0             0             0             0             0
+  TOTAL                140           140             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    AdamW               1.714    5/5        0.0003       -         -         -  -
+    SVD                 1.724    5/5           0.1      64     0.001         -  -
+    MuonW               1.818    5/5        0.0001       -         -         -  -
+    Muon                1.819    5/5        0.0001       -         -         -  -
+    SOAP                1.822    5/5        0.0001       -         -         -  -
+    config keys: AdamW=std_bs64_lr0.0003_optimAdamW_wd0.01; Muon=std_bs64_lr0.0001_optimMuon; MuonW=std_bs64_lr0.0001_optimMuonW_wd0.1; SOAP=std_bs64_lr0.0001_optimSOAP; SVD=svd_bs64_k64_lr0.1_rtol0.001_svdtorch_gram
+  => COMPLETE: 0 run(s) to do
+
+=== rebuttal_fig5_cifar_paramfrac_scan ===
+  dir        /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments/rebuttal_fig5_cifar_paramfrac_scan
+  configs    /n/holystore01/LABS/iaifi_lab/Users/sambt/sv3_deploy/2c6faf59_203a4e61/experiments/configs
+  expected   15 runs   (config grid 15, manifest-only 0)
+  on disk    15 jsonl
+  overrides  'mode=svd'
+  family          expected            ok      diverged           oom         error  started-only  claimed-live    stale-hash    jsonl-only never-started
+  svd                   15            15             0             0             0             0             0             0             0             0
+  best config per method (seed-mean final val loss, diverged excluded):
+    method          seed-mean  n_ok/exp         lr       k      rtol       tau  edges
+    SVD                0.6681    3/3             1      64     0.001         -  -
+    config keys: SVD=svd_bs128_k64_lr1.0_rtol0.001_svdtorch_pf1.0_gram_bnbatch
+  => COMPLETE: 0 run(s) to do
+
+[reconcile] 21 scan(s), 0 run(s) to do; incomplete: none

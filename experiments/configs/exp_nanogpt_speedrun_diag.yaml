@@ -1,0 +1,31 @@
+# Diagnostics companion of exp_nanogpt_speedrun (Phase 5, pass C: CHANGES_NEEDED.md 4.2).
+# Inherits the parent scan completely; a launcher SELECTION (bench/best_configs.json ->
+# campaign/plan_phase5.yaml) runs the best configuration of EVERY method -- not only Sven
+# -- with the full logging this config turns on. Results land in
+# experiment_results/exp_nanogpt_speedrun_diag/ under the SAME run_ids as the scan: neither
+# `checkpoints` nor `svd_spectra_schedule` is part of grid.run_hash (they decide what is
+# WRITTEN, never the trajectory), so a diagnostics run is bit-for-bit the scan's run with
+# more of it recorded, and the two can be compared run_id by run_id.
+defaults:
+  - exp_nanogpt_speedrun
+  - _self_
+
+# C-L3: the ladder for every family. The parent scans give it to the svd family alone
+# (`checkpoints_svd: log` with the baselines on `final`), because there it is 1000+ runs;
+# here it is ~13 configurations x 5 seeds, so every method gets it and the override must
+# CLEAR `checkpoints_svd` or the svd family would still be following it.
+checkpoints: log
+checkpoints_svd: null
+
+# C-L2 / F17: the spectrum figures read the first ~1000 steps, where the rtol cut and the
+# singular-value decay actually move; `every: 20` afterwards keeps the npz bounded.
+svd_spectra_schedule:
+  dense_first: 1000
+  every: 20
+
+# the full per-step svd_info (svs, utr, update_norm, resid_norm, sv_min_kept,
+# sv_noise_floor on every logged step) is the point of this pass
+svd_info: full
+
+# 826,368 params x fp32 = 3.3 MB a state; the log ladder over ~5,400 steps plus 50 epoch
+# ends is ~63 states, i.e. ~0.2 GB a run (~5 GB for the whole pass).

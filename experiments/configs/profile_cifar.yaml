@@ -1,0 +1,30 @@
+# Memory / step-time profile for cifar_resnet18 (see experiments/optimizer_profile.py). Inherits the
+# dataset, model, loss and seeds of `cifar10_resnet_scan_labelRegression`; the scan grids in it are ignored here.
+#   PYTHONPATH=. python -m experiments.optimizer_profile --config-name profile_cifar
+defaults:
+  - cifar10_resnet_scan_labelRegression
+  - _self_
+
+arch: cifar_resnet18
+profile:
+  warmup_steps: 10
+  num_steps: 50
+  min_steps: 10          # always measure at least this many steps ...
+  max_seconds: 120       # ... but stop early once this much measured time has elapsed
+  max_warmup_seconds: 120
+  staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
+  # v2 (2026-09-17) is frozen as the before-table of the `empty_cache` fix; this run
+  # writes v3. $SV3_PROFILE_ROOT overrides this (optimizer_profile.output_root).
+  output_dir: profile_results_v3
+base: {batch_size: 128, k_fraction: 1.0, lr: 0.1, rtol: 1e-3}   # k = number of rows; lr/rtol do not affect cost
+# ResNet18 with batch-statistics BatchNorm (gram_freeze_norm_stats: false, inherited): hooks
+# capture is impossible here, so Sven is profiled as gram_full / gram_chunked / classic.
+baselines: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, PolyakSGD, LBFGS1, LBFGS3, JD, HIG]
+sven_variants: [gram_full, gram_chunked, classic]
+studies:
+  methods: {}
+  batch_size: {values: [32, 64, 128, 256], methods: [gram_full, classic, Adam, SGD]}
+  chunk_fraction: {values: [1.0, 0.5, 0.25, 0.125, 0.0625]}
+  param_fraction: {values: [0.05, 0.1, 0.25, 0.5], mask_modes: [elementwise, rows, tensor], variants: [gram_full, classic]}
+  microbatch: {values: [1, 2, 4, 8, 16], variants: [gram_full, classic]}
+  k: {values: [0.125, 0.25, 0.5, 1.0], variants: [gram_full, classic]}

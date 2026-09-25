@@ -1,0 +1,60 @@
+# Phase 5, CIFAR-CE Sven ONLY -- diag + confirm at the RE-SELECTED configuration.
+# GENERATED (scratch script, from campaign/plan_phase5.yaml) -- do not hand-edit.
+#
+# Why this file exists: the CIFAR-CE `rtol` extension (list `p2_cifar_ce_rtol`, 45 runs,
+# ANALYSIS_PLAN.md section 7.5) moved Sven's selected configuration on that scan from
+# `k=128 lr=0.1 rtol=0.01` (seed-mean val 1.40281) to `k=128 lr=0.5 rtol=0.3` (1.35515),
+# so its three result-dependent passes have to be re-run -- and ONLY its.  The launcher
+# selects work lists, not items, while `p5_diag_heavy_a100` / `p5_confirm_heavy_a100` hold
+# 27 items each whose runs are already on disk; this file is those two lists narrowed to
+# the one item that moved, copied verbatim from the generated plan.
+#
+#   .venv/bin/python tools/launch_campaign.py campaign/plan_phase5_cifar_ce_sven.yaml \
+#       --snapshot <SNAP> --list p5_diag_cifar_ce_sven [--submit]
+#   .venv/bin/python tools/reconcile.py --all campaign/plan_phase5_cifar_ce_sven.yaml
+#
+# The TIMING pass is not here: `bench/submit_timing_phase5.sh --scan cifar10_resnet_ce_scan
+# --only SVD` already restricts itself to one scan and one method.
+#
+# The OLD configuration's timing / diag / confirm records stay on disk under their own
+# run_ids (k=128, lr=0.1, rtol=0.01).  Nothing mixes them: `headline.selected_runs` matches
+# a pass's records on the selected hyperparameter VALUES, so the tables follow
+# bench/best_configs.json.
+version: 1
+plan: phase5_cifar_ce_sven
+results_root: /n/holystore01/LABS/iaifi_lab/Users/sambt/sven_experiments
+
+lanes:
+  a100:
+    partition: "iaifi_gpu_priority,iaifi_gpu,gpu"
+    gres: "gpu:1"
+    mem: 64G
+    time: "24:00:00"
+    cpus_extra: 2
+    note: "diag / confirm for CIFAR + nanoGPT, and the A100 overflow of the MLP lists"
+
+work_lists:
+
+  - name: p5_diag_cifar_ce_sven
+    phase: P5
+    lane: a100
+    n_jobs: 1
+    note: "the single cifar10_resnet_ce_scan_diag item of p5_diag_heavy_a100, at the re-selected Sven
+           configuration. 5 run(s)."
+    items:
+      - config: cifar10_resnet_ce_scan_diag
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]"
+        nproc: 1
+        note: "Sven (sven); checkpoints + dense spectra"
+
+  - name: p5_confirm_cifar_ce_sven
+    phase: P5
+    lane: a100
+    n_jobs: 1
+    note: "the single cifar10_resnet_ce_scan_confirm item of p5_confirm_heavy_a100, at the re-selected Sven
+           configuration. 5 run(s)."
+    items:
+      - config: cifar10_resnet_ce_scan_confirm
+        overrides: "mode=svd k_values=[128] lrs=[0.5] rtol=[0.3]"
+        nproc: 1
+        note: "Sven (sven); 5 fresh model seeds"

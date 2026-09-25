@@ -1,0 +1,20 @@
+\begin{tabular}{llrrrrrrrrl}
+\toprule
+method & display & n\_timing & n\_joined & max\_rel\_dev & median\_rel\_dev & bit\_reproduced & n\_diverged\_only\_in\_timing & n\_diverged\_only\_in\_scan & max\_rel\_dev\_raw & worst\_run\_raw \\
+\midrule
+Sven & Sven & 5 & 5 & 0.038 & 0.01066 & False & 0 & 0 & 0.038 & svd\_bs64\_mlp\_width32\_k32\_lr0.5\_rtol0.3\_svdtorch\_mseed3002\_lseed3000\_gram \\
+Adam & Adam & 5 & 5 & 8.074e-08 & 3.407e-08 & True & 0 & 0 & 8.074e-08 & std\_bs64\_mlp\_width32\_lr0.0001\_optimAdam\_mseed3003\_lseed3000 \\
+AdamW & AdamW & 5 & 5 & 0.004556 & 7.879e-05 & False & 0 & 0 & 0.004556 & std\_bs64\_mlp\_width32\_lr0.001\_optimAdamW\_wd0.01\_mseed3004\_lseed3000 \\
+HIG & HIG & 5 & 5 & 0.0001424 & 8.614e-05 & True & 0 & 0 & 0.0001424 & hig\_bs64\_mlp\_width32\_lr0.05\_tau0.03\_mseed3004\_lseed3000 \\
+JD & JD (UPGrad) & 5 & 5 & 8.699e-08 & 4.133e-08 & True & 0 & 0 & 8.699e-08 & jd\_bs64\_mlp\_width32\_lr0.0001\_aggUPGrad\_innerAdam\_mseed3004\_lseed3000 \\
+LBFGS & Stochastic L-BFGS & 5 & 5 & 0.3082 & 0.1044 & False & 0 & 0 & 0.3082 & std\_bs64\_mlp\_width32\_lr0.5\_optimLBFGS\_mi1\_hs2\_lsstrong\_wolfe\_mseed3000\_lseed3000 \\
+Muon & Muon & 5 & 5 & 0.0002538 & 0.0001599 & True & 0 & 0 & 0.0002538 & std\_bs64\_mlp\_width32\_lr0.0001\_optimMuon\_mseed3004\_lseed3000 \\
+MuonW & MuonW & 5 & 5 & 0.0001916 & 8.367e-05 & True & 0 & 0 & 0.0001916 & std\_bs64\_mlp\_width32\_lr0.0001\_optimMuonW\_wd0.1\_mseed3000\_lseed3000 \\
+PolyakSGD & Polyak SGD & 5 & 5 & 0.02163 & 0.0005764 & False & 0 & 0 & 0.02163 & std\_bs64\_mlp\_width32\_optimPolyakSGD\_fstar0.0\_maxlr1.0\_eps1e-08\_mseed3004\_lseed3000 \\
+RMSprop & RMSprop & 5 & 5 & 4.507e-08 & 3.986e-08 & True & 0 & 0 & 4.507e-08 & std\_bs64\_mlp\_width32\_lr0.0001\_optimRMSprop\_mseed3000\_lseed3000 \\
+SGD & SGD & 5 & 5 & 1.108e-07 & 7.03e-08 & True & 0 & 0 & 1.108e-07 & std\_bs64\_mlp\_width32\_lr0.01\_optimSGD\_mseed3003\_lseed3000 \\
+SGDm & SGD + momentum & 5 & 5 & 1.085e-07 & 4.142e-08 & True & 0 & 0 & 1.085e-07 & std\_bs64\_mlp\_width32\_lr0.001\_optimSGDm\_mseed3004\_lseed3000 \\
+SOAP & SOAP & 5 & 5 & 0.1334 & 0.004163 & False & 0 & 0 & 0.1334 & std\_bs64\_mlp\_width32\_lr0.0001\_optimSOAP\_mseed3000\_lseed3000 \\
+Shampoo & Shampoo & 5 & 5 & 0.01476 & 0.00363 & False & 0 & 0 & 0.01476 & std\_bs64\_mlp\_width32\_lr0.1\_optimShampoo\_mseed3004\_lseed3000 \\
+\bottomrule
+\end{tabular}

@@ -25,6 +25,8 @@ import torch.nn as nn
 from torch.func import functional_call
 from torch.nn.utils import parameters_to_vector
 
+from experiments.nn.norm_utils import eval_mode, no_norm_stat_updates
+
 
 class HIGWrapper:
     """Functional wrapper around a PyTorch model for HIG output-Jacobian computation.
@@ -87,8 +89,17 @@ class HIGWrapper:
 
     @torch.no_grad()
     def evaluate(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass without gradient tracking."""
-        return self._func_call(self.params, x)
+        """Side-effect-free forward pass in eval mode (C-E2).
+
+        Eval mode, so normalisation uses the running statistics and a fixed
+        example's prediction does not depend on its batch companions; every
+        submodule's previous ``training`` flag is restored afterwards and no
+        buffer is written (``no_norm_stat_updates`` on top of eval mode).
+        Matches ``SvenWrapper.evaluate`` so the two methods are compared under
+        the same evaluation, which was the F2/F3 defect.
+        """
+        with eval_mode(self.model), no_norm_stat_updates(self.model):
+            return self._func_call(self.params, x)
 
     def output_and_loss_grad(
         self, batch: tuple[torch.Tensor, ...]

@@ -1,0 +1,28 @@
+# Memory / step-time profile for toy_1d (see experiments/optimizer_profile.py). Inherits the
+# dataset, model, loss and seeds of `toy_1d_scan`; the scan grids in it are ignored here.
+#   PYTHONPATH=. python -m experiments.optimizer_profile --config-name profile_toy_1d
+defaults:
+  - toy_1d_scan
+  - _self_
+
+arch: toy_1d
+profile:
+  warmup_steps: 10
+  num_steps: 50
+  min_steps: 10          # always measure at least this many steps ...
+  max_seconds: 120       # ... but stop early once this much measured time has elapsed
+  max_warmup_seconds: 120
+  staged_batches: 8      # batches held on the GPU and cycled (data loading stays untimed)
+  # v2 (2026-09-17) is frozen as the before-table of the `empty_cache` fix; this run
+  # writes v3. $SV3_PROFILE_ROOT overrides this (optimizer_profile.output_root).
+  output_dir: profile_results_v3
+base: {batch_size: 32, k_fraction: 1.0, lr: 0.1, rtol: 1e-3}   # k = number of rows; lr/rtol do not affect cost
+baselines: [Adam, AdamW, SGD, RMSprop, Muon, SOAP, Shampoo, KFAC, PolyakSGD, LBFGS1, LBFGS3, JD, HIG]
+sven_variants: [gram_hooks, gram_full, gram_chunked, classic]
+studies:
+  methods: {}
+  batch_size: {values: [8, 16, 32, 64, 128, 256], methods: [gram_hooks, gram_full, classic, Adam, SGD, HIG]}
+  chunk_fraction: {values: [1.0, 0.5, 0.25, 0.125]}
+  param_fraction: {values: [0.1, 0.25, 0.5, 0.75], mask_modes: [elementwise, rows, tensor], variants: [gram_hooks, gram_full, classic]}
+  microbatch: {values: [1, 2, 4, 8, 16, 32], variants: [gram_hooks, gram_full, classic]}
+  k: {values: [0.03125, 0.125, 0.25, 0.5, 1.0], variants: [gram_hooks, gram_full, classic]}
