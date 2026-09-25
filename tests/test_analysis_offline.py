@@ -7,7 +7,6 @@ and nothing needs a GPU or torch.
 The one REAL acceptance number is C-T2's: SOAP on ``profile_mnist`` must read
 6.14 ms amortised where the old spike-filtered mean read 5.56 ms, and
 ``gram_hooks`` -- which has no 10-step refresh -- must not move (tolerance 0.05 ms).
-The legacy-repair check against the real scans is ``test_real_scan_repair``, opt-in
 via ``SV3_CHECK_REAL_SCANS=1`` because it reads ~33 MB of npz off Lustre; run it
 through ``campaign/run_cpu_tests.sh``.
 
@@ -43,7 +42,6 @@ import analysis_helpers as ah    # noqa: E402
 import budget                    # noqa: E402
 import paired                    # noqa: E402
 import profile_helpers as ph     # noqa: E402
-import repair_legacy as rl       # noqa: E402
 import style                     # noqa: E402
 
 PROFILE_ROOT = REPO / 'profile_results_v2'
@@ -252,163 +250,6 @@ def test_scaling_table_and_steadiness_count_a_nonfinite_row_as_measured():
 
 
 # ===========================================================================
-# C-A1  --  example-weighted validation curves for the legacy results
-# ===========================================================================
-def test_batch_weights_cover_every_example_exactly_once():
-    w = rl.batch_weights(10_000, 256)
-    assert len(w) == rl.n_batches(10_000, 256) == 40
-    assert w[-1] == 16 and w.sum() == 10_000
-    assert list(rl.batch_weights(10_000, 8)[-2:]) == [8.0, 8.0]      # divides exactly
-    assert rl.n_batches(10_000, 8) == 1250
-
-
-def test_n_val_window_pins_n_val_from_the_batch_size_sweep():
-    # (B, n_batches) as observed in rebuttal_batchsize_polynomial_scan.
-    pairs = [(8, 1250), (16, 625), (32, 313), (64, 157), (128, 79), (256, 40)]
-    assert rl.n_val_window(pairs) == (9993, 10_000)
-    assert rl.n_val_window([(32, 313)]) == (9985, 10_016)
-    assert rl.n_val_window([]) == (None, None)
-
-
-def test_repair_curve_reproduces_the_stored_mean_and_corrects_the_weighting():
-    # n_val = 10, B = 4 -> batches of 4, 4, 2.  Batch means 1, 1, 7.
-    eq, ew, nb = rl.repair_curve([1.0, 1.0, 7.0, 1.0, 1.0, 7.0], n_val=10, batch_size=4)
-    assert nb == 3
-    assert list(eq) == pytest.approx([3.0, 3.0])                      # what was recorded
-    assert list(ew) == pytest.approx([(4 + 4 + 14) / 10] * 2)         # 2.2: the truth
-    with pytest.raises(ValueError):
-        rl.repair_curve([1.0, 2.0], n_val=10, batch_size=4)           # not whole epochs
-
-
-def _scan_with_val_batch(root, name, batch_size=4, n_val=10, per_batch=(1.0, 1.0, 7.0),
-                         n_evals=2, val_curve=None, seed=1000):
-    d = root / name
-    (d / 'diag').mkdir(parents=True, exist_ok=True)
-    vb = np.tile(np.asarray(per_batch, dtype=np.float32), n_evals)
-    eq = float(np.mean(per_batch))
-    run_id = f'std_bs{batch_size}_lr0.1_optimAdam_mseed{seed}_lseed1000'
-    rec = {'run_id': run_id, 'optimizer': 'Adam',
-           'loss': 'mse', 'batch_size': batch_size, 'lr': 0.1, 'model_seed': seed,
-           'loader_seed': 1000, 'svd_summary': None, 'n_val': n_val,
-           'diag_file': f'diag/{run_id}.npz',
-           'losses': {'train': [eq] * n_evals, 'val': val_curve or [10 * eq] + [eq] * n_evals,
-                      'total_time': 1.0}}
-    (d / f'{run_id}.jsonl').write_text(json.dumps(rec) + '\n')
-    np.savez_compressed(d / 'diag' / f'{run_id}.npz', val_batch=vb, train_batch=vb.copy())
-    return rec
-
-
-def test_repair_scan_writes_new_columns_and_leaves_the_results_root_alone(tmp_path):
-    root, out = tmp_path / 'results', tmp_path / 'out'
-    _scan_with_val_batch(root, 'synth')
-    before = sorted(p.name for p in (root / 'synth').iterdir())
-    res = rl.repair_scan('synth', results_root=str(root), workers=2,
-                         cache_dir=out / '_cache', verbose=False)
-    assert len(res) == 1 and res['error'].isna().all()
-    r = res.iloc[0]
-    assert r['n_val_batches'] == 3 and r['n_evals'] == 2 and r['pre_training_eval']
-    assert r['final_val_loss'] == pytest.approx(3.0)
-    assert r['final_val_loss_ew'] == pytest.approx(2.2)
-    assert r['rel_corr_final'] == pytest.approx(0.8 / 3.0)
-    assert r['eq_check'] == pytest.approx(0.0, abs=1e-6)
-    assert list(r['val_ew']) == pytest.approx([np.nan, 2.2, 2.2], nan_ok=True)
-    assert res.attrs['n_val'] == 10 and res.attrs['n_val_window'] == (9, 12)
-    assert res.attrs['n_checked'] == 1
-
-    path = rl.write(res, out, 'synth')
-    assert path.parent == out and list(rl.load_repair('synth', out)['run_id']) == list(res['run_id'])
-    # Nothing new in the results root (in particular no _cache written there).
-    assert sorted(p.name for p in (root / 'synth').iterdir()) == before
-    assert not (root / '_cache').exists()
-
-
-def test_val_ew_is_index_aligned_with_the_stored_val_curve(tmp_path):
-    """``val_ew[i]`` repairs ``val[i]``.  The legacy scans evaluate once before training
-    and never stored THAT eval per batch, so the entry is NaN -- but it is present, or a
-    notebook overlaying the repaired curve on the stored epoch axis is shifted by one."""
-    root = tmp_path / 'results'
-    _scan_with_val_batch(root, 'with_pre')                                   # 3 stored, 2 repaired
-    _scan_with_val_batch(root, 'no_pre', val_curve=[3.0, 3.0], seed=1001)    # 2 stored, 2 repaired
-    for name, pre in (('with_pre', True), ('no_pre', False)):
-        res = rl.repair_scan(name, results_root=str(root), workers=2,
-                             cache_dir=tmp_path / '_c', verbose=False)
-        r = res.iloc[0]
-        stored = json.loads(next((root / name).glob('*.jsonl')).read_text())['losses']['val']
-        assert bool(r['pre_training_eval']) is pre
-        assert len(r['val_ew']) == len(stored) == r['n_evals'] + pre
-        assert bool(np.isnan(r['val_ew'][0])) is pre
-        assert r['val_ew'][-1] == pytest.approx(r['final_val_loss_ew'])
-
-
-def test_repair_scan_refuses_to_trust_a_mismatching_equal_weight_check(tmp_path):
-    root = tmp_path / 'results'
-    # A stored val curve that the per-batch arrays do not reproduce: the reshape into
-    # epochs x batches would be wrong, and the repair must not be believed.
-    _scan_with_val_batch(root, 'synth', val_curve=[30.0, 3.0, 3.5])
-    with pytest.raises(AssertionError, match='equal-weight'):
-        rl.repair_scan('synth', results_root=str(root), workers=2,
-                       cache_dir=tmp_path / 'c', verbose=False)
-
-
-def test_the_equal_weight_check_cannot_pass_vacuously(tmp_path):
-    """A diverged run's ``eq_check`` is NaN, and ``NaN > rtol`` is False: sampling the
-    first few runs alphabetically could 'verify' a scan without one comparison.  The
-    sample must come from the runs that produced a check, one per batch size."""
-    root = tmp_path / 'results'
-    nan3 = (np.nan, np.nan, np.nan)
-    _scan_with_val_batch(root, 'all_nan', per_batch=nan3, val_curve=[np.nan] * 3)
-    with pytest.raises(AssertionError, match='unverified'):
-        rl.repair_scan('all_nan', results_root=str(root), workers=2,
-                       cache_dir=tmp_path / '_c', verbose=False)
-
-    # One checkable run at the same batch size is enough (and is what gets checked).
-    _scan_with_val_batch(root, 'mixed', per_batch=nan3, val_curve=[np.nan] * 3, seed=1000)
-    _scan_with_val_batch(root, 'mixed', seed=1001)
-    res = rl.repair_scan('mixed', results_root=str(root), workers=2,
-                         cache_dir=tmp_path / '_c2', verbose=False)
-    assert len(res) == 2 and res.attrs['n_checked'] == 1
-
-    # A batch size whose every run diverged leaves its geometry unverified -> raise.
-    _scan_with_val_batch(root, 'two_b', seed=1000)                               # B=4
-    _scan_with_val_batch(root, 'two_b', batch_size=5, per_batch=(np.nan, np.nan),
-                         val_curve=[np.nan] * 3, seed=1001)                      # B=5
-    with pytest.raises(AssertionError, match='unverified'):
-        rl.repair_scan('two_b', results_root=str(root), workers=2,
-                       cache_dir=tmp_path / '_c3', verbose=False)
-
-
-def test_repair_run_records_a_bad_n_val_as_an_error_not_a_crash(tmp_path):
-    root = tmp_path / 'results'
-    _scan_with_val_batch(root, 'synth')
-    res = rl.repair_scan('synth', results_root=str(root), n_val=40, workers=2,
-                         cache_dir=tmp_path / 'c', verbose=False)
-    assert res['error'].notna().all() and 'whole number' in res['error'].iloc[0]
-
-
-def test_resolve_n_val_prefers_the_record_then_the_legacy_table():
-    df = pd.DataFrame({'n_val': [200, 200]})
-    assert rl.resolve_n_val('anything', df) == 200
-    assert rl.resolve_n_val('anything', df, n_val=7) == 7
-    assert rl.resolve_n_val('toy_1d_scan', pd.DataFrame({'a': [1]})) == 10_000
-    with pytest.raises(KeyError):
-        rl.resolve_n_val('unknown_scan', pd.DataFrame({'a': [1]}))
-    with pytest.raises(ValueError, match='disagree'):
-        rl.resolve_n_val('x', pd.DataFrame({'n_val': [100, 200]}))
-
-
-@pytest.mark.skipif(os.environ.get('SV3_CHECK_REAL_SCANS') != '1',
-                    reason='reads ~33 MB of npz off Lustre; set SV3_CHECK_REAL_SCANS=1')
-def test_real_scan_repair():
-    """The smallest headline scan, against Fable's audit (0.17 / 0.71 / 1.1 %)."""
-    res = rl.repair_scan('cifar10_resnet_ce_scan', workers=8, verbose=False)
-    assert res.attrs['eq_check_max'] == pytest.approx(0.0, abs=1e-5)
-    s = rl.correction_summary(res).iloc[0]
-    assert s['median_%'] == pytest.approx(0.17, abs=0.02)
-    assert s['p95_%'] == pytest.approx(0.71, abs=0.05)
-    assert s['max_%'] == pytest.approx(1.1, abs=0.1)
-
-
-# ===========================================================================
 # Synthetic scan frames for C-A4 / C-A6
 # ===========================================================================
 def _losses(final, n_epochs=3):
@@ -517,25 +358,6 @@ def test_best_of_n_scores_a_diverged_configuration(scan_df):
     # Charging the divergence the worst score can only make a budget look worse.
     assert (worst[worst.method == 'Sven']['expected_best'].values[:5] >=
             dropped[dropped.method == 'Sven']['expected_best'].values).all()
-
-
-@pytest.mark.skipif(os.environ.get('SV3_CHECK_REAL_SCANS') != '1',
-                    reason='cold-loads four scan directories; set SV3_CHECK_REAL_SCANS=1')
-@pytest.mark.parametrize('name, distinct, grid', [
-    ('toy_1d_scan', 12.0, 18),
-    ('polynomial_scan', 11.3, 18),
-    ('mnist_scan_ce', 22.4, 32),
-    ('mnist_scan_labelRegression', 16.0, 32),
-])
-def test_real_scan_trajectory_counts(name, distinct, grid):
-    """C-A4 against Fable's audit: Sven's distinct trajectories per (lr, seed)."""
-    df = ah.add_derived(style.load_results(name, results_root=str(rl.resolve_root()),
-                                           cache_dir=str(rl.OUT_DIR / '_cache')))
-    sven = budget.trajectory_table(df).set_index('method').loc['Sven']
-    assert sven['grid_per_group'] == pytest.approx(grid)
-    assert sven['distinct_per_group'] == pytest.approx(distinct, abs=0.05)
-    # Every baseline but LBFGS/HIG/JD has one configuration per (lr, seed).
-    assert budget.trajectory_table(df).set_index('method').loc['Adam', 'distinct'] == 4.0
 
 
 def test_budget_refuses_a_test_metric(scan_df):
@@ -661,7 +483,7 @@ def test_nbconvert_is_a_recorded_dev_dependency_and_installed():
 # The analysis/ layout (2026-09-21 reorganisation)
 # ===========================================================================
 NB_GROUPS = ('headline', 'spectra', 'mlp_studies', 'large_models', 'profiling',
-             'legacy', 'paper')
+             'paper')
 
 
 def _notebooks():
@@ -672,7 +494,7 @@ def test_every_notebook_lives_in_a_group_directory():
     """No notebook is left at the top of analysis/, and every one is in a known group."""
     assert not list((REPO / 'analysis').glob('*.ipynb'))
     nbs = _notebooks()
-    assert len(nbs) == 27, [p.name for p in nbs]      # 23 analysis + 4 paper-figure
+    assert len(nbs) == 25, [p.name for p in nbs]      # 20 analysis + 5 paper-figure
     assert {p.parent.name for p in nbs} <= set(NB_GROUPS)
     names = [p.stem for p in nbs]
     assert len(set(names)) == len(names), 'a notebook name must resolve to ONE path'
@@ -694,8 +516,7 @@ def test_the_helper_modules_are_in_analysis_lib():
     lib = REPO / 'analysis' / 'lib'
     for module in ('style', 'scan_analysis', 'analysis_helpers', 'headline', 'headline_figs',
                    'reviewer_figs', 'large_figs', 'spectra_figs', 'sv_diagnostics',
-                   'ckpt_tools', 'paired', 'budget', 'profile_helpers', 'legacy_diff',
-                   'repair_legacy'):
+                   'ckpt_tools', 'paired', 'budget', 'profile_helpers'):
         assert (lib / f'{module}.py').is_file(), module
     assert not list((REPO / 'analysis').glob('*.py'))       # none left at the top
 
@@ -704,12 +525,10 @@ def test_helper_anchors_point_at_the_analysis_directory():
     """The modules that derive paths from __file__ moved one level deeper, so their
     anchors must climb one level further (headline.TABLES_DIR = analysis/tables, ...)."""
     import headline as hl
-    import legacy_diff as ld
     import profile_helpers as ph
     analysis = REPO / 'analysis'
     assert hl.TABLES_DIR == analysis / 'tables'
     assert hl.SELECTION_PATH == REPO / 'bench' / 'best_configs.json'
-    assert ld.PLOT_DIR == analysis / 'plots_v2' / 'legacy_vs_fresh'
     assert ph.ROOT_V3 == REPO / 'profile_results_v3'
 
 

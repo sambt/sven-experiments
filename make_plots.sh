@@ -37,7 +37,7 @@ NBDIR=$REPO/analysis/notebooks
 cd "$REPO/analysis"
 
 SCANS=(toy_1d_analysis polynomial_analysis mnist_analysis mnist_analysis_labelRegression comparisons)
-STUDIES=(baselines_analysis batchsize_analysis overparam_analysis critbatch_analysis nanogpt_analysis
+STUDIES=(baselines_analysis batchsize_analysis overparam_analysis nanogpt_analysis
          cifar_analysis kappa_analysis finetune_analysis microbatch_analysis paramfrac_analysis)
 PROFILES=(profile_overview profile_scaling profile_paramfrac_microbatch profile_sven_backends)
 
@@ -50,7 +50,6 @@ NEW=(
   headline_tables      # WP2: confirmation / tuning tables, paired differences, budget, time-to-target
   spectra_analysis     # WP3: diag-run spectra, utr, probe-set spectra along trajectories
   gpt2_analysis        # WP4b: GPT-2-small, one seed
-  legacy_vs_fresh      # WP5: what the robustness fixes changed
 )
 
 # name (or group directory) -> path under analysis/notebooks/

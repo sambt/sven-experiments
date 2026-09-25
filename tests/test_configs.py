@@ -79,14 +79,9 @@ def load_rcfg(name, *overrides):
 #: pre-campaign state, so no rule below may be asserted about them.
 #: (`exp_gpt2_small_comparison` was in this set until 2026-09-19, when the user
 #: re-admitted it; it is now an in-plan P1 scan launched by campaign/plan_gpt2.yaml.)
-CUT = frozenset({
-    "exp_critbatch_mnist", "exp_critbatch_nanogpt",
-    "cifar10_resnet_kappaScan_labelReg", "cifar10_resnet_ce_kappaScan",
-    "cifar10_resnet_paramFrac_scan_labelReg", "cifar10_resnet_ce_paramFrac_scan",
-    "mnist_scan_brier",
-})
+CUT = frozenset()
 #: Stale, in no launcher and in no results dir (grid_inventory.md section 4).
-STALE = frozenset({"mnist_microbatch_scan", "rebuttal_mnist_batchk_probe"})
+STALE = frozenset()
 
 #: The six headline scans (P0), in the order CONTRACTS.md lists them.
 HEADLINE = ("toy_1d_scan", "polynomial_scan", "mnist_scan_labelRegression",
