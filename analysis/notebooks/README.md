@@ -1,6 +1,6 @@
 # The analysis notebooks
 
-27 notebooks, grouped by what they look at.  Read them in the order below: the
+25 notebooks, grouped by what they look at.  Read them in the order below: the
 `headline/` group is the paper's main result, everything after it is a study that
 qualifies it, and `paper/` is where the manuscript's own figures are made and edited.
 
@@ -38,7 +38,6 @@ whole directory.
 | `kappa_analysis` | is the residual exponent κ more than a learning-rate rescaling? |
 | `microbatch_analysis` | micro-batch scaling — the row-count knob (R1's memory ask) |
 | `paramfrac_analysis` | parameter fraction on the MLPs (R1 Q2) |
-| `critbatch_analysis` | critical batch size — **legacy data only**, no fresh scan (reads the frozen legacy root) |
 
 ## large_models/ — CIFAR, nanoGPT, GPT-2
 
@@ -47,7 +46,7 @@ whole directory.
 | `cifar_analysis` | CIFAR-10 / ResNet18: the two headline scans (LR and CE) and Fig. 5 (parameter fraction) |
 | `nanogpt_analysis` | nanoGPT, character-level language modelling |
 | `gpt2_analysis` | GPT-2-small: one seed, one epoch, and what that can and cannot say |
-| `finetune_analysis` | fine-tuning a pretrained ResNet18 (*P ≫ N*) — **legacy data only** |
+| `finetune_analysis` | fine-tuning a pretrained ResNet18 (*P ≫ N*) — the parked study; reads the pre-campaign results |
 
 ## profiling/ — memory and step time
 
@@ -60,12 +59,6 @@ frozen before-table), not the scans.
 | `profile_scaling` | scaling with model size |
 | `profile_sven_backends` | Sven's capture backends and the Gram trick |
 | `profile_paramfrac_microbatch` | parameter fraction and micro-batching as memory knobs |
-
-## legacy/ — what changed
-
-| notebook | what it shows |
-|---|---|
-| `legacy_vs_fresh` | the legacy results against the fresh campaign: which conclusions the robustness fixes moved, and why |
 
 ## paper/ — the manuscript's figures
 

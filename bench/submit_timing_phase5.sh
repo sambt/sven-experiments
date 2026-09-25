@@ -55,7 +55,7 @@ done
 [ -f "$JSON" ] || die "no selection file $JSON -- run tools/select_best.py first"
 [ -x "$PY" ] || die "python '$PY' is not executable (set PY)"
 
-# --- the snapshot (CONTRACTS.md: campaign processes never run the live tree) -----------
+# --- the snapshot (EXPERIMENTS.md section 12: campaign processes never run the live tree) -----------
 SNAP=${SNAP:-${SV3_DEPLOY_SNAPSHOT:-}}
 if [ -z "$SNAP" ]; then
   # `set +f` inside the subshell only: globbing is off in this script (hydra list

@@ -67,7 +67,7 @@ screen copy only. To judge the type size, open the PNG twin under
 * `analysis/paper_assets/<group>.py` — the builders, one `FIGURE_SPECS` entry per figure.
 * `analysis/paper_assets/figspec.py` — the registry and the override layer.
 * `analysis/paper_assets/notebook.py` — the `pf` API these notebooks use.
-* `campaign/FIGURE_API_CONTRACT.md` — the contract a builder has to keep (read this before
+* `analysis/paper_assets/README.md` — the contract a builder has to keep (read this before
   adding a figure).
 * `tools/cmp_figures.py` — did a rebuild change a figure, or only its timestamp?
 

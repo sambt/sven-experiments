@@ -2,7 +2,7 @@
 name = "sven-experiments"
 version = "0.1.0"
 description = "Experiment harness and rebuttal studies for the Sven optimizer"
-readme = "REBUTTALS.md"
+readme = "README.md"
 requires-python = ">=3.12"
 
 # Pinned to the working cu128 GPU environment on the Linux cluster; on macOS the

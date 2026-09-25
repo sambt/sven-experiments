@@ -11,7 +11,7 @@ diagnostics and confirmation passes are generated from its output
 (`tools/gen_phase5_plan.py`), never from a second selection. A grid-extension round
 therefore costs one re-run of this tool plus one re-run of the generator.
 
-**The rule** (CHANGES_NEEDED.md section 1, "binding -- do not reopen"), in full:
+**The rule** (EXPERIMENTS.md section 5, "binding -- do not reopen"), in full:
 
     eligible  ->  fewest diverged seeds  ->  lowest seed-mean final VALIDATION loss
 
@@ -59,7 +59,7 @@ sys.path.insert(0, HERE)
 
 import reconcile                                        # noqa: E402  (same directory)
 
-#: the seven scans Phase 5 covers (CONTRACTS.md scope update: six headline scans + nanoGPT)
+#: the seven scans Phase 5 covers (EXPERIMENTS.md section 12 scope update: six headline scans + nanoGPT)
 HEADLINE_SCANS = (
     "toy_1d_scan",
     "polynomial_scan",
@@ -84,7 +84,7 @@ SVEN_METHOD = "SVD"
 #: scored quantity, not merely unused: "never select on test" is a rule about this file.
 TEST_KEYS = ("test", "test_acc", "test_step")
 
-#: `full` = CHANGES_NEEDED.md section 1 (eligible -> fewest diverged -> seed mean), which
+#: `full` = EXPERIMENTS.md section 5 (eligible -> fewest diverged -> seed mean), which
 #: is what `analysis/lib/scan_analysis.py` plots; `seed_mean` = `reconcile.best_configs`'s
 #: single tier, kept so the two tables can be diffed without editing reconcile.
 RULES = ("full", "seed_mean")
@@ -374,7 +374,7 @@ def edge_verdicts(axis_grids, method, batch_size, hparams):
 def rank_key(cfg, hparams, rule="full"):
     """The sort key of one eligible configuration: lower is better.
 
-    `full` puts **fewest diverged seeds** ahead of the seed mean, per CHANGES_NEEDED.md
+    `full` puts **fewest diverged seeds** ahead of the seed mean, per EXPERIMENTS.md
     section 1: dropping a configuration's failures from its mean flatters it, so a
     configuration that blows up on 2 of 5 seeds must not beat one that finishes all 5.
     `seed_mean` drops that tier and reproduces `reconcile.best_configs`.
@@ -532,7 +532,7 @@ def assert_no_test_metric(report):
             if key in sel:
                 raise AssertionError(
                     f"{report['scan']}/{method}: selection carries a test key {key!r}; "
-                    f"CHANGES_NEEDED.md section 1: selection uses validation only")
+                    f"EXPERIMENTS.md section 5: selection uses validation only")
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +548,7 @@ def compare_with_analysis(reports, root):
     can therefore disagree on (a) a configuration that wins on the mean but diverges on
     more seeds and (b) an exact tie -- which is common for Sven, where every k above the
     numerical rank is the same trajectory. Disagreements are reported, never silently
-    resolved: which one is right is a decision for the orchestrator.
+    resolved: which one is right is a decision for the campaign lead.
 
     Needs numpy/pandas (not torch); returns a list of human-readable differences plus the
     error, if the import or a scan fails.
@@ -613,7 +613,7 @@ def to_json(reports, *, root, config_dir, groups, rule):
         "rule": ("eligible (more than half the expected seeds finished) -> fewest "
                  "diverged seeds -> lowest seed-mean final VALIDATION loss over the "
                  "non-diverged runs; diverged = style.is_diverged; test metrics are "
-                 "never read (CHANGES_NEEDED.md section 1)"
+                 "never read (EXPERIMENTS.md section 5)"
                  if rule == "full" else
                  "lowest seed-mean final VALIDATION loss among eligible configurations "
                  "(tools/reconcile.py:best_configs; NOT the full section-1 rule)"),
@@ -684,7 +684,7 @@ def main(argv=None):
                     help="fail when a scan still has unfinished runs (a half-finished "
                          "grid extension can win with 3 of 5 seeds)")
     ap.add_argument("--rule", default="full", choices=RULES,
-                    help="'full' = CHANGES_NEEDED section 1 (eligible -> fewest diverged "
+                    help="'full' = EXPERIMENTS.md section 5 (eligible -> fewest diverged "
                          "-> seed mean, the default); 'seed_mean' = reconcile's tier only")
     ap.add_argument("--print", dest="print_only", action="store_true",
                     help="print the table, write nothing")

@@ -26,7 +26,7 @@ gram_capture: full              # one jacrev over all params = full (B,P) Jacobi
 # Supersedes `gram_freeze_norm_stats: false`; grid.py derives that boolean from `bn_mode`.
 bn_mode: batch
 
-# SET POINT, STILL TENTATIVE -- MUST BE RE-POINTED BEFORE LAUNCH (grid_inventory 5.5).
+# SET POINT, STILL TENTATIVE -- MUST BE RE-POINTED BEFORE LAUNCH.
 # These three values are the pre-Gram "classic" best; bench/best_configs.json has no CIFAR
 # entry at all, and EXPERIMENTS.md:108-109 documents k=128, lr=0.1, rtol=1e-4 for the same
 # figure. Re-derive them from the BN-fixed cifar10_resnet_scan_labelRegression headline

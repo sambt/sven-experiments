@@ -38,7 +38,7 @@ kappa: 2
 lrs_standard: [1e-5, 3e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0]
 # The full list is deliberate and must all be launched: submit_fresh_suite.sh:79 used
 # CORE_FIRST here, so AdamW/Muon/MuonW/SOAP/Shampoo/KFAC have never run on this scan
-# (grid_inventory 5.2). SGDm (C-B2) is new; no weight_decays list => AdamW 0.01, MuonW 0.1.
+# SGDm (C-B2) is new; no weight_decays list => AdamW 0.01, MuonW 0.1.
 optimizers_standard: [Adam, AdamW, SGD, SGDm, RMSprop, Muon, MuonW, SOAP, Shampoo, KFAC, LBFGS, PolyakSGD]
 # C-B3 extension round: L-BFGS is best at lr 1.0, the top edge (0.1277, 4/5 seeds finite;
 # `lr:EDGE-HIGH`) -> two half-decade points. Its MNIST twin (label-regression) is best at

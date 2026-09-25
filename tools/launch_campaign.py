@@ -6,7 +6,7 @@
     tools/launch_campaign.py campaign/plan_campaign.yaml --phase P0 --lane mig --chain --submit
 
 Every job is one `tools/worker_pool.sh <snapshot> <work-items-file>` -- fewer, longer jobs
-pulling from the claim queue instead of one job per shard (campaign/scout/queue.md: a
+pulling from the claim queue instead of one job per shard (the queue survey: a
 84-job burst took 15 h to drain, a single job starts in seconds).
 
 Lanes come from the plan; the two the campaign uses are
@@ -297,7 +297,7 @@ def live_jobs_of_list(list_name):
 # ---------------------------------------------------------------------------
 
 def job_name(work_list, index, sha8=None):
-    """Job names encode phase + lane + index (CONTRACTS.md), then the snapshot's sv3
+    """Job names encode phase + lane + index (EXPERIMENTS.md section 12), then the snapshot's sv3
     sha8 -- so a list running from two snapshots is visible in plain `squeue`."""
     name = f"{work_list.phase}.{work_list.lane}.j{index}.{work_list.name}"
     if sha8:

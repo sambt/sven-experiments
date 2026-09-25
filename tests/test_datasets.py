@@ -286,7 +286,7 @@ def test_image_dataset_subsample_path_raises_above_the_pool(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# CONTRACTS.md "Datasets": split_seed is a uniform constructor argument
+# EXPERIMENTS.md section 12 "Datasets": split_seed is a uniform constructor argument
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("cls", [Toy1DRegressionDataset, MNISTDataset, CIFAR10Dataset,

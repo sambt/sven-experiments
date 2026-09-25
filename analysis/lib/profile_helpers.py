@@ -24,7 +24,7 @@ Which results root (:func:`results_root`)
     default would have started freezing CIFAR's statistics.
     :func:`compare_profiles` joins the two roots on ``run_id`` so the change is reported
     rather than quietly applied.  Both measurement roots are READ-ONLY
-    (ANALYSIS_CONTRACTS.md), so the derived-frame cache lives OUTSIDE them
+    (EXPERIMENTS.md section 12), so the derived-frame cache lives OUTSIDE them
     (:func:`_cache_path`).
 
 Conventions
@@ -62,7 +62,7 @@ _REPO = Path(__file__).resolve().parent.parent.parent   # repo root (module in a
 #: 2026-09-17, measured with the per-step `empty_cache()` and without
 #: `expandable_segments`: FROZEN as the before-table (read-only, cache kept outside it).
 ROOT_V2 = _REPO / 'profile_results_v2'
-#: the re-measurement (ANALYSIS_PLAN.md section 7.4): `empty_cache` off,
+#: the re-measurement (EXPERIMENTS.md.md section 7.4): `empty_cache` off,
 #: expandable_segments on, the scans' own `bn_mode`.
 ROOT_V3 = _REPO / 'profile_results_v3'
 MB = 1e6
@@ -294,7 +294,7 @@ def results_root(prefer=None, verbose=True):
 def _cache_path(root) -> Path:
     """Where :func:`load_profiles` caches the derived frame -- NOT inside the results root.
 
-    The measurement roots are read-only (ANALYSIS_CONTRACTS.md: "the loader cache under
+    The measurement roots are read-only (EXPERIMENTS.md section 12: "the loader cache under
     ``experiment_results/_cache/`` is the one allowed write"), and a cache inside them
     meant every ``compare_profiles`` call rewrote ``profile_results_v2/``.
     ``$SV3_PROFILE_CACHE_DIR`` overrides the directory (the tests point it at a tmp dir).
@@ -475,7 +475,7 @@ def baseline_control(cmp: pd.DataFrame, value='step_ms', study='methods', tol=0.
     is built to tell them apart:
 
     * the two passes did not measure the same machine -- different GPU model, a co-tenant,
-      or host-CPU load on the cheap MLP steps (``campaign/stage0_reports/gpu.probe.md``
+      or host-CPU load on the cheap MLP steps (``EXPERIMENTS.md section 1.5``
       measured the same MNIST-Adam step at 1.13 ms on a quiet node and 4.58 ms on a busy
       one).  Read the two ``[calib]`` lines in each profile job's log against each other;
     * the measurement was never single-regime.  ``steady v2`` / ``steady v3`` are the

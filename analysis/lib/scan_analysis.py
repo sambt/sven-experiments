@@ -1075,7 +1075,7 @@ def plot_time_vs_k(scan, ax, quantity='total_time', rtol='best', lrs=None, **plo
     one line per learning rate, with the clipped seed error bar.
 
     Uses the scan's own (shard-inflated) times: standalone timings exist only for
-    the best configuration, not for a k sweep -- see RERUNS_NEEDED.md.
+    the best configuration, not for a k sweep -- see EXPERIMENTS.md section 12.
     """
     if rtol == 'best':
         rtol = scan.best_sven()['rtol']

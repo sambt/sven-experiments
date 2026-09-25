@@ -1,18 +1,13 @@
-# Sven experiment taxonomy — what the 2026-09 campaign actually ran
+# Sven experiment taxonomy — what the campaign actually ran
 
-Every fact below is derived from the repo and from the result records, not from memory.
-Sources: `experiments/configs/*.yaml` (grids, seeds, epochs, batch sizes, evaluation keys),
-`campaign/grid_counts.md` (run counts, in-plan vs parked), `campaign/CONTRACTS.md` (binding
-decisions), `campaign/CAMPAIGN_STATUS.md` (timeline, snapshots, job ids),
-`campaign/stage0_reports/` + `campaign/stage1_reports/` (what each component does),
-`campaign/plan_campaign.yaml` / `plan_gpt2.yaml` / `plan_phase5.yaml` (what was submitted),
-`bench/best_configs.json` (the selection of record), and the `schema_version: 2` records under
-`experiment_results/`. Every run count, divergence count, parameter count and SHA below was
-reproduced on 2026-09-20/21 by running `tools/reconcile.py`, `tools/select_best.py`,
-`bench/check_timing_join.py` and a first-line read of every record. The **settled** total, with
-every phase of the campaign finished, is **24,894** records (2026-09-21): 24,819 once GPT-2's last
-run had landed, plus the 45 + 15 + 15 of the three follow-up phases in the table below; storage
-figures are `du`/`stat` on the files.
+Every fact below is derived from the repo and from the result records. Sources:
+`experiments/configs/*.yaml` (grids, seeds, epochs, batch sizes, evaluation keys),
+`campaign/grid_counts.md` (run counts, in-plan vs parked), `campaign/plan_campaign.yaml` /
+`plan_gpt2.yaml` / `plan_phase5.yaml` (what was submitted), `bench/best_configs.json` (the
+selection of record), and the `schema_version: 2` records under `experiment_results/`. Every
+run count, divergence count and parameter count was reproduced by running `tools/reconcile.py`,
+`tools/select_best.py`, `bench/check_timing_join.py` and a first-line read of every record.
+The settled total is **24,894** records; storage figures are `du`/`stat` on the files.
 
 **The campaign in one line.** 23,215 in-plan runs across 21 scans plus 29 runs of
 `exp_gpt2_small_comparison`, then 1,575 runs in three result-dependent passes over the seven
@@ -23,40 +18,28 @@ recorded as such rather than being absent. The **analysis** definition of failur
 **2,553** of them; that wider count is the one that governs selection and every analysis table,
 so no claim about a method's robustness may be read off the status field alone (§7).
 
-*Settled as of 2026-09-21 01:00 EDT.* The one additive follow-up, `p2_cifar_ce_rtol` — the
-approved 45-run CIFAR-CE Sven `rtol` extension (§5) — **has landed**: it pushed
-`cifar10_resnet_ce_scan`'s expected count from 740 to **785**, and all **785 / 785** records are
-on disk, every one `ok`, **0 diverged**, so `tools/reconcile.py --all campaign/plan_campaign.yaml`
-reports the clean `0` again and **every count in this document for that scan is final**. The
+One additive follow-up, `p2_cifar_ce_rtol` — a 45-run CIFAR-CE Sven `rtol` extension (§5) —
+pushed `cifar10_resnet_ce_scan`'s expected count from 740 to **785**, all `ok`, 0 diverged. The
 extension was off-grid by design (its `rtol` values are deliberately not in the config's `rtol`
 list) and purely additive, so no existing `run_id` or `run_hash` moved. It *did* move the pick,
-which is why three further phases follow it in the table below: the Fig-5 re-run at the selected
-configuration (§3.3), the CIFAR-CE Sven timing / diag / confirm re-runs (§5), and the step-time /
-memory re-profile into `profile_results_v3/` (§1.6).
+which is why three further phases follow it: the Fig-5 re-run at the selected configuration
+(§3.3), the CIFAR-CE Sven timing / diag / confirm re-runs (§5), and the step-time / memory
+re-profile into `profile_results_v3/` (§1.6).
 
-The **window** column is the span of the records' own `start_time` / `end_time`, in **UTC**
-(= EDT + 4 h); `analysis/RERUNS_NEEDED.md`'s launch log gives the same phases in EDT.
-
-| phase | runs | sv3 SHA | sven SHA | SLURM jobs | window (UTC) |
-|---|---|---|---|---|---|
-| main campaign (P0–P3) | 15,735 | `2c6faf59` | `203a4e61` | 47080825–47080860, 47143141/45, 47274379/80 (21) | 09-19 00:02:48 → 09-20 02:10:43 |
-| grid-extension round | 7,480 | `62e5105e` | `203a4e61` | 47322040–47322082 (10) | 09-20 03:34:11 → 09-20 07:48:53 |
-| GPT-2 small | **29 of 29** | `e5b6fb77` | `203a4e61` | 47330243–47330265 (10) | 09-20 05:49:58 → 09-20 23:13:06 |
-| phase 5: timing + diag + confirm | 1,575 | `b8fadc6f` | `203a4e61` | 47337921–47337941 (15) | 09-20 08:00:18 → 09-20 14:39:44 |
-| CIFAR-CE `rtol` extension | **45 of 45** | `f0f89b24` | `203a4e61` | 47394881–47394885 (5) | 09-20 22:37:48 → 09-21 02:05:57 |
-| Fig-5 re-run at the selected config | **15 of 15** | `1b7b61dc` | `203a4e61` | 47414023, 47414026, 47414038, 47414060, 47414064 (5) | 09-21 01:58:37 → 09-21 04:25:45 |
-| phase 5 re-run: CIFAR-CE Sven only | **15** (5 timing + 5 diag + 5 confirm) | `6e7fc72f` | `203a4e61` | 47415168 (diag), 47415171 (confirm), 47415182 (timing) | 09-21 02:11:29 → 09-21 03:57:52 |
-| step-time / memory re-profile → `profile_results_v3/` | **720 of 720** configurations | `118156ae` | `203a4e61` | 47396284 (1, exclusive A100-80GB) | 09-21 01:49:50 → 09-21 02:56:18 |
-
-The main campaign's last-ending record is job 47080834 in `cifar10_resnet_ce_scan`
-(09-20 02:10:43Z) and the extension round's first record starts 09-20 03:34:11Z, so the two
-phases do not overlap. Both figures were previously wrong here: the main campaign's end was
-quoted as "09-20 05:36", which appears in no record, and the extension round's start as
-"09-19 23:35", which is that same instant in **EDT** rather than UTC.
+| phase | runs | wall-clock window |
+|---|---|---|
+| main campaign (P0–P3) | 15,735 | ~26 h |
+| grid-extension round | 7,480 | ~4 h |
+| GPT-2 small | 29 of 29 | ~17 h |
+| phase 5: timing + diag + confirm | 1,575 | ~7 h |
+| CIFAR-CE `rtol` extension | 45 of 45 | ~3.5 h |
+| Fig-5 re-run at the selected config | 15 of 15 | ~2.5 h |
+| phase 5 re-run: CIFAR-CE Sven only | 15 (5 timing + 5 diag + 5 confirm) | ~2 h |
+| step-time / memory re-profile → `profile_results_v3/` | 720 of 720 configurations | ~1 h, one exclusive A100-80GB |
 
 `git_dirty` is `false` on every record: all campaign processes ran from an exported snapshot
-under `/n/labstore01/LABS/anon_lab/Users/anon/sv3_deploy/<sv3sha8>_<svensha8>/`, never from
-the working tree. Both repos were on branch `robustness-campaign`.
+(`tools/deploy_snapshot.sh`, under `$SV3_SCRATCH/deploy/<sha8>_<sha8>/`), never from the
+working tree.
 
 ---
 
@@ -124,7 +107,8 @@ only as a deprecated alias. Any model with norm layers that carry running statis
 * HIG refuses `bn_mode: batch` on a model with running statistics, so HIG is MLP-only in this
   campaign.
 * The MLP and transformer models have no norm layer with running statistics, so the recorded
-  `bn_mode` is immaterial there; it differs between families on those scans (see §9).
+  `bn_mode` is immaterial there; it differs between families on those scans (cosmetic: MLP,
+  nanoGPT and GPT-2 svd rows record `frozen` while their `standard` rows record `batch`).
 
 Why it matters: with frozen running statistics the stats never update from their
 initialisation, the net is effectively un-normalised, and Sven collapsed to ~28% validation
@@ -185,9 +169,9 @@ Chunked capture only ever helped because it gave `empty_cache` less to churn: wi
 
 #### The step-time / memory profile: v2 (before) → v3 (of record)
 
-The numbers of record are **`profile_results_v3`** (2026-09-20, job 47396284, deploy snapshot
-`118156ae_203a4e61`, one exclusive A100-SXM4-80GB, torch 2.9.1+cu128, 720/720 configurations).
-`profile_results_v2` (2026-09-17, job 46868711, 720/720) is kept only as the **"before"**: it
+The numbers of record are **`profile_results_v3`** (one exclusive A100-SXM4-80GB,
+torch 2.9.1+cu128, 720/720 configurations). `profile_results_v2` (720/720) is kept only as
+the **"before"**: it
 was measured with the per-step `empty_cache()` above and without `expandable_segments`, so its
 Sven step times are upper bounds and must never be mixed into a v3 table except as this
 comparison. v3 records the settings in every file (`env.alloc_conf`, `env.sven_empty_cache`,
@@ -231,8 +215,8 @@ Muon on MNIST (×0.85) and CIFAR (×1.20) — real, and allowed, because
 of the 720 configurations changed `status` between the passes; none is a cost result (same
 notebook).
 
-Measured NPROC per GPU (processes sharing one device without losing throughput),
-`campaign/stage0_reports/gpu.probe.md`:
+Measured NPROC per GPU (processes sharing one device without losing throughput), from the
+pre-campaign GPU probe:
 
 | device | CIFAR Sven | CIFAR first-order | MLP Sven (hooks) | MLP first-order | L-BFGS (mi≥2) | nanoGPT Sven |
 |---|---|---|---|---|---|---|
@@ -307,8 +291,8 @@ Layout under `{root}/{scan}/`: `*.jsonl`, `diag/`, `ckpt/{run_id}.pt` (+
 `attempts/`. **No scan in this campaign produced a `_stale/` or `attempts/` directory**
 (verified: neither exists under any of the 43 result directories).
 
-`SV3_RESULTS_ROOT` selects the root (default `experiment_results`, a symlink to
-`/n/labstore01/.../sven_experiments`); the runner and the analysis both honour it.
+`SV3_RESULTS_ROOT` selects the root (default `experiment_results`, in the campaign a symlink
+to `$SV3_SCRATCH/results`); the runner and the analysis both honour it.
 
 **Dedup and scheduling.** `run_id` stays human-readable. A zero-byte marker
 `{scan}/done/{run_id}.{hash8}.{status}` is written **last**, after ckpt/npz/jsonl; a run is
@@ -436,7 +420,7 @@ chance 10%). Cost is unchanged by the re-point, as the Gram statement of §1.5 r
 — the slowest point is pf = 0.5 at 453.2 ms (×2.42) and memory falls only to ×0.51 at
 pf = 0.05 while its step is ×1.71. `analysis/notebooks/large_models/cifar_analysis.ipynb` §6 draws both
 configurations, reading which is selected out of `bench/best_configs.json` rather than having
-it typed in; see also §9 item 1.
+it typed in.
 
 ### 3.4 κ (residual-exponent) ablation (P3, R1)
 
@@ -601,7 +585,7 @@ extended. **Three** open edges remain:
 * `mnist_scan_ce`'s Sven `rtol` at 0.3, which is the top of that scan's `rtol` grid
   [1e-4, 1e-3, 1e-2, 1e-1, 3e-1] — flagged `rtol:EDGE-HIGH` in `bench/best_configs.json`'s own
   `edges` dict for that pick, and the same knob whose CIFAR-CE twin was judged worth ~20 GPU-h
-  to extend, with "MNIST-CE prefers 0.1–0.3" as the stated rationale (ANALYSIS_PLAN §7.5).
+  to extend, with "MNIST-CE prefers 0.1–0.3" as the stated rationale.
   **Decision: accepted, not extended**, on two grounds. First, the pick at that edge is an
   **exact three-way tie**: k = 32, 48 and 64 at lr = 0.5 / rtol = 0.3 all give the identical
   seed-mean 0.11493559425553576 over 5/5 seeds, because at rtol = 0.3 the rtol-rank (3.4 of
@@ -614,8 +598,8 @@ extended. **Three** open edges remain:
   on both cross-entropy scans sits at the largest truncation the grid offers**, i.e. Sven does
   best on CE when it keeps the fewest singular values — which is §7's story, not a tuning gap.
 * `cifar10_resnet_ce_scan`'s Sven `rtol`, which was at 1e-2 while MNIST-CE prefers 0.1–0.3.
-  **Extended, and it moved the pick** — `p2_cifar_ce_rtol` (committed as `f0f89b2`,
-  snapshot `f0f89b24_203a4e61`): `rtol ∈ {0.03, 0.1, 0.3}` restricted to `k = 128` and
+  **Extended, and it moved the pick** — `p2_cifar_ce_rtol`: `rtol ∈ {0.03, 0.1, 0.3}`
+  restricted to `k = 128` and
   `lr ∈ {0.05, 0.1, 0.5}` = **45 runs, ~20 GPU-h**, against 150 runs / ~70 GPU-h for the full
   `2 k × 5 lr × 3 rtol` version. It reconciles clean (45/45 `ok`, 0 diverged) and re-selection
   over the union of both override groups moved Sven from **k = 128, lr = 0.1, rtol = 1e-2
@@ -797,7 +781,7 @@ Four things worth naming:
    and is removed there by `signed_residual`. Under the wide rule 10 of the 210 blow up
    (κ = 1: 6, κ = 2: 4, κ = 3: 0), all at lr ≥ 0.75 and nine of them outside the three matched
    effective steps — see §3.4. The pre-campaign claim that the CIFAR CE κ scan was "missing
-   κ = 1 and 1.5" refers to scans that are **cut** (§10) and no longer describes anything that
+   κ = 1 and 1.5" refers to scans that are **cut** (§9) and no longer describes anything that
    ran.
 4. **The SOAP high-LR CUDA deadlock did not recur.** All 40 SOAP runs per MNIST headline scan
    have records (2–3 of them `diverged`), and no job hung; `stop_on_nonfinite` plus the claim
@@ -868,86 +852,14 @@ mean over 5 seeds with its spread, never a single run.
 not a rounding difference — the timing copy of that run took a different trajectory. Timing
 claims must therefore come from `<scan>_timing` **step times**, and loss values from the scan
 or confirmation passes, never from a timing record. Check the calibration lines in the timing
-job logs (`.../sv3_campaign_scratch/logs/`, `bench/calibrate_step.py`) for host-load
+job logs (`$SV3_SCRATCH/campaign/logs/`, `bench/calibrate_step.py`) for host-load
 contamination before quoting MLP step times at all.
 
 ---
 
-## 9. What this repo says about itself that does not add up
+## 9. Cut, parked, and stale
 
-Flagged, not fixed — each is in a file this document does not own.
-
-1. **The Fig-5 set point was never re-derived — RESOLVED 2026-09-21, by measurement.**
-   `experiments/configs/rebuttal_fig5_cifar_paramfrac_scan.yaml` still carries the
-   `SET POINT, STILL TENTATIVE — MUST BE RE-POINTED BEFORE LAUNCH` marker and the pre-Gram
-   classic values k = 64 / lr = 1.0 / rtol = 1e-3, and the first pass ran (15/15) on exactly
-   those values; the BN-fixed headline optimum is k = 128 / lr = 0.5 / rtol = 1e-3.
-   `campaign/grid_counts.md` "Open items" 2 predicted this ("a P1 launch today would spend
-   ~5.5 GPU-h on the tentative values and produce a wrong headline figure"). It was closed the
-   expensive but honest way: the figure was re-run in full at the selection of record
-   (`p2_cifar_fig5_selected`, 15 runs, off-grid by design like the CIFAR-CE `rtol` extension),
-   both sets of runs are kept, and §3.3 reports the selected configuration as the result with
-   the legacy set point beside it. The *config* is deliberately left as it was — it is what
-   `campaign/grid_counts.md`, every golden count and `tools/reconcile.py`'s expected grid
-   describe, and `tests/test_configs.py::test_fig5_setpoint_is_flagged_tentative_exactly_while_it_is_tentative`
-   keeps marker and values coupled, so that test still passes for the right reason as long as
-   both stay put.
-2. **Paper cost text (not editable from here).** The `O(k N |D|)` / "a factor of k over SGD"
-   claim appears at `iclr_manuscript/iclr2026_conference.tex` lines **90, 290, 387, 846** and
-   as `O(kdp)` at `iclr_manuscript/WorkingNotes/main.tex:253`. Under the Gram backend that
-   every campaign run used, the step is a capture plus an `M × M` `eigh`, independent of k
-   (§1.5). These five locations need the backend-qualified statement.
-3. **Paper CIFAR text (not editable from here).** `iclr_manuscript/iclr2026_conference.tex:692`
-   says "As with MNIST, Sven achieves a similar loss to the baseline optimizers". Under the
-   corrected evaluation Sven is near the bottom of both CIFAR scans, on both seed sets — but
-   the CE rank is not the same number on the two, so **always say which seed set**:
-
-   | scan | tuning seeds (`bench/best_configs.json`) | **confirmation seeds** (the headline, §5) |
-   |---|---|---|
-   | `cifar10_resnet_scan_labelRegression` | **9th of 11**, 0.480345 (MuonW 0.345640 … SGD 0.739038) | **9th of 11**, 0.483824 (MuonW 0.335705 … SGD 0.736101) |
-   | `cifar10_resnet_ce_scan` (re-selected 09-20) | **10th of 11**, 1.355150 (RMSprop 1.334040 ahead of it) | **9th of 11**, 1.355225 — SGDm falls to 1.431115, 5.6% behind |
-
-   Both are seed-mean final validation loss over the 5 non-diverged seeds, 11 methods each.
-   §5 makes the confirmation seeds the headline, so the number to publish for CIFAR-CE is
-   **9th of 11**; the tuning-seed 10th is the figure the pre-analysis notes quote. The `rtol`
-   extension (§5) improved every CIFAR-CE Sven number without changing this conclusion: on the
-   confirmation seeds val 1.423851 → **1.355225**, test loss 1.411509 → **1.339077**, test
-   accuracy 53.0% → **58.2%** (11th of 11 → 10th of 11) and train-in-eval 0.8186 → **0.1586**,
-   at an unchanged cost (177.3 → 177.6 ms/step, 22.96 GB either way — as §1.5's Gram statement
-   requires, since `rtol` and `lr` do not enter the step cost). It is still an optimisation
-   failure against 73–78% for the baselines, and the paper sentence does not survive.
-4. **`campaign/CAMPAIGN_STATUS.md`'s 09-19 22:11 headline table is pre-extension**, and its
-   09-20 16:10 and ~21:55 entries are pre-**re-selection**. Superseded numbers, with the value of
-   record beside each: toy Sven 4.8e-07 → **2.873e-07**; polynomial Sven 0.118 → **0.10948**;
-   **CIFAR-CE Sven 1.40 (10th of 11) → 1.3552** at the new pick k = 128 / lr = 0.5 / rtol = 0.3
-   (§5), with test accuracy **11/11 → 10/11** and `train_eval` 0.82 → 0.159; GPT-2 "Muon 3.77" →
-   **3.741** at its best lr (0.003). The status file is a living log and says so, but no number
-   may be quoted from it — §5, §3.3 and `analysis/tables/` carry the values of record.
-5. **`bn_mode` is recorded per family on models that have no running statistics.** MLP,
-   nanoGPT and GPT-2 svd rows record `bn_mode: "frozen"` while their `standard` rows record
-   `"batch"`, from the same config. It is cosmetic — those models have no norm layer with
-   running statistics, so nothing differs in the computation — but any analysis that groups by
-   `bn_mode` will split those scans in two.
-6. **`campaign/grid_counts.md`'s `steps_per_epoch` values are off by one** (MNIST 782 vs the
-   recorded 781, CIFAR 352 vs 351) because it quotes `ceil` where the sampler uses
-   `drop_last=True`. It affects only the GPU-h floor estimate, by 0.1%.
-7. **`campaign/grid_counts.md`'s checkpoint-storage table is a pre-launch estimate and is
-   2.1× low on the two `log` rows**, and its "~9.2 GB" for MNIST is the campaign-wide
-   svd-ladder total (~2,490 runs), not one scan's 2.63 GB. §6 of this document now carries the
-   measured sizes; the estimate is fine for the quota decision it was written for (134 GB
-   predicted, 248 GB actually on disk including the phase-5 companions it excludes) but must
-   not be quoted as a measurement.
-8. **`analysis/RERUNS_NEEDED.md` items 0–5 are historical.** They were written against the
-   legacy results on 2026-09-17; the campaign supersedes all of them. Item 8 ("a held-out test
-   split") is now *done* — the three splits of §1.1 are the campaign's foundation. The launch
-   log appended at the bottom of that file is the current record.
-
----
-
-## 10. Cut, parked, and stale
-
-**Cut from the campaign** (09-18 scope update; the configs are deliberately left at their
-pre-campaign state and appear in no launcher):
+**Cut from the campaign** (their configs are not included in this repository):
 
 | config | why |
 |---|---|
@@ -975,22 +887,17 @@ layer group — so `paramfrac_analysis` and Fig-5 do not answer it either; and `
 `cifar10_resnet_ce_scan` run Sven on *all* parameters. The mirrored ablation — Sven restricted to
 exactly the hidden-matrix group Muon receives (hidden 2-D weights and flattened convs), with
 AdamW on embeddings / head / 1-D tensors — was never configured or launched, and
-`campaign/ANALYSIS_PLAN.md` §4 does not list it, so this is a scope gap inherited from the plan
-rather than an execution failure. It would need a new optimizer-group option in the runner, not
+this is a scope gap inherited from the plan rather than an execution failure. It would need a new optimizer-group option in the runner, not
 just a grid edit. **State it as an open question, not as answered.**
 
-**Stale, in no launcher:** `mnist_scan`, `mnist_microbatch_scan` (legacy configs with learning
-rates up to 100, superseded by `mnist_scan_ce` and the label-regression micro-batch scan),
-`rebuttal_mnist_batchk_probe` (a one-off diagnostic). `profile_*.yaml` is out of scope for the
-scan machinery — see `README.md` for the profiler.
+`profile_*.yaml` is out of scope for the scan machinery — see `README.md` for the profiler.
 
-**Superseded whole-directory:** the legacy results are frozen read-only at
-`experiment_results_legacy_2026-09-18/`. The fresh `experiment_results/` was started empty on
-2026-09-18 ~20:55 EDT. The two are compared in `analysis/WHAT_CHANGED.md`.
+**Superseded whole-directory:** the pre-campaign (legacy) results are frozen read-only at
+`experiment_results_legacy_2026-09-18/`; the campaign's `experiment_results/` was started empty.
 
 ---
 
-## 11. The polynomial target was redefined
+## 10. The polynomial target was redefined
 
 `RandomPolynomialDataset` (C-D1, `experiments/datasets/all_datasets.py`) is **all** monomials
 of total degree ≤ `degree` in `num_vars` variables — constant and linear included, 210 of them
@@ -1013,16 +920,16 @@ are. All polynomial scans in this campaign (`polynomial_scan`,
 
 ---
 
-## 12. How to reproduce the campaign
+## 11. How to reproduce the campaign
 
 ```bash
-# 0. both repos on the campaign branch, tests green
+# 0. environment: SV3_REPO, SV3_SCRATCH, SV3_DATA_ROOT (README.md "Environment"); tests green
 .venv/bin/python -m pytest tests/ -q          # sv3
 (cd sven && ../.venv/bin/python -m pytest tests/ -q)
 
 # 1. freeze BOTH repos at HEAD (never run jobs from the working tree)
 SNAP=$(tools/deploy_snapshot.sh | tail -1)
-#   -> /n/labstore01/.../sv3_deploy/<sv3sha8>_<svensha8>/ with DEPLOY_INFO.json
+#   -> $SV3_SCRATCH/deploy/<sha8>_<sha8>/ with DEPLOY_INFO.json
 #      and an experiment_results symlink to the real results root
 
 # 2. dry-run, then submit, one work list at a time (P0 -> P1 -> P3)
@@ -1059,3 +966,152 @@ extension, re-run steps 4 and 5 **in that order** before relaunching any pass.
 Everything is resumable: re-running a launcher is safe (done-marker dedup), stale claims
 expire after 10 minutes, and a run with ≥ 3 `oom`/`error` attempts under one hash is marked
 poisoned and no longer retried (delete its `attempts/` files to retry).
+
+
+---
+
+## 12. Binding conventions and interfaces
+
+The decisions the runner, the records and the analysis are held to. Where a docstring cites
+"the contracts", this is the section it means.
+
+### Decisions
+* Polynomial target: all monomials of total degree ≤ d incl. constant and linear (210 for d=4,
+  6 vars), factors MULTIPLIED, x ~ N(0,1), coefficient of monomial m = N(0,1) / sqrt(E[m(x)^2])
+  with E[m^2] = prod_j (2 p_j - 1)!! ("variance-normalised monomials"; §10). The old generator
+  is kept as `AdditiveCubicDataset`.
+* CIFAR: 5 headline seeds; Fig-5 3 seeds.
+* BatchNorm: `bn_mode: batch | frozen`. `batch` = train with batch statistics, running stats
+  updated from the TRAINING batch exactly once per optimizer step, evaluation uses running
+  stats and mutates nothing. `frozen` = norm layers in eval mode always (train and eval) for
+  EVERY optimizer (the fine-tune study). Suppressing running-stat writes is done by temporarily
+  setting `track_running_stats=False` on norm modules (train-mode forward then still normalises
+  with batch statistics and writes no buffer), NOT by `.eval()`, which would change the
+  normalisation and hence the Gram matrix; per-module flags are saved and restored.
+* Sven wrappers under `bn_mode=batch`: every capture / jvp / delta pass runs under the no-write
+  context and the step performs ONE explicit `torch.no_grad()` train-mode forward of the
+  training batch that updates the stats (skipped when the model has no norm layer with running
+  stats). `wrapper.evaluate()` = eval mode, side-effect-free. `evaluate_and_loss()` (used only
+  by the `variable_k` line search, which no campaign config uses) = train-mode normalisation,
+  no buffer write.
+* Dedup: `run_id` stays human-readable. A zero-byte marker `{scan}/done/{run_id}.{hash8}.{status}`
+  is written LAST (after ckpt, npz, jsonl). Skip iff a marker with the current hash8 and status
+  in {ok, diverged} exists. A marker with another hash8 => move that run's jsonl/npz/ckpt/marker
+  to `{scan}/_stale/{old_hash8}/` and run. One `os.listdir(done/)` per process start.
+* Scheduling: dynamic claim files are the default; `+n_shards/+shard_id` slicing of the spec
+  list stays as a fallback (`scheduler=static`). Claim = `os.open(O_CREAT|O_EXCL)` of
+  `{scan}/claims/{run_id}.claim` containing host, pid, SLURM job id, start time; a heartbeat
+  thread touches it every 60 s; a claim whose mtime is older than 10 min is stale and may be
+  taken over. This is distinct from the `{run_id}.started` marker. A run with ≥ 3 `oom`/`error`
+  attempts under one hash (`{scan}/attempts/{run_id}.{hash8}.{status}.{token}`) is `poisoned`
+  and no longer retried (delete its `attempts/` files to retry).
+* Results root: env var `SV3_RESULTS_ROOT` (default `experiment_results`), honoured by the
+  runner and the analysis. `schema_version: 2` on every record.
+* No weight-decay grid: AdamW runs at the torch default wd 0.01 and MuonW at 0.1, one setting
+  each, in EVERY scan; Adam (wd 0) and plain Muon (wd 0) are separate named baselines.
+* `empty_cache` defaults to `False` (the per-step `torch.cuda.empty_cache()` made CIFAR Sven
+  4.5x slower, 841 -> 187 ms/step, and caused all of its step-time variance; `empty_cache=True`
+  stays reachable for reproducing legacy runs). Launchers export
+  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. CIFAR keeps `gram_capture: full`, NPROC=1.
+* MNIST train part is 50,000: `n_train` larger than the available pool RAISES, never clamps.
+* Any model with norm running stats REQUIRES an explicit `bn_mode`; HIG refuses `bn_mode=batch`
+  on such models (HIG is MLP-only in the campaign). The shared init checkpoint is
+  `ckpt/init_mseed{seed}.{model_generation}.pt`.
+* The runner records `actual_param_fraction = train_model.mean_actual_param_fraction` for
+  svd-family runs (1.0 unmasked).
+
+### Interfaces
+**`experiments/experiment_code/grid.py`** (torch-free, importable in < 1 s): `RunSpec` frozen
+dataclass: `family` in {svd, standard, lbfgs, polyak, jd, hig}; `run_id`; `model_seed`;
+`loader_seed`; `batch_size`; `hparams: dict` (named grid point); `record_extra: dict`.
+`expand_grid(rcfg, ...) -> list[RunSpec]`, seed-major, same order and byte-identical run_ids
+as the legacy loops. `run_hash(spec, resolved_cfg) -> str` (sha256 hex; hash8 = first 8 chars).
+
+**Training loops (`experiment_utils.py`)** — keyword arguments, all optional: `losses=None`
+(caller-owned dict, filled in place so partial curves survive an exception), `test_loader=None`,
+`train_eval_loader=None`, `eval_every_steps=None`, `checkpointer=None`, `log_schedule=None`
+(callable step -> bool; svd loop sets `optimizer.log_this_step`), `stop_on_nonfinite=True`,
+`bn_mode="batch"`. A non-finite training batch loss raises `DivergedError(step)`. Curve keys:
+`train` (example-weighted online loss), `val`, `val_acc`, `test`, `test_acc`, `train_eval`
+(index 0 = untrained), `epoch_times`, `train_times` (sum of synchronised batch times),
+step-based evals in `val_step` / `test_step` with indices `eval_step_idx`.
+`evaluate(forward_fn, per_sample_loss_fn, loader, device, *, track_acc=False, is_lm=False)
+-> dict(loss, acc, n)` is example-weighted (token-weighted for lm), eval-mode, restores the
+previous mode, mutates no buffer.
+
+**Checkpointer (`experiments/experiment_code/checkpointing.py`)**: `Checkpointer(path, policy,
+steps_per_epoch, num_epochs, rewrite_each_epoch=False)`; `.maybe_save(step, epoch, module)`
+(called before the update of `step`, and step 0 = init); `.epoch_end(epoch, step, module)`;
+`.flush()`. File = `torch.save({"step": [...], "epoch": [...], "state": [state_dict on CPU,
+fp32, weights AND buffers]})`. Policies none|final|epochs|log (log = steps {0,1,2,4,8,...} +
+every epoch end).
+
+**Sampler (`experiments/experiment_code/sampler.py`)**: `EpochPermutationSampler(n, loader_seed,
+batch_size, drop_last=True)` with `set_epoch(e)`; epoch permutation = `torch.randperm(n,
+generator=Generator().manual_seed(mix(loader_seed, e)))`; `batch_indices(n, loader_seed,
+batch_size, step) -> LongTensor` reconstructs any batch offline. `derive_loader_seed(
+base_loader_seed, model_seed)` (identical across optimizers for a model seed).
+`seed_for_run(model_seed, run_id) = model_seed ^ zlib.crc32(run_id.encode())`.
+
+**Sven optimizer logging**: attribute `optimizer.log_this_step: bool` (default True). On logged
+steps append to `svd_info`: `step`, `svs` (all M = B/microbatch values before the k/rtol cut),
+`utr` (= U^T r, all M), `update_norm` (norm of the APPLIED change, includes lr), `resid_norm`,
+`sv_min_kept`, `sv_noise_floor`. `num_nonzero_svs` stays per step.
+
+**Datasets**: every class exposes `train_dataset`, `val_dataset`, `test_dataset` and records
+`split_seed`. MNIST 50k/10k + official test; CIFAR-10 45k/5k + official test; Shakespeare
+contiguous 80/10/10; token bins val/test/train from disjoint documents; toy/polynomial: fixed
+pool of 10,000 + val + test from SEPARATE generators, targets normalised by pool mean/std,
+`n_train` subsamples the pool.
+
+### Config keys (top-level in each scan yaml; every key optional with these defaults)
+`eval_batch_size: 2048` (validation/test/train_eval loaders; never the training batch size) ·
+`train_eval_size: 10000` (fixed train subset, chosen with `split_seed`, shared by all
+optimizers) · `checkpoints: final` (none|final|epochs|log) and `checkpoints_svd: null`
+(override for the svd family, e.g. `log`) · `svd_spectra_schedule: {dense_first: 200, every: 20}`
+· `bn_mode: batch` (batch|frozen; supersedes `gram_freeze_norm_stats`, a deprecated alias) ·
+`empty_cache: false` · `stop_on_nonfinite: true` · `scheduler: claims` (claims|static) ·
+`loader_seed` stays the BASE loader seed; the effective seed is
+`derive_loader_seed(loader_seed, model_seed)`. run_id keeps its human-readable form (with
+`_lseed{base}`); new behaviour is captured by the run hash, not by new suffixes, except
+`bn_mode=frozen`, which appends `_bnfrozen`.
+
+### Record (schema 2)
+Adds: `schema_version`, `status` (ok|diverged|oom|error), `error`, `diverged_at_step`,
+`run_hash`, a provenance dict (both repos' sha/dirty, torch, cuda, gpu, host, slurm_job_id,
+start/end), `n_train`, `n_val`, `n_test`, `steps_per_epoch`, `n_params`,
+`actual_param_fraction`, `muon_variant`, `split_seed`, `effective_loader_seed`,
+`eval_batch_size`, `bn_mode`, `checkpoint_policy`, `svd_spectra_schedule`, the curve summaries
+from `summarize_curves`, and final `test`/`test_acc`. Diag npz: per-step arrays keep their
+names; scheduled Sven diagnostics are stored with their own `svs_step` index array. Layout
+under `{root}/{scan}/`: `*.jsonl`, `diag/`, `ckpt/{run_id}.pt` (+ `ckpt/init_mseed{seed}.pt`),
+`done/`, `claims/`, `started/`, `manifest/`, `configs/` (resolved Hydra config per job),
+`_stale/{hash8}/`, `attempts/`.
+
+### Runner CLI (Hydra overrides)
+`mode=svd|standard|jd|hig|all`, `optimizers_standard=[...]`, `model_seeds=[...]`, `n_data=...`;
+`+n_shards/+shard_id` only with `scheduler=static`. With `scheduler=claims` every process
+expands the full grid for its mode/optimizer subset, shuffles nothing, and walks it claiming
+runs; many processes and many jobs may serve the same scan concurrently. Exit code 0 when
+nothing is left to claim.
+
+### Execution
+Campaign processes run from an exported snapshot, never the live tree: `tools/deploy_snapshot.sh`
+exports both repos at their HEAD into `$SV3_SCRATCH/deploy/<sha8>_<sha8>/` with
+`DEPLOY_INFO.json` (provenance falls back to it) and an `experiment_results` symlink to the real
+results root; workers set `PYTHONPATH=<snapshot>:<snapshot>/sven`, `SV3_RESULTS_ROOT`,
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, `OMP_NUM_THREADS=1`. NPROC per GPU from the
+probe (§1.5): A100 — MLP Sven 12, first-order MLP 12, LBFGS/HIG/Shampoo 4, nanoGPT 3, CIFAR Sven
+1, CIFAR baselines 4; MIG slice — MLP Sven 6, first-order 6, LBFGS 6, nanoGPT 1. The MIG lane
+(`gpu_mig`, `--gres=gpu:4`, 12 h) runs one worker pool per slice.
+
+### Analysis conventions
+Selection = seed-mean final VALIDATION loss under the full rule (eligible -> fewest diverged ->
+seed mean), implemented in `analysis/lib/scan_analysis.py` and `tools/select_best.py` ->
+`bench/best_configs.json` (the selection of record; never `tools/reconcile.py`'s quick table).
+Test metrics are OUTCOMES, never selection inputs. Diverged = failed (status or 10x rule),
+excluded from means and counted; every table shows `finished / attempted`. Seed band = mean
++/- 1 std (ddof=1) labelled "+/- 1 std over seeds". Headline numbers = CONFIRMATION seeds
+(`<scan>_confirm`), tuning-seed numbers shown beside them. Colours `style.METHOD_COLORS` (Sven
+black), names `style.DATASET_TITLES`. The results roots are read-only for the analysis; the
+loader cache under `experiment_results/_cache/` is the one allowed write.

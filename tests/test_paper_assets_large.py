@@ -17,7 +17,7 @@ Three kinds of check, and the split is deliberate:
   entry is DRAWN (writing nothing), its ``meta`` is checked for the ``axes`` the notebook
   hands the user, its ``provenance`` callable is compared with the sidecar the CLI wrote,
   and a knob is shown to change the picture.  This is the contract in
-  ``campaign/FIGURE_API_CONTRACT.md``, which is what makes the figures editable from
+  ``analysis/paper_assets/README.md``, which is what makes the figures editable from
   ``analysis/notebooks/paper/`` without the builders drifting from the CLI;
 * **the generated artefacts, when they exist** -- the real
   ``iclr_manuscript/numbers_v2_large.tex`` is re-read and validated (letters-only macro
@@ -482,7 +482,7 @@ def test_tables_have_one_cell_per_column(rendered):
 
 
 def test_results_tables_print_finished_over_attempted(rendered):
-    """Every results row says how many runs are behind it (ANALYSIS_CONTRACTS).
+    """Every results row says how many runs are behind it (EXPERIMENTS.md section 12).
 
     The CIFAR summary table is the one exception: its counts were dropped with the cost
     columns and live in the per-scan confirmation table its caption points to."""
@@ -638,7 +638,7 @@ def test_profile_root_falls_back_when_v3_is_empty(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# The figure registry: draw, meta, provenance, knobs (FIGURE_API_CONTRACT.md)
+# The figure registry: draw, meta, provenance, knobs (analysis/paper_assets/README.md)
 # ---------------------------------------------------------------------------
 #: every figure this module owns, in build order, under the stem it writes
 FIGURE_NAMES = ('cifar_curves_epoch', 'cifar_curves_time', 'cifar_gap',

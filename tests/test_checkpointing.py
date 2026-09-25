@@ -16,7 +16,7 @@ The acceptance tests of the spec:
 Plus the offline helpers (``load_checkpoint``, ``load_state_at``,
 ``save_init_state``) and the atomic single-file layout.
 
-``_train`` reproduces the hook order that ``CONTRACTS.md`` fixes for the four
+``_train`` reproduces the hook order that ``EXPERIMENTS.md section 12`` fixes for the four
 training loops -- ``maybe_save(step, epoch, module)`` before the update of
 ``step`` (so step 0 is the initial model) and ``epoch_end(epoch, step, module)``
 after the epoch -- without importing ``experiment_utils`` (torch + sven + hydra,
@@ -79,7 +79,7 @@ def _eval_loss(model, dataset):
 
 
 def _train(model, checkpointer, loader, num_epochs, lr=0.05, snapshots=None, raise_at=None):
-    """The hook order of the four training loops (CONTRACTS.md)."""
+    """The hook order of the four training loops (EXPERIMENTS.md section 12)."""
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
     step = 0
     for epoch in range(num_epochs):

@@ -62,7 +62,7 @@ import style
 
 #: Fig 5 (R1 Q2): the 3-seed parameter-fraction scan.  The 1-seed
 #: ``cifar10_resnet_paramFrac_scan_labelReg`` was CUT from the campaign
-#: (ANALYSIS_PLAN 1.2) and is not in the fresh results root.  It holds TWO Sven
+#: (EXPERIMENTS.md 1.2) and is not in the fresh results root.  It holds TWO Sven
 #: configurations -- see :func:`paramfrac_groups`.
 FIG5_SCAN = 'rebuttal_fig5_cifar_paramfrac_scan'
 

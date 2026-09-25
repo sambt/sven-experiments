@@ -8,7 +8,7 @@ builder can be driven from a notebook (see ``analysis/notebooks/paper/``) and th
 keeps producing exactly what the notebook last agreed to.
 
 **The contract every ``paper_assets`` figure module implements** (binding; see
-``campaign/FIGURE_API_CONTRACT.md``):
+``analysis/paper_assets/README.md``):
 
 * a module-level ``FIGURE_SPECS``: ``{name: FigureSpec(draw=..., doc=..., defaults=...)}``
   where ``name`` is the output stem (``figures_iclr/<group>/<name>.pdf``);
@@ -123,7 +123,7 @@ def context(module, root=None, reload=False):
     mod = importlib.import_module(f'paper_assets.{module}')
     if not hasattr(mod, 'context'):
         raise RuntimeError(f'paper_assets.{module} has no context(); see '
-                           f'campaign/FIGURE_API_CONTRACT.md')
+                           f'analysis/paper_assets/README.md')
     return mod.context(root=root, reload=reload)
 
 
@@ -446,7 +446,7 @@ def save_figure(name, fig, meta=None, ctx=None, root=None, png=True, close=False
                                  meta)
     if record is None:
         raise RuntimeError(f'{name}: no provenance record; a paper figure is never '
-                           f'written without one (see FIGURE_API_CONTRACT.md)')
+                           f'written without one (see analysis/paper_assets/README.md)')
     with rc_of(meta):
         return C.save_fig(fig, name, spec.group, provenance_record=record, png=png,
                           close=close)

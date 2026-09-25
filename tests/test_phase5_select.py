@@ -178,7 +178,7 @@ def test_overrides_reproduce_exactly_the_selected_run_ids(tmp_path, grid):
 def test_selection_ignores_the_test_split(tmp_path, grid):
     """Validation decides; a test loss ranking the configurations the other way does not.
 
-    CHANGES_NEEDED.md section 1: "Selection still uses validation only; test numbers are
+    EXPERIMENTS.md section 5: "Selection still uses validation only; test numbers are
     for reporting the selected configuration."
     """
     def final_of(spec):

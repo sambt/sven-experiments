@@ -8,7 +8,7 @@ The one REAL acceptance number is C-T2's: SOAP on ``profile_mnist`` must read
 6.14 ms amortised where the old spike-filtered mean read 5.56 ms, and
 ``gram_hooks`` -- which has no 10-step refresh -- must not move (tolerance 0.05 ms).
 via ``SV3_CHECK_REAL_SCANS=1`` because it reads ~33 MB of npz off Lustre; run it
-through ``campaign/run_cpu_tests.sh``.
+through a CPU batch job.
 
 ``experiments/optimizer_profile.py`` imports torch at module scope, so its copy of
 ``cycle_mean`` / ``summarize`` cannot be imported here.  The tests EXTRACT those two

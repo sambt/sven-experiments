@@ -94,7 +94,7 @@ class Lane:
 
     def cpus_for(self, items) -> int:
         """cpus-per-task: the lane's fixed value, else max NPROC over the items +
-        `cpus_extra` (CONTRACTS.md; the probe measured cores, not the GPU, as the
+        `cpus_extra` (EXPERIMENTS.md section 12; the probe measured cores, not the GPU, as the
         limit for the cheap MLPs)."""
         if self.cpus:
             return int(self.cpus)

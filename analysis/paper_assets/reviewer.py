@@ -1,6 +1,6 @@
 """``paper_assets.reviewer`` -- the reviewer-study assets of the ICLR revision.
 
-Owns (``campaign/PAPER_PLAN.md`` section 5.4):
+Owns (``analysis/paper_assets/README.md`` section 5.4):
 
 =====  ==========================================  ==========================
 asset  file                                        appendix
@@ -37,7 +37,7 @@ Two deliberate deviations, both cosmetic:
 * a figure-level legend is placed by :func:`_legend_below` (constrained layout) rather
   than :func:`reviewer_figs.figure_legend` (which calls ``tight_layout``).
 
-**The figures follow the registry contract** (``campaign/FIGURE_API_CONTRACT.md``):
+**The figures follow the registry contract** (``analysis/paper_assets/README.md``):
 :data:`FIGURE_SPECS` names all eight, each ``draw(ctx, opts) -> (fig, meta)`` writing
 nothing, so one panel can be redrawn and re-tuned from ``analysis/notebooks/paper/``
 without rebuilding the appendix::
@@ -544,7 +544,7 @@ class _Data:
 
 # ---------------------------------------------------------------------------
 # The module's context: one _Data per results root, so drawing two figures from a
-# notebook loads each scan once (see campaign/FIGURE_API_CONTRACT.md).
+# notebook loads each scan once (see analysis/paper_assets/README.md).
 # ---------------------------------------------------------------------------
 _CONTEXTS: dict = {}
 
@@ -2483,7 +2483,7 @@ def build_divergence(data, M, want, report):
 
 
 # ---------------------------------------------------------------------------
-# The figure registry (campaign/FIGURE_API_CONTRACT.md)
+# The figure registry (analysis/paper_assets/README.md)
 # ---------------------------------------------------------------------------
 #: the provenance record each appendix's assets are written with, by section.  Memoised
 #: through :meth:`_Data.prov`, so the figure and the tables beside it quote one record.
@@ -2713,7 +2713,7 @@ def _save(name, ctx):
     record = meta.get('provenance')
     if record is None:                      # pragma: no cover - a bug in the draw fn
         raise RuntimeError(f'{name}: no provenance record; a paper figure is never '
-                           f'written without one (campaign/FIGURE_API_CONTRACT.md)')
+                           f'written without one (analysis/paper_assets/README.md)')
     # the draw ran inside an rc_context, so the paper rcParams it set are gone again by
     # now -- and savefig reads pdf.fonttype (42, never Type 3) and savefig.bbox off the
     # LIVE ones, so they go back before the write

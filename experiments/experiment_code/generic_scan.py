@@ -1074,7 +1074,7 @@ def execute(spec, ctx, run_hash=None, prov=None):
 def results_root():
     """The results root: ``$SV3_RESULTS_ROOT``, else ``experiment_results``.
 
-    CONTRACTS.md "Results root". Reading it here rather than from the config is
+    EXPERIMENTS.md section 12 "Results root". Reading it here rather than from the config is
     what lets a deploy snapshot, a worker or a test write somewhere else without
     editing 22 config files -- and what keeps every test out of the real
     ``experiment_results/`` symlink.
@@ -1220,7 +1220,7 @@ def run_grid(cfg, scan_dir):
     """Expand the grid, then claim / dedup / execute / mark every run in it.
 
     The run lifecycle (C-R1, C-R2, C-R3 and the "Dedup" / "Scheduling" decisions
-    in CONTRACTS.md), around :func:`execute`. The grid itself lives in
+    in EXPERIMENTS.md section 12), around :func:`execute`. The grid itself lives in
     :mod:`grid`: ``expand_grid(rcfg)`` returns one :class:`~grid.RunSpec` per run,
     seed-major and in the legacy enumeration order.
 

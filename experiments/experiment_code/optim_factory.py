@@ -234,7 +234,7 @@ def _build_muon(model, optim_name, lr, kwargs):
 
     # `build_standard_optimizer` has already resolved an explicit `weight_decay`; resolve
     # again here so that a call that passes none still gets MuonW's default 0.1 (and
-    # Muon's 0.0) instead of a bare zero (CONTRACTS.md: "MuonW at 0.1 in EVERY scan").
+    # Muon's 0.0) instead of a bare zero (EXPERIMENTS.md section 12: "MuonW at 0.1 in EVERY scan").
     weight_decay = resolve_weight_decay(optim_name, kwargs.get("weight_decay"))
     adamw_wd = _DEFAULT_WEIGHT_DECAY["AdamW"] if optim_name == "MuonW" else weight_decay
 

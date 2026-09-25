@@ -6,7 +6,7 @@ re-evaluation, distance-from-initialisation or an offline Jacobian spectrum alon
 *any* optimizer's trajectory (C-L4) all required retraining.  This module is the
 one place that writes them.
 
-Design, from ``CONTRACTS.md`` and the storage table in ``FABLE_CRITIQUES.md``:
+Design, from ``EXPERIMENTS.md section 12`` and the storage table in ``EXPERIMENTS.md``:
 
 * **One file per run**, ``{scan}/ckpt/{run_id}.pt`` =
   ``{"step": [...], "epoch": [...], "state": [...]}``.  Per-checkpoint files

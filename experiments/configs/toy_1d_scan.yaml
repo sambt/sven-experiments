@@ -21,7 +21,7 @@ checkpoints: log
 
 k_values: [1,2,4,8,16,32]
 # C-B3 extension round (user-approved, 2026-09-19), measured from this scan's 360 finished
-# svd runs (campaign/reconcile_2026-09-19.txt): the Sven optimum is k=32, lr 0.05, rtol 1e-4
+# svd runs (campaign/grid_counts.md): the Sven optimum is k=32, lr 0.05, rtol 1e-4
 # -- `k:EDGE-HIGH lr:EDGE-LOW rtol:EDGE-LOW`. k=B is a method boundary, not a grid edge, so
 # only lr and rtol grow, each by two half-decade points DOWNWARD. This is the scan where
 # Sven's headline number comes from (4.799e-07, second only to HIG), so its two open edges

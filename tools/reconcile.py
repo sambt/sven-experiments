@@ -653,7 +653,7 @@ def resolve_root(root=None, plan=None):
     `--root` wins, then the PLAN's `results_root` (the launcher exports exactly that to
     the workers, so reconciling a plan against a different root answers a question
     nobody asked -- e.g. with `SV3_RESULTS_ROOT` pointing at the frozen legacy root, as
-    campaign/CAMPAIGN_STATUS.md tells people to do), then $SV3_RESULTS_ROOT, then the
+    EXPERIMENTS.md tells people to do), then $SV3_RESULTS_ROOT, then the
     repo's `experiment_results` symlink.
     """
     env = os.environ.get("SV3_RESULTS_ROOT")

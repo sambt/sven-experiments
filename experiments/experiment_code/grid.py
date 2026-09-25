@@ -364,7 +364,7 @@ def resolve_scan_settings(rcfg):
         "empty_cache": bool(rcfg.get("empty_cache", False)),
         # C-R1: a non-finite training batch loss ends the run with `diverged`
         # instead of burning the remaining epochs on NaN. Default true per
-        # CONTRACTS.md "Config keys"; `false` reproduces the legacy behaviour.
+        # EXPERIMENTS.md section 12 "Config keys"; `false` reproduces the legacy behaviour.
         "stop_on_nonfinite": bool(rcfg.get("stop_on_nonfinite", True)),
         "bn_mode": resolve_bn_mode(rcfg),
         "scheduler": scheduler,

@@ -24,7 +24,7 @@ k_values: [64,128]
 # C-B3 OPEN: the Sven optimum on this scan is reported on the LARGEST lr, but lr=1 is the
 # full min-norm (Gauss-Newton) step, so extending above it is over-relaxation, and two more
 # points cost 2 k x 3 rtol x 5 seeds x 2 = 60 runs ~ 30 GPU-h. Left unextended pending an
-# orchestrator decision; see campaign/grid_counts.md.
+# campaign decision; see campaign/grid_counts.md.
 lrs: [0.1,0.5,1.0]
 rtol: [1e-4,1e-3,1e-2]
 svd_mode: [torch]   # irrelevant under use_gram: exact eigh of the BxB Gram, no randomized SVD

@@ -1,4 +1,4 @@
-# Diagnostics companion of cifar10_resnet_scan_labelRegression (Phase 5, pass C: CHANGES_NEEDED.md 4.2).
+# Diagnostics companion of cifar10_resnet_scan_labelRegression (Phase 5, pass C: EXPERIMENTS.md 4.2).
 # Inherits the parent scan completely; a launcher SELECTION (bench/best_configs.json ->
 # campaign/plan_phase5.yaml) runs the best configuration of EVERY method -- not only Sven
 # -- with the full logging this config turns on. Results land in

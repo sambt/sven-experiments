@@ -397,7 +397,7 @@ def test_variant_and_rule_token_carry_the_rule_version():
 
 
 def test_muonw_uses_its_default_weight_decay_without_an_explicit_kwarg():
-    """CONTRACTS.md: MuonW runs at wd 0.1 in every scan.  A call site that passes no
+    """EXPERIMENTS.md section 12: MuonW runs at wd 0.1 in every scan.  A call site that passes no
     `weight_decay` at all (generic_scan's jd inner optimizer, optimizer_profile) must not
     silently get 0.0 on the Muon half."""
     model = MLP(4, [8, 8, 8], 2)

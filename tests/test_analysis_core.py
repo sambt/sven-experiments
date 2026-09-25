@@ -19,7 +19,7 @@ ones that break silently:
 The check against the REAL scans (same grouping as before the allow-list) is
 ``test_real_scan_grouping_unchanged``, opt-in via ``SV3_CHECK_REAL_SCANS=1``
 because a cold load of those directories takes 15-25 s on Lustre; run it through
-``campaign/run_cpu_tests.sh``.
+a CPU batch job.
 """
 
 import json
@@ -935,7 +935,7 @@ def test_notebook_surface_smoke(root, tmp_path):
 
 # ---------------------------------------------------------------------------
 # 10. The real scans: the allow-list must not change the grouping (run via
-#     campaign/run_cpu_tests.sh; a cold load of these is 15-25 s on Lustre)
+#     a CPU batch job; a cold load of these is 15-25 s on Lustre)
 # ---------------------------------------------------------------------------
 LEGACY_NOT_CONFIG = {'model_seed', 'loader_seed', 'run_id', 'diag_file', 'method',
                      'diverged', '_scan', 'final_val_loss', 'final_train_loss',
@@ -1169,7 +1169,7 @@ def test_errorbar_seeds_shows_display_names(root):
 def test_expected_run_ids_follow_the_frames_own_root(tmp_path, monkeypatch):
     """A frame loaded from a foreign root must not read the DEFAULT root's manifest.
 
-    `critbatch_analysis` / `finetune_analysis` load the legacy root explicitly, and
+    `finetune_analysis` loads the legacy root explicitly, and
     the legacy-vs-fresh diff loads scans that exist in BOTH roots; the helpers they
     hand the frame to take no root argument.  Before `_results_root`, a legacy
     `mnist_scan_ce` frame (1040 runs) read the FRESH manifest: 1610 expected

@@ -342,7 +342,7 @@ def test_missing_confirmation_shouts_about_a_zero_row_match(campaign, capsys):
     """A selection that moved after the ``_confirm`` pass ran matches 0 records; the
     confirmation table reports that as ``0/0`` with a NaN mean, which ``ranking_summary``
     sorts LAST -- i.e. the method would appear at the bottom of the rank matrix with no
-    error at all.  ANALYSIS_PLAN decision 5's re-run order exists for exactly this."""
+    error at all.  EXPERIMENTS.md decision 5's re-run order exists for exactly this."""
     tbl = hl.confirmation_table(SCAN)
     assert hf.missing_confirmation(tbl, quiet=True) == []
     fake = tbl.copy()

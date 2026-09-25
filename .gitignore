@@ -34,7 +34,7 @@ scratch_*.py
 # local dataset caches (downloaded on demand)
 torch_datasets/
 profile_results_v2/
-# the re-measured profile (ANALYSIS_PLAN.md 7.4); 720 JSONs, ~34 MB
+# the re-measured profile (EXPERIMENTS.md.md 7.4); 720 JSONs, ~34 MB
 profile_results_v3/
 
 slurm_logs/

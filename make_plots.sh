@@ -16,12 +16,12 @@
 # sys.path.
 #
 # A notebook whose data is not in experiment_results/ prints "[skip] ... not found" /
-# "missing ..." and carries on (see analysis/RERUNS_NEEDED.md, item 7); a notebook that
+# "missing ..." and carries on; a notebook that
 # errors stops the script and leaves its partially executed copy in place.
 #
 # Every notebook loads the shared helpers (lib/style.py, lib/scan_analysis.py, ...) fresh,
 # so this is also how the saved outputs are brought back in line after a helper change --
-# they are stale until it is run (analysis/ANALYSIS_FIXES.md).
+# they are stale until it is run.
 set -eu
 REPO=$(cd "$(dirname "$0")" && pwd)
 # The venv's OWN jupyter: the `jupyter` on PATH (~/.local/bin) cannot import
@@ -41,11 +41,7 @@ STUDIES=(baselines_analysis batchsize_analysis overparam_analysis nanogpt_analys
          cifar_analysis kappa_analysis finetune_analysis microbatch_analysis paramfrac_analysis)
 PROFILES=(profile_overview profile_scaling profile_paramfrac_microbatch profile_sven_backends)
 
-# >>> NEW NOTEBOOKS OF THE 2026-09-20 ANALYSIS WORK PACKAGES -- ADD YOURS HERE <<<
-# One line per work package (campaign/ANALYSIS_PLAN.md section 6).  A notebook stays
-# commented out until it exists and executes clean, so `./make_plots.sh` keeps working
-# while the packages land one at a time; uncomment the entry in the same commit that
-# adds the notebook.  Keep the names sorted by package, no .ipynb suffix.
+# The campaign-analysis notebooks (no .ipynb suffix).
 NEW=(
   headline_tables      # WP2: confirmation / tuning tables, paired differences, budget, time-to-target
   spectra_analysis     # WP3: diag-run spectra, utr, probe-set spectra along trajectories

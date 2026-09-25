@@ -121,7 +121,7 @@ class Toy1DRegressionDataset:
     def __init__(self, n_train=10_000, n_val=10_000, n_test=10_000, seed=0,
                  pool_size=10_000, subsample_seed=0, split_seed=None):
         self.seed = seed
-        # split_seed is accepted by every dataset class (CONTRACTS.md "Datasets") so the
+        # split_seed is accepted by every dataset class (EXPERIMENTS.md section 12 "Datasets") so the
         # same config key works everywhere; here it seeds the pool / val / test draws.
         self.split_seed = int(seed if split_seed is None else split_seed)
         self.pool_size = int(pool_size)
@@ -271,7 +271,7 @@ class RandomPolynomialDataset:
                  n_test=10_000, pool_size=10_000, subsample_seed=0, split_seed=None):
         self.seed = seed
         # ``seed`` fixes the target function (the coefficients); ``split_seed`` fixes
-        # which x's land in the pool / val / test and defaults to it (CONTRACTS.md).
+        # which x's land in the pool / val / test and defaults to it (EXPERIMENTS.md section 12).
         self.split_seed = int(seed if split_seed is None else split_seed)
         self.degree = int(degree)
         self.num_vars = int(num_vars)

@@ -86,8 +86,8 @@ def nproc_class(selection):
     return "first"                      # first-order standard optimizers, PolyakSGD
 
 
-#: NPROC per (scan class, nproc class, lane), straight from CONTRACTS.md "Stage 1
-#: contracts" / campaign/stage0_reports/gpu.probe.md. MIG values for CIFAR and nanoGPT are
+#: NPROC per (scan class, nproc class, lane), straight from EXPERIMENTS.md section 12 "Stage 1
+#: contracts" / EXPERIMENTS.md section 1.5. MIG values for CIFAR and nanoGPT are
 #: there only to keep the mapping total: no CIFAR or nanoGPT item is ever put in that lane.
 NPROC = {
     ("mlp", "sven"):      {"a100": 12, "mig": 6},

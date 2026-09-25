@@ -2,7 +2,7 @@
 
 ``tests/test_grid.py`` pins the *enumeration code* against nine frozen oracles.
 This file pins the *configs* against the campaign decisions in
-``campaign/CONTRACTS.md``: the scope update (what is cut, what is kept, no
+``EXPERIMENTS.md section 12``: the scope update (what is cut, what is kept, no
 weight-decay grid), the Stage-1 config keys and their valid values, the baseline
 sets (C-B1 MuonW / C-B2 SGDm / C-B5 Muon-on-ResNet), and C-B3 "grids must contain
 their optimum". A failure here means a config drifted from a decision, not that
@@ -72,7 +72,7 @@ def load_rcfg(name, *overrides):
 
 
 # ---------------------------------------------------------------------------
-# The campaign's scope (CONTRACTS.md "Scope update", 2026-09-18 evening)
+# The campaign's scope (EXPERIMENTS.md section 12 "Scope update", 2026-09-18 evening)
 # ---------------------------------------------------------------------------
 
 #: CUT from the campaign. These configs are deliberately left at their
@@ -80,10 +80,10 @@ def load_rcfg(name, *overrides):
 #: (`exp_gpt2_small_comparison` was in this set until 2026-09-19, when the user
 #: re-admitted it; it is now an in-plan P1 scan launched by campaign/plan_gpt2.yaml.)
 CUT = frozenset()
-#: Stale, in no launcher and in no results dir (grid_inventory.md section 4).
+#: Stale, in no launcher and in no results dir (campaign/grid_counts.md section 4).
 STALE = frozenset()
 
-#: The six headline scans (P0), in the order CONTRACTS.md lists them.
+#: The six headline scans (P0), in the order EXPERIMENTS.md section 12 lists them.
 HEADLINE = ("toy_1d_scan", "polynomial_scan", "mnist_scan_labelRegression",
             "mnist_scan_ce", "cifar10_resnet_scan_labelRegression",
             "cifar10_resnet_ce_scan")
@@ -162,7 +162,7 @@ IN_SCOPE = {
                                            for n in (250, 500, 1000, 2000)]),
 }
 #: In scope as a CONFIG, but deliberately NOT in the launch plan: the user moved
-#: `exp_finetune_cifar_smallN` to the extension phase on 2026-09-18 ~21:30 (CONTRACTS.md
+#: `exp_finetune_cifar_smallN` to the extension phase on 2026-09-18 ~21:30 (EXPERIMENTS.md section 12
 #: "Stage 1 contracts", last bullet; `p3_finetune` in campaign/plan_campaign.yaml keeps
 #: its items complete and `enabled: false`). Its config edits stand -- bn_mode: frozen,
 #: SGDm, the lr extension -- but its runs are not part of the campaign total.
@@ -276,7 +276,7 @@ def test_in_scope_config_composes_and_expands(scan):
 def test_every_mode_the_config_carries_expands(scan):
     """`mode=` is a command-line override, so every family the config describes must
     enumerate -- including the jd / hig grids the old launchers never submitted
-    (grid_inventory.md 5.1: a "full relaunch" silently dropped 400 JD/HIG runs)."""
+    (campaign/grid_counts.md 5.1: a "full relaunch" silently dropped 400 JD/HIG runs)."""
     rcfg = load_rcfg(scan, *IN_SCOPE[scan][1][0])
     carried = [m for m in grid.VALID_MODES
                if any(grid.mode_flags(rcfg, m).values())]
@@ -345,7 +345,7 @@ def test_sgdm_accompanies_sgd_and_muonw_accompanies_muon(scan):
                                   "cifar10_resnet_ce_scan"))
 def test_cifar_headline_baseline_set(scan):
     """The CIFAR headline scans had never run AdamW, Muon, MuonW or SOAP at all
-    (grid_inventory.md 5.2: the launcher used CORE_FIRST only, and Muon/MuonW were
+    (campaign/grid_counts.md 5.2: the launcher used CORE_FIRST only, and Muon/MuonW were
     not even in the config). O6 keeps Muon on ResNet because the conv kernels now go
     through the vendored MuonConv; Shampoo/KFAC stay out at 11.18M params."""
     optims = set(standard_optimizers(scan))
@@ -355,7 +355,7 @@ def test_cifar_headline_baseline_set(scan):
 
 
 def test_mnist_ce_keeps_its_full_baseline_list():
-    """grid_inventory.md 5.2: submit_fresh_suite.sh:79 used CORE_FIRST for this scan,
+    """campaign/grid_counts.md 5.2: submit_fresh_suite.sh:79 used CORE_FIRST for this scan,
     so AdamW, Muon, MuonW, SOAP, Shampoo and KFAC were never submitted although the
     config lists them -- and no launcher ever ran mode=jd or mode=hig (5.1). The new
     launcher must run all of it, so the config has to keep describing all of it."""
@@ -367,7 +367,7 @@ def test_mnist_ce_keeps_its_full_baseline_list():
 
 
 # ---------------------------------------------------------------------------
-# Stage-1 config keys (CONTRACTS.md "Config keys")
+# Stage-1 config keys (EXPERIMENTS.md section 12 "Config keys")
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("scan", SCANS)
@@ -385,7 +385,7 @@ def test_stage1_keys_have_valid_values(scan):
     assert sched["dense_first"] >= 0 and sched["every"] >= 1
     if rcfg.get("use_gram"):
         grid.resolve_svd_settings(rcfg)          # raises on hooks + bn_mode: batch
-    # keys whose default is already right must NOT be restated (CONTRACTS.md), so a
+    # keys whose default is already right must NOT be restated (EXPERIMENTS.md section 12), so a
     # reader can tell a decision from an echo.
     #
     # A companion config is exempt, because for it the rule asks the wrong question: the
@@ -406,7 +406,7 @@ def test_stage1_keys_have_valid_values(scan):
             f"{scan} restates the default {key}: {default!r}")
 
 
-#: `checkpoints` / `checkpoints_svd` per scan family (CONTRACTS.md C-L3 + the
+#: `checkpoints` / `checkpoints_svd` per scan family (EXPERIMENTS.md section 12 C-L3 + the
 #: storage table): toy / polynomial are small enough to checkpoint every run;
 #: MNIST gives the ladder to the svd family only; nanoGPT is one state per epoch;
 #: ResNet keeps `final` (a `log` ladder is ~1.6 GB of RAM per run).
@@ -501,7 +501,7 @@ def test_bn_mode_policy_per_scan():
 
 #: (scan, key, values that must be IN the grid) -- the optima
 #: ``bench/best_configs.json`` reports on a grid edge, plus the known cases listed
-#: under C-B3 in CHANGES_NEEDED.md. "In the grid" is the weak form of the
+#: under C-B3 in EXPERIMENTS.md. "In the grid" is the weak form of the
 #: requirement; the strong form (strictly interior) is what tools/reconcile.py
 #: checks against the finished runs.
 MUST_CONTAIN = [
@@ -555,7 +555,7 @@ MUST_CONTAIN = [
     # --- the C-B3 EXTENSION ROUND (user-approved, 2026-09-19) -------------------
     # One round, sized from the FINISHED campaign rather than from legacy records:
     # every point below closes an edge that `tools/reconcile.py` flagged over the
-    # 15,735 runs in campaign/reconcile_2026-09-19.txt (the `edges` column of "best
+    # 15,735 runs in campaign/grid_counts.md (the `edges` column of "best
     # config per method"). Sven's `k` is deliberately not among them -- k = B is a
     # method boundary, not a grid edge -- and CIFAR's Sven grids are left alone
     # (each run is ~0.5 GPU-h; grid_counts.md "Open items" 1 states that edge).
@@ -717,7 +717,7 @@ def test_kappa_scan_separates_kappa_from_the_effective_step():
 #: the pre-Gram "classic" Fig-5 set point the config currently carries, and the values
 #: EXPERIMENTS.md:108-109 documents for the same figure. They disagree, `best_configs.json`
 #: has no CIFAR entry, and the re-point has to come from the BN-fixed
-#: `cifar10_resnet_scan_labelRegression` headline scan (grid_inventory.md 5.5).
+#: `cifar10_resnet_scan_labelRegression` headline scan (campaign/grid_counts.md 5.5).
 FIG5_TENTATIVE_SETPOINT = {"k_values": [64], "lrs": [1.0], "rtol": [1e-3]}
 FIG5_TENTATIVE_MARKER = "STILL TENTATIVE"
 

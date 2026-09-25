@@ -190,7 +190,7 @@ def test_the_campaign_plan_parses_and_covers_the_kept_scans():
                   "mnist_scan_ce", "cifar10_resnet_scan_labelRegression",
                   "cifar10_resnet_ce_scan", "exp_nanogpt_speedrun"}
     all_scans = set(plan.scan_overrides())
-    # the CUT scans must not be anywhere in the plan (CONTRACTS.md "Scope update")
+    # the CUT scans must not be anywhere in the plan (EXPERIMENTS.md section 12 "Scope update")
     for cut in ("exp_critbatch_mnist", "exp_critbatch_nanogpt",
                 "exp_gpt2_small_comparison", "mnist_scan_brier",
                 "cifar10_resnet_kappaScan_labelReg", "cifar10_resnet_ce_kappaScan",
@@ -272,7 +272,7 @@ def test_the_gpt2_plan_gives_every_run_a_whole_a100():
 
 
 def _grid_counts_table():
-    """The per-scan totals of `campaign/grid_counts.md` (the orchestrator's ground truth,
+    """The per-scan totals of `campaign/grid_counts.md` (the campaign's ground truth,
     itself generated from the configs and pinned by tests/test_configs.py)."""
     path = os.path.join(REPO, "campaign", "grid_counts.md")
     if not os.path.exists(path):
@@ -330,7 +330,7 @@ DELIBERATE_GAPS = {
 OFF_GRID_ITEMS = {
     ("cifar10_resnet_ce_scan",
      "mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]"):
-        "p2_cifar_ce_rtol: the CIFAR-CE Sven rtol extension (ANALYSIS_PLAN.md section 7.5, "
+        "p2_cifar_ce_rtol: the CIFAR-CE Sven rtol extension (EXPERIMENTS.md.md section 7.5, "
         "user 2026-09-20). 45 runs of three NEW rtol values around the selected lr; the "
         "scan's own rtol grid stays [1e-4, 1e-3, 1e-2] so that nothing already measured is "
         "re-hashed or re-run.",

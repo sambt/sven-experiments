@@ -505,7 +505,7 @@ def plot_epoch_spectra(df, ax, k, lr, rtol, cmap='plasma', lo=0.25, hi=1.0,
     nf = noise_floor(runs, results_root=results_root) if full else None
     if not full:
         # Runs made before the full-spectrum fix (sven/opt/sven.py, SvenGram.step)
-        # recorded only the SVs above rtol.  See RERUNS_NEEDED.md.
+        # recorded only the SVs above rtol.  See EXPERIMENTS.md section 12.
         print(f'  [plot_epoch_spectra] recorded spectra are truncated at rtol '
               f'({width} of {k} SVs, k={k}, lr={lr}, rtol={rtol}) -- '
               f'rerun these runs with the full-spectrum logging to fix the tail')

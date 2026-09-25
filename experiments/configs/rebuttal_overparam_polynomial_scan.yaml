@@ -38,7 +38,7 @@ checkpoints: log
 
 k_fractions: [0.25, 0.5, 1.0]
 # C-B3 extension round (user-approved, 2026-09-19). Sven is the ONE family whose own axes
-# came back on an edge here (campaign/reconcile_2026-09-19.txt: `lr:EDGE-LOW rtol:EDGE-HIGH`,
+# came back on an edge here (campaign/grid_counts.md: `lr:EDGE-LOW rtol:EDGE-HIGH`,
 # best 0.2829 at k=B, lr 0.05, rtol 1e-2 over the scan's 720 finished svd runs), and the
 # trend along rtol is steep rather than a plateau -- at the best cell (n_data 1350, k=B)
 # the seed-means are 6.646 / 0.5989 / 0.2829 at rtol 1e-4 / 1e-3 / 1e-2, so the optimum is

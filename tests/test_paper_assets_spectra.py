@@ -410,7 +410,7 @@ def test_a_table_writes_its_provenance_outside_the_manuscript(data, paper_dirs):
 
 
 # ---------------------------------------------------------------------------
-# The figure registry: draw / save split, knobs (campaign/FIGURE_API_CONTRACT.md)
+# The figure registry: draw / save split, knobs (analysis/paper_assets/README.md)
 # ---------------------------------------------------------------------------
 MNIST_LR = 'mnist_scan_labelRegression'
 MNIST_CE = 'mnist_scan_ce'

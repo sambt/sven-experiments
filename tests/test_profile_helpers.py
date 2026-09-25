@@ -1,7 +1,7 @@
 """`analysis/lib/profile_helpers.py`: which results root is read, where the cache goes, and what
 the v2-vs-v3 comparison is allowed to claim.
 
-The first two were found by review of the 2026-09-20 re-profile work package; the third came
+The first two were found by review of the re-profile; the third came
 with the finished v3 pass (job 47396284), whose numbers only mean something next to v2's if
 the difference between the two passes can be read off the records:
 
@@ -13,7 +13,7 @@ the difference between the two passes can be read off the records:
    A partial v3 must now be ANNOUNCED and skipped, and `load_profiles` must print the
    count.
 2. **The cache location.** The derived-frame pickle used to live at
-   `<root>/_profile_cache.pkl`, inside a results root that ANALYSIS_CONTRACTS.md declares
+   `<root>/_profile_cache.pkl`, inside a results root that EXPERIMENTS.md section 12 declares
    read-only, and `compare_profiles(old=ROOT_V2, ...)` therefore rewrote
    `profile_results_v2/` on every call.  It now lives outside every results root.
 3. **What the comparison may claim.** `PROVENANCE_COLS` must reach the frame as recorded and

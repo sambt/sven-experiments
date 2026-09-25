@@ -4,7 +4,7 @@ Each result row has an ``optimizer`` field ('SVD' == Sven, else the baseline nam
 and a nested ``losses`` dict with per-epoch curves ('train','val','val_acc',...)
 plus scalars ('total_time','peak_gpu_mem_mb'). These helpers flatten the pieces
 the notebooks need and pick the best config per method -- by SEED MEAN, with the
-shared conventions of ANALYSIS_FIXES.md (diverged = failed; clipped seed bands).
+shared conventions of EXPERIMENTS.md section 12 (diverged = failed; clipped seed bands).
 """
 import numpy as np
 import pandas as pd
@@ -159,7 +159,7 @@ def config_table(df, metric='final_val_loss', minimize=True, seed_col='model_see
     (ddof=1) and the lowest seed ``q_min`` (for :func:`style.clipped_band`).
     ``metric`` may not be a test quantity (:func:`style.assert_selection_metric`).
 
-    Diverged = failed (see ANALYSIS_FIXES.md, A4): a diverged run is not in the means.
+    Diverged = failed (see EXPERIMENTS.md section 12, A4): a diverged run is not in the means.
     Counts per configuration:
 
     * ``n_seeds`` / ``finished`` -- seeds that finished;
@@ -348,7 +348,7 @@ def n_params_of(df, fallback=None, what=''):
     """Parameter count P from the result records (``n_params``, written by
     ``generic_scan._scan_facts`` since 2026-09-17).  Older records lack it; then
     ``fallback`` is used and a warning printed, so a hard-coded P is at least visible
-    (ANALYSIS_FIXES C25; RERUNS_NEEDED 6)."""
+    (EXPERIMENTS.md C25; EXPERIMENTS.md 6)."""
     if 'n_params' in df.columns and df['n_params'].notna().any():
         return int(df['n_params'].dropna().iloc[0])
     print(f'  [n_params] {what}: records carry no n_params -- using the hard-coded P={fallback}')

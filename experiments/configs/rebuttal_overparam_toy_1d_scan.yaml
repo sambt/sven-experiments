@@ -53,7 +53,7 @@ variable_k: false
 # forced MuonW off its own default.
 #
 # C-B3 extension round (user-approved, 2026-09-19), measured from THIS scan's 2080
-# finished runs (campaign/reconcile_2026-09-19.txt): this scan had deliberately kept the
+# finished runs (campaign/grid_counts.md): this scan had deliberately kept the
 # pre-extension 1e-4..1e-1 list (grid_counts.md "Open items" 3), and EIGHT of its ten
 # standard optimizers -- Adam, AdamW, SOAP, SGDm, Muon, MuonW, Shampoo, SGD -- came back
 # best on the 1e-1 top edge. It now uses the same list as the MLP headline scans, which

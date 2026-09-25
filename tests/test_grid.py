@@ -15,7 +15,7 @@ in ``generic_scan.scan`` produced before the refactor. The oracles are
   ``tests/golden/legacy_grid_equiv.py`` (in the repo, pinning the pre-refactor
   commit), which also checks order and six (n_shards, shard_id) settings against
   the legacy code for 11 config/mode combinations,
-* the per-config, per-family run counts in ``campaign/scout/grid_inventory.md``.
+* the per-config, per-family run counts in ``campaign/grid_counts.md``.
 
 Everything here is torch-free and runs in a second: ``grid.py`` is loaded straight
 from its path so that the ``experiments.experiment_code`` package ``__init__``
@@ -31,7 +31,7 @@ invalidates, in this order:
 
 1. ``tests/golden/rebuttal_batchsize_polynomial_scan.order.txt`` and
    ``tests/golden/toy_1d_scan.order.txt`` -- regenerate with
-   ``campaign/run_cpu_tests.sh .venv/bin/python tests/golden/legacy_grid_equiv.py --freeze``
+   ``.venv/bin/python tests/golden/legacy_grid_equiv.py --freeze``
    (it reads the config from the working tree and the runner from the pinned SHA,
    so a re-freeze still compares legacy vs. new enumeration of the SAME config),
 2. that scan's :data:`INVENTORY` row,
@@ -128,7 +128,7 @@ def load_rcfg(name, *overrides):
 # ---------------------------------------------------------------------------
 
 # `mode` is what the launchers used, not blindly "all": the two headline MLP dirs
-# also hold ad-hoc mode=jd / mode=hig runs (grid_inventory.md 5.1), the CIFAR dir
+# also hold ad-hoc mode=jd / mode=hig runs (campaign/grid_counts.md 5.1), the CIFAR dir
 # carries the jd/hig grids in its config but they were never launched, and the
 # three ablation configs are `mode: svd` (a plain "all" would enumerate a
 # meaningless default baseline grid for them).
@@ -152,11 +152,11 @@ OVERRIDES = {
 SCANS = sorted(MODE)
 
 # Per-family run counts. Counts are per-config, i.e. summed over the n_data
-# overrides for exp_finetune. The source was campaign/scout/grid_inventory.md
+# overrides for exp_finetune. The source was `campaign/grid_counts.md`
 # section 1 (the pre-campaign configs); from the Stage-1 config round these are
 # campaign/grid_counts.md, which is generated from these same configs -- the two
 # files must agree, and a config edit has to move both.
-# Deltas vs. grid_inventory.md, all deliberate: `standard` grew with SGDm (C-B2),
+# Deltas vs. campaign/grid_counts.md, all deliberate: `standard` grew with SGDm (C-B2),
 # the C-B3 lr extensions and, on CIFAR, AdamW/SGDm/SOAP/Muon/MuonW (O6); it shrank
 # in the batch-size scan because the weight-decay grid is gone (scope update);
 # `lbfgs` fell 810 -> 90 there (O5) but grew 135 -> 180 on both CIFAR headline scans
@@ -165,7 +165,7 @@ SCANS = sorted(MODE)
 # C-B3 on the MLP scans and are untouched on CIFAR (never launched there); `svd` grew
 # with the polynomial rtol point, the CIFAR-CE lrs and the C-X1 kappa grid.
 # The C-B3 EXTENSION ROUND (user-approved, 2026-09-19, sized from the finished campaign's
-# edge flags in campaign/reconcile_2026-09-19.txt) moved four of these rows again: toy_1d
+# edge flags in campaign/grid_counts.md) moved four of these rows again: toy_1d
 # `svd` 360 -> 900 (lr and rtol both on their bottom edge) and `hig` 150 -> 210 (HIG's lr
 # on the new bottom edge); mnist_scan_ce `svd` 640 -> 800 (rtol on the top edge); `lbfgs`
 # 135 -> 225 / 180 -> 225 wherever L-BFGS's optimum was its lr edge; and the batch-size
@@ -575,7 +575,7 @@ def test_a_bn_token_only_appears_where_a_config_asks_for_a_policy():
 
 
 def test_new_config_keys_are_resolved_and_validated():
-    """The Stage-1 config keys, with the defaults CONTRACTS.md gives them."""
+    """The Stage-1 config keys, with the defaults EXPERIMENTS.md section 12 gives them."""
     # a bare config: the defaults must come from the code, not from whatever
     # experiments/configs currently sets (that is the configs track's business).
     st = grid.resolve_scan_settings({"loader_seed": 0, "model_seeds": [0]})

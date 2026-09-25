@@ -16,7 +16,7 @@ cost of the campaign as it ran and not the cost of its successes.
 GPU-hours are **process time**: one run owns one device (or one MIG partition of one) for
 ``wall_time_s``, summed.  Short runs were packed several to a device, so the wall-clock
 *allocation* is smaller than this figure -- the appendix says so, and the packing factors
-are in ``campaign/stage0_reports/gpu.probe.md``.
+are in ``EXPERIMENTS.md section 1.5``.
 
 Run it standalone (no other module's assets are touched)::
 

@@ -9,7 +9,7 @@ manuscript's visual language, the macro writer, the booktabs emitter, provenance
 module exposes ``build(root=None) -> dict`` and is runnable on its own
 (``python -m paper_assets.main``).  Importing this package has no side effects.
 
-Module ownership (``campaign/PAPER_PLAN.md`` section 5.4):
+Module ownership (``analysis/paper_assets/README.md`` section 5.4):
 
 ==========  ====================================================================
 ``main``    F1 F3 F12 F13 - T1 T2 T3 T4 T5 T10 T18 T20 - macro group G1

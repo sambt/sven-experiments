@@ -388,7 +388,7 @@ def test_missing_scan_directory_is_all_never_started_not_a_crash(scan):
 def test_the_plan_decides_the_results_root_not_the_ambient_env(scan, tmp_path, monkeypatch):
     """`--all <plan>` must reconcile the root the launcher exports to the workers.
 
-    CAMPAIGN_STATUS.md tells people to work with `SV3_RESULTS_ROOT` exported at the
+    EXPERIMENTS.md.md tells people to work with `SV3_RESULTS_ROOT` exported at the
     FROZEN legacy root; reconciling the fresh campaign plan against it would report every
     P0 scan as never-started.
     """

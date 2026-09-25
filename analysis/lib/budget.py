@@ -1,6 +1,6 @@
 """Tuning-budget disclosure from the existing scans (C-A4).
 
-The budget objection (FABLE_CRITIQUES.md, Codex Mid 1) is that Sven is tuned over
+The budget objection (EXPERIMENTS.md, Codex Mid 1) is that Sven is tuned over
 72-128 grid points while most baselines get four learning rates, so its advantage
 could be search effort rather than the method.  Two numbers answer it without a
 single new run, and both come out of a scan DataFrame that is already loaded:

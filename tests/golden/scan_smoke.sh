@@ -6,7 +6,7 @@
 # build and train, every family writes its jsonl + npz, a second pass skips every
 # run, and `+n_shards=2 +shard_id=1` runs exactly the odd indices of the grid.
 #
-#   campaign/run_cpu_tests.sh bash tests/golden/scan_smoke.sh [workdir]
+#   bash tests/golden/scan_smoke.sh [workdir]
 #
 # THE REAL RESULTS ROOT IS NEVER TOUCHED: scan() writes to the hard-coded RELATIVE
 # path "experiment_results", so every run.py invocation below is `cd`'d into

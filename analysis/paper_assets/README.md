@@ -1,17 +1,42 @@
-# Figure API contract (2026-09-21) — binding for every `paper_assets` figure module
+# paper_assets — the paper's figures, tables and number macros
 
-## Why
+`cd analysis && ../.venv/bin/python -m paper_assets` rebuilds everything the manuscript uses:
+figures to `iclr_manuscript/figures_iclr/<group>/<name>.pdf` (with a PNG twin and a provenance
+sidecar), tables to `iclr_manuscript/tables_v2/*.tex`, and number macros to
+`iclr_manuscript/numbers_v2.tex`. `--only <module>`, `--figures-only`, `--numbers-only` and
+`--dry-run` narrow it. `tools/cmp_figures.py` tells whether a rebuild changed a figure or only
+its timestamp.
 
-The user wants to **make and edit the paper's figures in notebooks**: "the plot that goes into
-fig 1 of the paper I want to have all the baselines on it and change some things about legend
-placement, axis labels, aspect ratios, etc. Easier to do myself than describe to you."
+| module | owns |
+|---|---|
+| `main.py` | the main-text figures and tables: headline curves, cost/memory, k sweeps, hyper-parameter landscape, paired differences, rank heat-map |
+| `reviewer.py` | the reviewer studies on the MLP tasks: over-parameterisation, batch size, κ, micro-batch / parameter fraction, tuning budget, divergence |
+| `large.py` | CIFAR-10, Fig. 5, nanoGPT, GPT-2, and the profile figures |
+| `spectra.py` | the singular-value figures: spectra along training, norms, used rank, probe sets |
+| `campaign.py` | the campaign-level numbers (run counts, GPU-hours) |
+| `figspec.py` | the figure registry and the override layer (read `figure_overrides.yaml`) |
+| `notebook.py` | the `pf` API `analysis/notebooks/paper/` uses to draw, edit, save and pin |
+| `common.py`, `_common.py` | shared conventions: paths, `save_fig`, provenance records, the macro book |
 
-Today a builder draws *and* writes in one call, so the only way to change a legend position is
-to edit the builder and rebuild the group. The fix is structural and already written:
-`analysis/paper_assets/figspec.py` (registry + override layer, **do not edit**) and
-`analysis/paper_assets/notebook.py` (the notebook API, **do not edit**). Your job is to make
-your module implement the contract below, **without changing a single pixel of the committed
-figures** while the override file is empty.
+## Conventions
+
+* **Numbers are never typed by hand.** Every campaign-derived number in the prose is a macro
+  from `numbers_v2.tex` (`\num<Scan><Method><Quantity>`, documented in the file's header) and
+  every results table is `\input` from `tables_v2/`. One command regenerates all of them.
+* Figures follow the manuscript's visual language: single-column-width panels used three
+  across at `0.32\linewidth`, log-y validation loss vs epoch and vs wall time, Sven black,
+  `style.METHOD_COLORS`, `style.method_label` names, seed band = mean ± 1 std over seeds.
+  Headline numbers come from the confirmation seeds; wall time from the standalone
+  `<scan>_timing` runs. The analysis conventions are `EXPERIMENTS.md` §12.
+* Cosmetic choices made in the paper notebooks are pinned in `figure_overrides.yaml` and
+  replayed by the CLI, so **the override file is part of how the paper looks** — read it before
+  concluding a figure's builder produces what you see.
+
+## The figure contract
+
+Every figure is a `FIGURE_SPECS` entry whose `draw(ctx, opts)` writes nothing, so the same
+builder can be driven from the CLI and from a notebook. A module that adds or changes a figure
+keeps to the following.
 
 ## What your module must expose
 
@@ -29,8 +54,8 @@ def context(root=None, reload=False):   # the data object your draw functions ta
     ...                                 # cached per root; cheap to call twice
 ```
 
-* **The key is the output stem**: `figures_iclr/<GROUP>/<key>.pdf`. Every figure your
-  `build()` writes today must appear exactly once, under the name it writes today.
+* **The key is the output stem**: `figures_iclr/<GROUP>/<key>.pdf`. Every figure a module's
+  `build()` writes must appear exactly once, under that name.
 * **`draw(ctx, opts) -> (fig, meta)` never writes, never closes the figure.** `meta` is a
   dict which MUST carry:
   * `provenance` — the `common.provenance(...)` record the figure is saved with today
@@ -74,34 +99,11 @@ Rules:
 * Document each knob in one short phrase in `doc` or as a comment next to `defaults`, in the
   module's existing voice.
 
-## Ground rules
+## Adding a figure
 
-* Repo `/n/home/anon/sven-experiments`, branch `robustness-campaign`. Python `.venv/bin/python`.
-  **Never** `git commit`/`add`/`stash`/`checkout`/`switch` — the orchestrator commits.
-* **You own exactly two files**: `analysis/paper_assets/<your module>.py` and
-  `tests/test_paper_assets_<your module>.py`. Do not edit `common.py`, `figspec.py`,
-  `notebook.py`, another module, the notebooks, or anything under `analysis/lib/` (a genuine
-  bug there: report it, do not fix it).
-* Results roots and `profile_results_v*/` are READ-ONLY. `iclr_manuscript/` is an
-  Overleaf-synced git repo: writing the figures it holds is what the build does, but **never**
-  run git in it, and never touch its `tables_v2/`, `sections_v2/` or `.tex` files.
-* Heavy work (a group rebuild, a notebook, a long test) goes through
-  `campaign/run_cpu_tests.sh <cmd...>` (sbatch --wait, prints the log). This node is shared.
-
-## How you prove it (required in your report)
-
-1. `campaign/run_cpu_tests.sh .venv/bin/python -m pytest tests/test_paper_assets_<mod>.py -q`
-   green, plus the new tests you added: that every figure in `FIGURE_SPECS` draws without
-   writing, that `draw` returns `provenance` and `axes`, that the defaults round-trip through
-   `figspec.figure_opts`, and that at least one knob visibly changes the figure (e.g. a
-   different method count in `meta`).
-2. **The byte-identity check.** A pre-snapshot of your group's PDFs is at
-   `/tmp/claude-66176/-n-home-anon-sven-experiments/30b30b16-e05d-4e46-8a25-371ea6181950/scratchpad/figs_pre/<group>/`.
-   Rebuild your group's figures only —
-   `campaign/run_cpu_tests.sh bash -c 'cd analysis && ../.venv/bin/python -m paper_assets --only <mod> --figures-only'`
-   — then compare with `.venv/bin/python tools/cmp_figures.py <group>`, which reports a
-   difference only when the content differs (it scrubs `/CreationDate`). **Every figure must
-   come out identical**, and the provenance sidecars must be unchanged too (the tool checks
-   them). Paste the tool's summary line.
-3. Say explicitly which knobs you exposed per figure, and anything you deliberately left
-   hardcoded because exposing it would have changed the output.
+Write the builder as `draw(ctx, opts) -> (fig, meta)` with `meta` carrying `provenance` and
+`axes`, add a `FigureSpec` to the module's `FIGURE_SPECS`, and regenerate the paper notebooks
+with `.venv/bin/python tools/build_fig_notebooks.py`. The new figure then appears in
+`pf.figures()`, in its group's notebook and in the CLI build. `tests/test_paper_assets_<module>.py`
+checks that every figure draws without writing, returns `provenance` and `axes`, and that its
+defaults round-trip through `figspec.figure_opts`.

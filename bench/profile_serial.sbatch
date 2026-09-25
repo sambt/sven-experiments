@@ -11,7 +11,7 @@
 #SBATCH --output=slurm_logs/profile/profile-%j.out
 #
 # Memory / step-time profile: every architecture serially on ONE exclusively reserved node
-# (a co-tenant job skews launch-bound step times by up to 2x -- gpu.probe.md measured the
+# (a co-tenant job skews launch-bound step times by up to 2x -- EXPERIMENTS.md section 1.5 measured the
 # same MNIST-Adam step at 1.13 ms on a quiet node and 4.58 ms on a node at 4/4 GPUs).
 # Resumable: a configuration whose JSON already exists is skipped, so a job that hits the
 # wall clock is continued by submitting it again.
@@ -23,7 +23,7 @@
 # Environment (every one has a default, so the script also runs by hand):
 #   SNAP               deploy snapshot to run from (default $SV3_DEPLOY_SNAPSHOT, else the
 #                      newest complete one under $DEPLOY_BASE, else the live repo with a
-#                      warning). CONTRACTS.md: campaign processes never import the live
+#                      warning). EXPERIMENTS.md section 12: campaign processes never import the live
 #                      tree -- ~6 agents edit it while a 2 h job runs.
 #   SV3_PROFILE_ROOT   absolute results root (default: `profile.output_dir` from the
 #                      configs = profile_results_v3). REQUIRED when running from a
@@ -48,7 +48,7 @@
 # COMPLETENESS. After a clean full pass this script writes `_profile_complete` into the
 # results root; analysis/profile_helpers.profile_status also accepts a full per-config
 # count, which is what certifies the 2026-09-20 pass (job 47396284 runs from deploy
-# snapshot 118156ae, which predates the sentinel).
+# snapshot that predates the sentinel).
 #
 # IF THIS JOB WILL NOT START (`QOSMaxNodePerUserLimit`, `Resources`): --exclusive holds a
 # whole node slot of the QOS and cannot start while anyone holds a GPU on the node (the

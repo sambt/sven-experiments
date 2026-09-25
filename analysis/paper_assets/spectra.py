@@ -20,7 +20,7 @@ at print size, formats it and records where it came from.  Run it with::
     cd analysis && ../.venv/bin/python -m paper_assets.spectra
 
 Every figure is declared in :data:`FIGURE_SPECS` with its own knobs and drawn by a
-function that writes NOTHING (``campaign/FIGURE_API_CONTRACT.md``), so the same builder
+function that writes NOTHING (``analysis/paper_assets/README.md``), so the same builder
 serves ``python -m paper_assets`` and a notebook::
 
     import paper_assets.notebook as pf
@@ -31,7 +31,7 @@ serves ``python -m paper_assets`` and a notebook::
 :func:`build` is the only save path; it iterates :data:`FIGURE_SPECS` and hands each
 figure to :func:`common.save_fig`.
 
-Outputs (``campaign/PAPER_PLAN.md`` section 5):
+Outputs (``analysis/paper_assets/README.md`` section 5):
 
 ===========================  ===========================================================
 ``spectrum_truncation.pdf``  F2, main section 4.2: 1x3 at ``0.32\\linewidth``
@@ -2686,7 +2686,7 @@ def _ctx_key(root):
 def context(root=None, reload=False, verbose=True):
     """The :class:`Data` every draw function takes, read once per results root.
 
-    The module half of the figure contract (``campaign/FIGURE_API_CONTRACT.md``): cheap
+    The module half of the figure contract (``analysis/paper_assets/README.md``): cheap
     to call twice, so a notebook can draw one figure after another without re-reading the
     diag passes.  ``reload=True`` re-reads, which is what to do after a pass finishes.
     """

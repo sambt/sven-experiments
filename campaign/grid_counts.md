@@ -1,28 +1,21 @@
-# Campaign grid counts (2026-09-19, Stage-1 configs + the C-B3 extension round)
+# Campaign grid counts
 
 Run counts per in-scope scan, **generated from the configs** by `expand_grid`, not by hand.
 `tests/test_configs.py::test_grid_counts_md_matches_the_configs` parses the table below and
 fails if a config edit moves a number without moving this file — so the launcher and the
 cost plan can read it as ground truth.
 
-Scope is `campaign/CONTRACTS.md` "Scope update": seven configs are CUT and are deliberately
-left at their pre-campaign state (`exp_critbatch_mnist`, `exp_critbatch_nanogpt`,
-the four one-seed `cifar10_resnet_{kappa,paramFrac}*`, and `mnist_scan_brier`);
-`mnist_microbatch_scan` and `rebuttal_mnist_batchk_probe` are stale and in no launcher;
-`profile_*.yaml` is out of scope.
+The scope is the one `EXPERIMENTS.md` §9 describes: the configs that were cut from the
+campaign are not in this repository; `profile_*.yaml` is out of scope for the scan machinery.
 
-`exp_gpt2_small_comparison` was the eighth CUT config until **2026-09-19**, when the user
-re-admitted it. It is now in scope and in the launch plan — but in a plan file of its own,
-`campaign/plan_gpt2.yaml` (a100 lane, NPROC 1, one GPU per job), because its runs are an
-order of magnitude longer than anything in `plan_campaign.yaml` and it must be launchable
-without touching the campaign plan while the extension round is in flight.
+`exp_gpt2_small_comparison` is in scope and in a plan file of its own, `campaign/plan_gpt2.yaml`
+(a100 lane, NPROC 1, one GPU per job), because its runs are an order of magnitude longer than
+anything in `plan_campaign.yaml`.
 
-"In scope" and "in the launch plan" are **not** the same set any more:
-`exp_finetune_cifar_smallN` was moved to the extension phase by the user on 2026-09-18
-~21:30 (CONTRACTS.md "Stage 1 contracts", last bullet), and all eight of its
-`p3_finetune` items in `campaign/plan_campaign.yaml` are `enabled: false`. Its config
-edits stand — `bn_mode: frozen`, SGDm, the lr extension — but its 408 runs are **not**
-part of the campaign total. The row below says `P3-parked`.
+"In scope" and "in the launch plan" are not the same set: `exp_finetune_cifar_smallN` was
+parked to the extension phase, and all eight of its `p3_finetune` items in
+`campaign/plan_campaign.yaml` are `enabled: false`. Its config edits stand, but its 408 runs
+are **not** part of the campaign total. The row below says `P3-parked`.
 
 ## Per-scan counts
 
@@ -80,7 +73,7 @@ Cell conventions:
   liability cannot grow unnoticed.
 
 On the four MLP headline scans JD and HIG **are** in scope and the new launcher must
-submit them — `grid_inventory.md` 5.1: the old `submit_fresh_suite.sh` emitted only
+submit them — `campaign/grid_counts.md` 5.1: the old `submit_fresh_suite.sh` emitted only
 `mode=svd` and `mode=standard`, silently dropping 400 JD/HIG runs that
 `best_configs.json` nonetheless reports best configs for.
 
@@ -94,7 +87,7 @@ the runs already measured are neither re-hashed nor superseded.
 
 | list (`plan_campaign.yaml`) | scan | override | runs | why |
 |---|---|---|---|---|
-| `p2_cifar_ce_rtol` | `cifar10_resnet_ce_scan` | `mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]` | 45 | Sven's `rtol` sat on the 1e-2 high edge (ANALYSIS_PLAN §7.5). It moved the pick: `k=128 lr=0.1 rtol=0.01` (val 1.40281) → `k=128 lr=0.5 rtol=0.3` (1.35515) |
+| `p2_cifar_ce_rtol` | `cifar10_resnet_ce_scan` | `mode=svd k_values=[128] lrs=[0.05,0.1,0.5] rtol=[0.03,0.1,0.3]` | 45 | Sven's `rtol` sat on the 1e-2 high edge (EXPERIMENTS.md §7.5). It moved the pick: `k=128 lr=0.1 rtol=0.01` (val 1.40281) → `k=128 lr=0.5 rtol=0.3` (1.35515) |
 | `p2_cifar_fig5_selected` | `rebuttal_fig5_cifar_paramfrac_scan` | `mode=svd k_values=[128] lrs=[0.5] rtol=[0.001]` | 15 | the figure's set point was the legacy `k=64, lr=1`; re-run at the selection of record for `cifar10_resnet_scan_labelRegression` |
 
 Consequences, in both cases deliberate: `tools/reconcile.py <scan>` counts these records as
@@ -145,7 +138,7 @@ GPU-h(scan, family) = runs x steps_per_run x ms_per_step / 3.6e6 / T
 ```
 
 * `ms_per_step` and `T` (standalone-runs-worth of work per GPU per wall-second at the chosen
-  NPROC) are the measured values in `campaign/stage0_reports/gpu.probe.md`: Sven-hooks 11.8 ms
+  NPROC) are the measured values in `EXPERIMENTS.md section 1.5`: Sven-hooks 11.8 ms
   (toy/poly) and 11.1 ms (MNIST) at T=7.18/4.56 with NPROC 12; CIFAR Sven `full` **186.7 ms**
   at T=1.00, NPROC 1; CIFAR first-order 24.0 ms at T=3.85; nanoGPT Sven 71.7 ms at T=2.33;
   MNIST first-order 4.6 ms at T=12.
@@ -175,7 +168,7 @@ It excludes evaluation (three loaders now: val, test and the fixed 10k `train_ev
 data loading, checkpoint I/O, process start-up, queue wait and every failed or requeued job.
 
 **Do not plan with 359 GPU-h** (237 for `plan_campaign.yaml` + 122 for the GPT-2 scan).
-`campaign/scout/sharding.md` puts the honest figure at **1,100-1,500 GPU-h**, and that is
+the pre-campaign sharding survey puts the honest figure at **1,100-1,500 GPU-h**, and that is
 still the number to reserve against. The two are not in conflict; the gap is mostly three
 things:
 
@@ -183,7 +176,7 @@ things:
    `torch.cuda.empty_cache()` on every Sven step — 841 ms/step on CIFAR instead of 186.7.
    C-T3 defaulting `empty_cache` to `False` is worth roughly **310 GPU-h on the two CIFAR
    headline scans alone**, and it is the single largest cost change in the campaign;
-2. cheap-MLP step times are set by the host CPU, not the GPU (gpu.probe surprise 2: the same
+2. cheap-MLP step times are set by the host CPU, not the GPU (the GPU probe: the same
    MNIST-Adam config is 1.13 ms on a quiet node and **4.58 ms** on a 4/4-occupied one). The
    floor uses the busy-node number for first-order and the quiet-node number for Sven, so the
    MLP rows can be off by 2-4x either way;
@@ -212,7 +205,7 @@ legacy records** rather than from the MLP evidence (see below).
 The Stage-1 round below baked in one *predicted* extension, from legacy records. This
 round is the *measured* one the user approved after the campaign finished: every added
 point closes an edge that `tools/reconcile.py` flagged over the 15,735 completed runs
-(`campaign/reconcile_2026-09-19.txt`, the `edges` column of "best config per method"),
+(`campaign/grid_counts.md`, the `edges` column of "best config per method"),
 and nothing is added anywhere the optimum came back interior.
 
 Three rules decided what did **not** grow. Sven's `k` is never extended — `k = B` is a
@@ -277,7 +270,7 @@ values, never the grid lists) and only the new points execute.
 
 ## What changed in the Stage-1 round
 
-Net per scan, against `campaign/scout/grid_inventory.md` section 1 (the pre-campaign
+Net per scan, against `campaign/grid_counts.md` section 1 (the pre-campaign
 configs). Per-scan nets rather than per-change deltas, because the changes multiply: SGDm
 lands on the *extended* lr grid, so "+SGDm" and "+lrs" cannot be added independently.
 
@@ -314,7 +307,7 @@ What produced those nets:
   (60 -> 280/320 standard runs each). Muon on a ResNet is legitimate now that conv kernels go
   through the vendored MuonConv; the old "Muon" there was AdamW plus one `fc` layer (F13).
 * **C-B3**, one extension round baked in, per the evidence in `bench/best_configs.json`, the
-  known cases under C-B3 in `CHANGES_NEEDED.md`, and — for the two CIFAR scans, which have no
+  known cases under C-B3 in `EXPERIMENTS.md`, and — for the two CIFAR scans, which have no
   `best_configs.json` entry at all — the 290 legacy `*.jsonl` per scan read directly:
   * the shared `lrs_standard` goes 4 -> 8 points on the MLP headline scans, 4 -> 6 on
     nanoGPT, 4 -> 8 on CIFAR-CE and 4 -> 7 on CIFAR-label-reg. The two CIFAR lists differ on
@@ -381,9 +374,9 @@ ones to check against the quota before launch; the MNIST baselines and both CIFA
 deliberately keep `final` because `log` holds every state in RAM until flush
 (`ckpt-sampler.impl.md`) — ~1.6 GB per ResNet run.
 
-## Open items for the orchestrator
+## Open items
 
-1. **CIFAR-label-reg Sven lr is not extended.** C-B3 in `CHANGES_NEEDED.md` lists "the largest
+1. **CIFAR-label-reg Sven lr is not extended.** C-B3 in `EXPERIMENTS.md` lists "the largest
    [lr] on CIFAR label-reg" as a known edge, but `lrs: [0.1, 0.5, 1.0]` was left alone: lr=1 is
    the full min-norm (Gauss-Newton) step, so points above it are over-relaxation rather than a
    finer search, and two more points cost 2 k x 3 rtol x 5 seeds x 2 = **60 runs ~ 30 GPU-h**.
@@ -400,7 +393,7 @@ deliberately keep `final` because `log` holds every state in RAM until flush
    **50 runs ~ 25 GPU-h**. Same decision as before: extend, or accept and say so in the paper.
 2. **`rebuttal_fig5_cifar_paramfrac_scan` set point is still tentative.** k=64, lr=1.0,
    rtol=1e-3 are the pre-Gram classic best; `EXPERIMENTS.md` documents k=128, lr=0.1, rtol=1e-4
-   for the same figure (`grid_inventory.md` 5.5). It must be re-pointed at the BN-fixed
+   for the same figure (`campaign/grid_counts.md` 5.5). It must be re-pointed at the BN-fixed
    `cifar10_resnet_scan_labelRegression` results before phase 4 launches.
    `tests/test_configs.py::test_fig5_setpoint_is_flagged_tentative_exactly_while_it_is_tentative`
    now couples the values to the "STILL TENTATIVE" header marker, so neither can move without
@@ -422,7 +415,7 @@ deliberately keep `final` because `log` holds every state in RAM until flush
 5. **GPT-2-small is one seed and one grid-extension round short.** Re-admitted 2026-09-19
    and budgeted at 27 runs / ~125 GPU-h, which is already a third of the floor, so a
    second seed or a wider `lrs_standard` costs more than every P3 ablation put together.
-   Two consequences the orchestrator should plan for: (a) nothing here can be seed-averaged,
+   Two consequences to plan for: (a) nothing here can be seed-averaged,
    so a tie between Sven and a baseline is unresolvable without doubling the scan; (b) if
    the reconcile comes back with an lr edge, one half-decade for one optimizer is ~4 GPU-h
    and for all four is ~16. Its floor is an estimate, not a probe — see the cost section.

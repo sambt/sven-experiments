@@ -1,7 +1,7 @@
 #!/bin/bash
 # Freeze BOTH repos at HEAD into a content-addressed snapshot on labstore, so that
 # campaign jobs never import from the live working tree (~10 agents edit it while jobs
-# run; CONTRACTS.md "Stage 1 contracts / Execution").
+# run; EXPERIMENTS.md section 12 "Stage 1 contracts / Execution").
 #
 #   tools/deploy_snapshot.sh [--allow-dirty] [--force] [--results-root PATH]
 #                            [--base DIR] [--repo DIR] [--quiet]
@@ -88,7 +88,7 @@ if [ "$ALLOW_DIRTY" != 1 ]; then
     git -C "$REPO" status --short --untracked-files=no >&2
     git -C "$SVEN" status --short --untracked-files=no >&2
     echo "[deploy] the snapshot would NOT be the code you are testing." >&2
-    echo "[deploy] commit first (the orchestrator commits), or re-run with --allow-dirty" >&2
+    echo "[deploy] commit first, or re-run with --allow-dirty" >&2
     exit 2
   fi
 fi

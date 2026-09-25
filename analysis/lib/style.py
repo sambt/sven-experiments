@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# ONE results root for the whole analysis layer (CHANGES_NEEDED 4.1)
+# ONE results root for the whole analysis layer (EXPERIMENTS.md 4.1)
 # ---------------------------------------------------------------------------
 # `experiment_results` is renamed to `experiment_results_legacy_2026-09-18/` for
 # the campaign and a fresh, empty root takes its place, so every module has to
@@ -195,7 +195,7 @@ _cache_warned = set()
 def _write_cache(cache, payload):
     """Write the slim cache, tolerating a READ-ONLY results root.
 
-    The legacy root becomes read-only for the campaign (CHANGES_NEEDED 4.1), and
+    The legacy root becomes read-only for the campaign (EXPERIMENTS.md 4.1), and
     an unguarded ``mkdir`` / write there raises in the middle of a load that had
     already succeeded.  A failure is reported once per path and then ignored --
     the caller still gets its DataFrame, just no cache (pass ``cache_dir=`` to
@@ -218,7 +218,7 @@ def _stamp_root(df, root):
     """Record on every row WHICH results root the frame was loaded from.
 
     A notebook may load a scan from a foreign root (``results_root=LEGACY_ROOT`` in
-    ``critbatch_analysis`` / ``finetune_analysis``, the legacy-vs-fresh diff, a scan
+    ``finetune_analysis``, a scan
     that exists in both roots), and the frame then travels through helpers that take
     no root argument.  Without this column they fall back to the PROCESS default and
     read the wrong scan directory: ``analysis_helpers.expected_run_ids`` on a legacy
@@ -410,7 +410,7 @@ def expected_runs(config_keys, per_config, seed_count):
     configuration in it -- exactly the invisibility C-A2 removes.
 
     Without a manifest (``per_config`` empty) there is nothing to read, so the
-    binding rule stands (section 1 of CHANGES_NEEDED.md): a configuration is
+    binding rule stands (section 1 of EXPERIMENTS.md): a configuration is
     eligible when more than half of the scan's SEEDS finished, i.e. ``seed_count``
     is the expectation.  ``seed_count`` is also the per-key fallback for a key a
     partial manifest does not list.
@@ -624,7 +624,7 @@ def assert_selection_metric(metric, where=''):
         raise ValueError(
             f"{where or 'selection'}: {metric!r} is derived from the test split. "
             f"Selection uses the seed-mean final VALIDATION loss "
-            f"(CHANGES_NEEDED section 1); test outcomes are reported beside the "
+            f"(EXPERIMENTS.md section 5); test outcomes are reported beside the "
             f"configuration validation chose, never used to choose it.")
     return metric
 
@@ -914,7 +914,7 @@ def method_label(name):
 
 
 # ---------------------------------------------------------------------------
-# Two conventions shared by every notebook (see ANALYSIS_FIXES.md, A4 / A5)
+# Two conventions shared by every notebook (see EXPERIMENTS.md section 12, A4 / A5)
 # ---------------------------------------------------------------------------
 DIVERGED_FACTOR = 10.0
 
@@ -1024,7 +1024,7 @@ def band_legend(ax, color='0.45', alpha=0.25):
 
 
 # ---------------------------------------------------------------------------
-# Dataset / task names -- one spelling everywhere (ANALYSIS_FIXES C22)
+# Dataset / task names -- one spelling everywhere (EXPERIMENTS.md C22)
 # ---------------------------------------------------------------------------
 DATASET_TITLES = {
     'toy_1d':         'Toy 1D',

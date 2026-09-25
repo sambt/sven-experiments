@@ -1,4 +1,4 @@
-"""The paper's headline tables for the seven scans (ANALYSIS_PLAN.md section 2).
+"""The paper's headline tables for the seven scans (EXPERIMENTS.md.md section 2).
 
 Everything here is driven by ONE input, ``bench/best_configs.json`` -- the selection of
 record written by :mod:`tools.select_best` under the binding rule (eligible -> fewest
@@ -1080,7 +1080,7 @@ def run_efficiency(rows):
 
     * ``wall_s`` -- ``losses.total_time``: the run's own wall clock.  Honest ONLY in the
       timing pass, where the run had the GPU to itself; a scan run shared its GPU with up
-      to NPROC-1 other runs of the same job (``campaign/CONTRACTS.md``: 12 concurrent MLP
+      to NPROC-1 other runs of the same job (``EXPERIMENTS.md section 12``: 12 concurrent MLP
       runs on an A100) and, on the MLP scans, ran on a smaller GPU as well -- see
       :func:`efficiency_table`, which reports the GPU of each pass beside the ratio.
     * ``epoch_s`` / ``train_epoch_s`` -- ``avg_epoch_time`` / ``avg_train_time``.
@@ -1293,7 +1293,7 @@ def calibration_report(log_dir=None, scans=None):
 
     A fixed Adam-MLP step time, measured before and after each timing pass on the same
     machine.  Host CPU load, not the GPU, sets a launch-bound MLP step time (1.13 ms on a
-    quiet node vs 4.58 ms at 4/4 GPUs in ``campaign/stage0_reports/gpu.probe.md``), so a
+    quiet node vs 4.58 ms at 4/4 GPUs in ``EXPERIMENTS.md section 1.5``), so a
     start/end drift is the evidence for or against contamination of everything
     :func:`efficiency_table` reports for that scan.  ``drift`` is
     ``end/start - 1`` on the MEDIAN, which a single preemption cannot move.

@@ -1,7 +1,7 @@
 """Work claiming, done-marking and manifests for :func:`generic_scan.scan`.
 
 The bookkeeping side of the campaign runner (C-R1, C-R2, C-R3 and the "Dedup" /
-"Scheduling" decisions in ``campaign/CONTRACTS.md``). Like ``grid.py`` this
+"Scheduling" decisions in ``EXPERIMENTS.md section 12``). Like ``grid.py`` this
 module is **stdlib only** (no torch, no hydra, no numpy) so a launcher and
 ``tools/reconcile.py`` can use it without paying for a CUDA import.
 

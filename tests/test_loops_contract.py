@@ -1,4 +1,4 @@
-"""CPU-only tests for the "Training loops" interface of ``campaign/CONTRACTS.md``.
+"""CPU-only tests for the "Training loops" interface of ``EXPERIMENTS.md section 12``.
 
 Covers, for all four loops: caller-owned ``losses`` and the ``DivergedError``
 early stop (C-R1), the extra evaluation splits (C-E1), LBFGS's first-closure

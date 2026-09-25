@@ -11,7 +11,7 @@ cold ``import torch`` (1-2 min on this cluster); pass ``include_torch=False`` to
 skip it entirely.
 
 Campaign runs execute from an exported snapshot rather than the live working
-tree (``campaign/CAMPAIGN_STATUS.md``), which has no ``.git``. Each root is
+tree (``EXPERIMENTS.md``), which has no ``.git``. Each root is
 therefore resolved as:
 
 1. ``{root}/.git`` exists -> ask git. The check is on the root **itself** on

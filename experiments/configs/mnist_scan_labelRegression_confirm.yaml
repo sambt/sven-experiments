@@ -1,4 +1,4 @@
-# Confirmation companion of mnist_scan_labelRegression (Phase 5, pass D: CHANGES_NEEDED.md 4.2).
+# Confirmation companion of mnist_scan_labelRegression (Phase 5, pass D: EXPERIMENTS.md 4.2).
 # The selected configuration of every method (bench/best_configs.json ->
 # campaign/plan_phase5.yaml) on FRESH model seeds -- the numbers to report, so that the
 # headline table is not read off the seeds the hyperparameters were tuned on. Results land

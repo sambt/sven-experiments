@@ -6,7 +6,7 @@ the plain ``nn.Module`` that the standard / LBFGS / HIG / Jacobian-descent loops
 train directly.  Both repos must apply the same policy or the CIFAR comparison
 is between two different algorithms (F2/F3).
 
-Two policies, named by ``bn_mode`` (CONTRACTS.md):
+Two policies, named by ``bn_mode`` (EXPERIMENTS.md section 12):
 
 ``batch``
     Train with batch statistics and update the running statistics from the

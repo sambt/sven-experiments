@@ -5,7 +5,7 @@
  "results_root": "experiment_results",
  "config_dir": "experiments/configs",
  "rule_name": "full",
- "rule": "eligible (more than half the expected seeds finished) -> fewest diverged seeds -> lowest seed-mean final VALIDATION loss over the non-diverged runs; diverged = style.is_diverged; test metrics are never read (CHANGES_NEEDED.md section 1)",
+ "rule": "eligible (more than half the expected seeds finished) -> fewest diverged seeds -> lowest seed-mean final VALIDATION loss over the non-diverged runs; diverged = style.is_diverged; test metrics are never read (EXPERIMENTS.md section 5)",
  "default_groups": [
   "mode=all"
  ],

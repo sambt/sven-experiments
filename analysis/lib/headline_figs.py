@@ -18,7 +18,7 @@ What this module does own is the three things ``headline`` has no reason to:
 * **the Sven (k, lr, rtol) landscape**, with the selected point marked and every grid
   edge named, including ``k = B``, which is a natural maximum rather than an edge.
 
-Conventions are the binding ones (``campaign/ANALYSIS_CONTRACTS.md``): selection is
+Conventions are the binding ones (``EXPERIMENTS.md section 12``): selection is
 seed-mean final VALIDATION loss, test metrics are outcomes, diverged = failed and is
 counted, a band is +/- 1 std over seeds, display names come from
 :func:`style.method_label`, and colours from :data:`style.METHOD_COLORS`.
@@ -159,7 +159,7 @@ def provisional_banner(scan, results_root=None, force=False):
     print(f'PROVISIONAL -- {hl.scan_title(scan)} ({scan}) is still moving: {live} live '
           f'claim(s), {after} tuning-grid record(s) newer than the selection of record '
           f"({fresh.attrs['selection_generated_at']}).")
-    print('To bring this notebook up to date, in this order (ANALYSIS_PLAN decision 5):')
+    print('To bring this notebook up to date, in this order (EXPERIMENTS.md decision 5):')
     print('  1. tools/select_best.py  -- rewrite bench/best_configs.json;')
     print(f'  2. for every method whose selected configuration MOVED, re-run the '
           f'{hl.dir_name(scan, "confirm")}/ and {hl.dir_name(scan, "timing")}/ (and '

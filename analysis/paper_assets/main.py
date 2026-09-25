@@ -1,6 +1,6 @@
 """``paper_assets.main`` -- the headline assets of the ICLR revision.
 
-Owns (``campaign/PAPER_PLAN.md`` section 5):
+Owns (``analysis/paper_assets/README.md`` section 5):
 
 * **F1** ``figures_iclr/main/headline_curves.pdf`` -- validation loss vs epoch (top) and
   vs standalone synchronised training time (bottom) for the three headline tasks
@@ -26,7 +26,7 @@ Nothing here computes a number: every value comes from :mod:`headline`,
 Every figure above is declared in :data:`FIGURE_SPECS` and split into a *draw* half
 (``_headline_curves(ctx, opts) -> (fig, meta)``, which writes nothing) and a *save* half
 (:func:`build`, through :func:`common.save_fig`), so the same builder can be driven from
-``analysis/notebooks/paper/`` -- see ``campaign/FIGURE_API_CONTRACT.md`` and
+``analysis/notebooks/paper/`` -- see ``analysis/paper_assets/README.md`` and
 :mod:`paper_assets.notebook`.  Each figure's own knobs (which methods, which scans, the
 geometry, the legends, the line weights) are in its ``defaults``; the generic cosmetics
 (``xlabel``, ``ylim``, ``legend``, ...) come free from :func:`figspec.apply_opts`.
@@ -49,7 +49,7 @@ from . import figspec
 
 GROUP = 'main'
 
-#: the three tasks the revised main text leads with (PAPER_PLAN section 1)
+#: the three tasks the revised main text leads with (analysis/paper_assets/README.md section 1)
 HEADLINE_MAIN = ('polynomial_scan', 'mnist_scan_labelRegression', 'exp_nanogpt_speedrun')
 
 #: the four MLP/regression scans whose Sven hyperparameter sweeps are re-derived
@@ -87,7 +87,7 @@ SCAN_KEY = {
 
 #: The scans this module emits MACROS for.  One macro, one owner: a name defined in two
 #: of the four ``numbers_v2_*.tex`` files makes LaTeX abort, so the ownership follows the
-#: EXPLICIT half of ``PAPER_PLAN`` section 5.3 wherever the two group descriptions
+#: EXPLICIT half of ``analysis/paper_assets/README.md`` section 5.3 wherever the two group descriptions
 #: overlap.  G3 (``paper_assets.large``) names "both CIFAR scans' levels, accuracies,
 #: train-eval, costs and ranks" and "nanoGPT and GPT-2 levels, perplexities, costs", so
 #: all three of those scans' numbers come from ``numbers_v2_large.tex``; G1's generic
@@ -546,7 +546,7 @@ def _headline_curves(ctx, opts):
     figspec.paper_style(opts['font_fraction'])
     scans = list(opts['scans'])
     # epoch on top, standalone synchronised training time below (F1's two axes in
-    # PAPER_CONTRACTS.md); see _ALLSEED_COLS for why the top axis is epochs
+    # analysis/paper_assets/README.md); see _ALLSEED_COLS for why the top axis is epochs
     rows = list(opts['versus'])
     nrow, ncol = len(rows), len(scans)
     fig, axes = plt.subplots(nrow, ncol,
@@ -637,7 +637,7 @@ def _cost_memory(ctx, opts):
     pass -- one selected configuration at a time, alone on the GPU.  That is the only
     wall clock in the campaign that is a statement about the optimizer, and for the ResNet
     it is also the only measurement that exists (``profile_results_v3`` has no
-    ``cifar_resnet18`` directory, PAPER_PLAN risk 3).
+    ``cifar_resnet18`` directory, analysis/paper_assets/README.md risk 3).
     """
     import matplotlib.pyplot as plt
 
@@ -919,10 +919,10 @@ def _hparam_landscape(ctx, opts):
 # ---------------------------------------------------------------------------
 # F13 -- the all-methods / all-seeds appendix figures
 # ---------------------------------------------------------------------------
-#: F13's two axes, per ``PAPER_PLAN`` section 5.1 (``curve_figure`` "(epoch, time)").
+#: F13's two axes, per ``analysis/paper_assets/README.md`` section 5.1 (``curve_figure`` "(epoch, time)").
 #: The x axis is the EPOCH index, not the optimizer step: the batch size differs between
 #: scans, the paper's time-to-target claim (C7) is quoted in epochs, and
-#: ``PAPER_CONTRACTS.md`` names "log-y validation loss vs epoch and vs wall time" as the
+#: ``analysis/paper_assets/README.md`` names "log-y validation loss vs epoch and vs wall time" as the
 #: manuscript's visual language.  ``versus='step'`` is available from
 #: :func:`headline_figs.plot_curves` for a per-scan notebook, but no paper figure uses it.
 #: The training-loss column is a knob away -- ``columns=[['val', 'epoch'],
@@ -2642,7 +2642,7 @@ def _macros(ctx, figure_info=None):
                   source='headline.confirmation_table (gap_val_same_instance_rel)',
                   provisional=prov)
         # --- Sven's selected learning rate ------------------------------
-        # `num<Scan>SvenK` and `num<Scan>SvenRtol` belong to G4: PAPER_PLAN's T8 is
+        # `num<Scan>SvenK` and `num<Scan>SvenRtol` belong to G4: analysis/paper_assets/README.md's T8 is
         # "per scan: selected k, rtol, which cut binds, ...", so the two rank knobs are
         # defined in numbers_v2_spectra.tex and are not repeated here.  The learning
         # rate is not part of that table, so it stays with the headline numbers.

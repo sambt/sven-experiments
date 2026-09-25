@@ -7,7 +7,7 @@ Prints ONE line of JSON prefixed `[calib]`, so a timing job's log carries a meas
 the machine at the start and at the end of the pass and a contaminated pass can be found
 afterwards instead of being believed.
 
-Why this exists: `campaign/stage0_reports/gpu.probe.md` measured the same MNIST-Adam
+Why this exists: `EXPERIMENTS.md section 1.5` measured the same MNIST-Adam
 configuration at **1.13 ms** a step on a quiet node and **4.58 ms** on a node whose four
 GPUs were all busy -- a 4x difference in a number this pass exists to report, caused
 entirely by HOST CPU load, on a GPU nobody else was using. A launch-bound MLP step is a

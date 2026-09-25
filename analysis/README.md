@@ -1,9 +1,8 @@
 # analysis/ — layout
 
-Reorganised 2026-09-21: the notebooks are grouped under `notebooks/`, the shared
-helper modules live in `lib/`.  Nothing about the analysis itself changed — the
-conventions are still `ANALYSIS_FIXES.md` and `campaign/ANALYSIS_CONTRACTS.md`, and
-the outputs are still written to the same places.
+The notebooks are grouped under `notebooks/`, the shared helper modules live in
+`lib/`, and the paper's assets are built by `paper_assets/`. The conventions every
+notebook and helper is held to are in `EXPERIMENTS.md` §12 ("Analysis conventions").
 
 ```
 analysis/
@@ -13,7 +12,6 @@ analysis/
     mlp_studies/    the reviewer studies on the MLP tasks (P>N, batch size, kappa, ...)
     large_models/   CIFAR-10/ResNet18, nanoGPT, GPT-2
     profiling/      memory and step time (profile_results_v3/)
-    legacy/         legacy vs fresh: what the robustness fixes changed
     paper/          the MANUSCRIPT's figures: make, edit and save them (paper/README.md)
   lib/              the shared helper modules the notebooks import
   paper_assets/     the paper's figures/tables/number macros (python -m paper_assets);
@@ -22,7 +20,6 @@ analysis/
   plots_v2/         figures the notebooks write (one directory per notebook)
   tables/           markdown/LaTeX tables the notebooks export
   ckpt_spectra/     cached checkpoint Jacobian spectra (regenerable, gitignored)
-  legacy_repair/    offline example-weighted curves for the legacy results
   plots/            the pre-campaign figures, kept for reference
 ```
 
@@ -58,17 +55,15 @@ notebook walks up to this directory, chdir's here and puts `lib/` on `sys.path`.
 | `paired.py` | paired differences between two configurations, matched by model seed |
 | `budget.py` | tuning-budget disclosure from the existing scans |
 | `profile_helpers.py` | loading and plotting for the memory / step-time profile |
-| `legacy_diff.py` | legacy results against the fresh campaign |
-| `repair_legacy.py` | example-weighted validation curves for the legacy results, offline |
 
 `tests/` imports these the same way the notebooks do (`analysis/lib` on `sys.path`);
 the CPU suite for them is `tests/test_analysis_core.py`, `test_headline*.py`,
 `test_reviewer_figs.py`, `test_large_figs.py`, `test_spectra_figs.py`,
-`test_ckpt_tools.py`, `test_profile_helpers.py`, `test_legacy_diff.py` and
+`test_ckpt_tools.py`, `test_profile_helpers.py` and
 `test_paper_assets_*.py`.
 
-## Documents here
+## Documents
 
-* `ANALYSIS_FIXES.md` — the analysis conventions and the decisions behind them.
-* `WHAT_CHANGED.md` — what the robustness campaign changed relative to the legacy results.
-* `RERUNS_NEEDED.md` — the gaps: what is still legacy-only or missing data.
+* `EXPERIMENTS.md` (repo root) — what was run, and the binding conventions (§12).
+* `paper_assets/README.md` — the figure registry and the contract for adding a figure.
+* `notebooks/README.md` — the notebook index; `notebooks/paper/README.md` — editing the paper's figures.

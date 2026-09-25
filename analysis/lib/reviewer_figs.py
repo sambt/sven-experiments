@@ -10,7 +10,7 @@ What this module does NOT do
 ----------------------------
 It does not re-implement selection.  A configuration is chosen by
 :func:`analysis_helpers.best_per_method`, i.e. by the binding rule of
-``CHANGES_NEEDED.md`` section 1 -- **eligible -> fewest diverged -> seed-mean final
+``EXPERIMENTS.md`` section 1 -- **eligible -> fewest diverged -> seed-mean final
 VALIDATION loss** -- applied *inside each arm* of the study (each ``n_data``, each batch
 size, each knob value), because an arm is a separate experiment and a configuration tuned
 at one N has no claim on another.  Test loss and test accuracy are OUTCOMES: they are

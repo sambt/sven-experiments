@@ -24,7 +24,7 @@
 # child is SIGTERMed never runs the line after it (bash defers the signal and then exits
 # 128+15), so a self-renewing job that relies on the wall clock alone can never renew.
 #
-# Environment (CONTRACTS.md "Stage 1 contracts / Execution"): PYTHONPATH into the
+# Environment (EXPERIMENTS.md section 12 "Stage 1 contracts / Execution"): PYTHONPATH into the
 # snapshot, SV3_RESULTS_ROOT, PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,
 # OMP_NUM_THREADS=1. Overridable from outside: SV3_RESULTS_ROOT, WORKER_PY,
 # WORKER_LOG_ROOT, WORKER_SCHEDULER_OVERRIDE (set empty to drop `scheduler=claims`),
@@ -128,7 +128,7 @@ export SV3_RESULTS_ROOT=${SV3_RESULTS_ROOT:-$SNAP/experiment_results}
 # default allocator with per-step empty_cache). Exporting the new name too means the
 # setting the probe measured survives the version that stops honouring the old one:
 # `expandable_segments` is what halves peak reserved memory and what makes CIFAR Sven
-# fit a 19.6 GB MIG slice at all (campaign/stage0_reports/gpu.probe.md).
+# fit a 19.6 GB MIG slice at all (EXPERIMENTS.md section 1.5).
 export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 export PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF:-$PYTORCH_CUDA_ALLOC_CONF}
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1

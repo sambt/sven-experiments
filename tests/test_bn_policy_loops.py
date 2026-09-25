@@ -1,6 +1,6 @@
 """CPU-only tests for the BatchNorm policy of the training loops (C-E2, F2/F3).
 
-The probe from the appendix of ``FABLE_CRITIQUES.md``, inverted: on
+The probe from the appendix of ``EXPERIMENTS.md``, inverted: on
 ``SmallResNet`` the running statistics must be advanced by the *training* batch
 exactly once per optimizer step, evaluation must leave every buffer
 bit-identical, and ``bn_mode="frozen"`` must never touch them at all.  float64
@@ -161,7 +161,7 @@ def test_unknown_bn_mode_is_rejected():
 
 
 # ---------------------------------------------------------------------------
-# The primitives (CONTRACTS.md: track_running_stats=False, NOT .eval())
+# The primitives (EXPERIMENTS.md section 12: track_running_stats=False, NOT .eval())
 # ---------------------------------------------------------------------------
 
 def test_no_norm_stat_updates_keeps_batch_statistics_and_writes_nothing():

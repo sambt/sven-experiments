@@ -192,7 +192,7 @@ def test_booktabs_passes_through_a_full_column_spec():
 
 def test_booktabs_left_aligns_a_p_column_without_the_array_package():
     # a justified p{} column stretches "k=128, lr=0.5, rtol=0.3" across the column;
-    # `array`'s >{\raggedright\arraybackslash} is unavailable (PAPER_PLAN section 6),
+    # `array`'s >{\raggedright\arraybackslash} is unavailable (analysis/paper_assets/README.md section 6),
     # so the cell is wrapped in a group instead
     out = C.booktabs([{'cfg': 'k=128, lr=0.5', 'val': 1.355}],
                      align=['p{1.15in}', 'r'])
@@ -318,7 +318,7 @@ def test_clip_outliers_only_bites_on_a_blow_up():
 
 
 # ---------------------------------------------------------------------------
-# The figure registry (campaign/FIGURE_API_CONTRACT.md)
+# The figure registry (analysis/paper_assets/README.md)
 # ---------------------------------------------------------------------------
 #: the twelve figures this module owns, in the order build() writes them
 MAIN_FIGURES = ('headline_curves', 'headline_curves_all', 'cost_memory', 'k_sweeps',

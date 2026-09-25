@@ -1,4 +1,4 @@
-"""Paper assets for the LARGE models and the cost profile (``PAPER_PLAN`` section 5, module
+"""Paper assets for the LARGE models and the cost profile (``analysis/paper_assets/README.md`` section 5, module
 ``large``): F7, F11, F15 - T7, T15, T16, T17, T19 - macro group G3.
 
 Scope, and where each number comes from:
@@ -24,7 +24,7 @@ profile v3   step time and peak memory per method and architecture, the flat ste
 ===========  =========================================================================
 
 Three rules this module follows, because three of its inputs were still moving while the
-paper was written (``PAPER_PLAN`` section 7):
+paper was written (``analysis/paper_assets/README.md`` section 7):
 
 1. **Nothing is cached and nothing is typed.**  Every figure, cell and macro is computed
    from :mod:`headline`, :mod:`large_figs` and :mod:`profile_helpers` at build time, and
@@ -50,7 +50,7 @@ paper was written (``PAPER_PLAN`` section 7):
    ResNet IS profiled, so App. D and Q quote v3 for all five architectures.
 
 The figures follow the module contract of :mod:`paper_assets.figspec`
-(``campaign/FIGURE_API_CONTRACT.md``): :data:`FIGURE_SPECS` maps the PDF stem to a
+(``analysis/paper_assets/README.md``): :data:`FIGURE_SPECS` maps the PDF stem to a
 :class:`figspec.FigureSpec` whose ``draw(ctx, opts)`` returns ``(fig, meta)`` and writes
 nothing, :func:`context` is the :class:`Inputs` those draw functions take, and
 :func:`build` is the one save path.  The cosmetics that used to be hard-coded in a
@@ -101,7 +101,7 @@ NANOGPT = 'exp_nanogpt_speedrun'
 GPT2 = lf.GPT2_SCAN
 FIG5 = lf.FIG5_SCAN
 
-#: macro scan keys (``PAPER_PLAN`` section 5.3), per scan directory
+#: macro scan keys (``analysis/paper_assets/README.md`` section 5.3), per scan directory
 SCAN_KEY = {'cifar10_resnet_scan_labelRegression': 'CifarLR',
             'cifar10_resnet_ce_scan': 'CifarCE',
             NANOGPT: 'Nanogpt', GPT2: 'GptTwo', FIG5: 'FigFive'}
@@ -752,7 +752,7 @@ class Inputs:
 # ---------------------------------------------------------------------------
 # The figures.  Every draw function is ``(ctx, opts) -> (fig, meta)`` and writes
 # NOTHING: the only save path is :func:`common.save_fig`, reached either from
-# :func:`build` or from the notebook API (``campaign/FIGURE_API_CONTRACT.md``).  What
+# :func:`build` or from the notebook API (``analysis/paper_assets/README.md``).  What
 # used to be a hard-coded cosmetic is a key of the figure's ``defaults`` below, and the
 # DEFAULT IS WHAT THE BUILDER DID, so an empty override file redraws the paper exactly.
 # ---------------------------------------------------------------------------

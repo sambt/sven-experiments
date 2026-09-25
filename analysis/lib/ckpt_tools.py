@@ -3,7 +3,7 @@
 The per-step spectra the optimizer logs are of a *different random batch* on
 every logged step and are capped at B values by construction, so comparing them
 across training mixes batch noise with genuine evolution and they exist only
-along Sven's trajectory (``FABLE_CRITIQUES.md``, "Why per-step batch spectra are
+along Sven's trajectory (``EXPERIMENTS.md``, "Why per-step batch spectra are
 not enough" / F19).  The campaign's ``checkpoints: log`` runs make the honest
 measurement possible offline:
 

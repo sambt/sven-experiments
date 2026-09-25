@@ -14,7 +14,7 @@
 # the GPU. Submit it with `bench/submit_timing_phase5.sh` (dry run by default); it is not a
 # worker-pool job and must not be launched by `tools/launch_campaign.py`.
 #
-# WHY SERIAL, AND WHY ALL OF ONE SCAN IN ONE JOB. `campaign/stage0_reports/gpu.probe.md`
+# WHY SERIAL, AND WHY ALL OF ONE SCAN IN ONE JOB. `EXPERIMENTS.md section 1.5`
 # measured an identical MNIST-Adam configuration at 1.13 ms a step on a quiet node and
 # 4.58 ms on a node at 4/4 GPUs: a launch-bound MLP step time is set by HOST CPU load, not
 # by the GPU, so a claim-queue pool on the OTHER GPUs of the same node corrupts these
@@ -33,7 +33,7 @@
 # Environment (all set by the submit script; every one of them has a default here so the
 # script also runs by hand):
 #   SCAN     the parent scan name, e.g. mnist_scan_ce (this job runs ${SCAN}_timing)
-#   SNAP     deploy snapshot to run from (CONTRACTS.md: never the live tree)
+#   SNAP     deploy snapshot to run from (EXPERIMENTS.md section 12: never the live tree)
 #   JSON     bench/best_configs.json, the SELECTION (schema 2, tools/select_best.py)
 #   ROOT     SV3_RESULTS_ROOT
 #   PY       python
@@ -49,7 +49,7 @@ PY=${PY:-${SV3_REPO:-$HOME/sven-experiments}/.venv/bin/python}
 ONLY=${ONLY:-}
 CALIB_STEPS=${CALIB_STEPS:-1000}
 
-# C-T1/C-T3 and CONTRACTS.md "Execution": the snapshot and nothing but the snapshot,
+# C-T1/C-T3 and EXPERIMENTS.md section 12 "Execution": the snapshot and nothing but the snapshot,
 # one thread, expandable segments, and `empty_cache` left at its new default of false (the
 # per-step empty_cache made CIFAR Sven 4.5x slower, 841 -> 187 ms/step, and was the sole
 # source of its step-time variance).

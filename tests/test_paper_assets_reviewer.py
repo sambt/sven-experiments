@@ -18,7 +18,7 @@ worse -- a table that compiles and is wrong.
 
 **The figure registry, on a stubbed context** (always run).  Every figure is declared with
 its own knobs and draws from a ``draw(ctx, opts)`` that writes nothing
-(``campaign/FIGURE_API_CONTRACT.md``), so a panel can be re-tuned in a notebook.  These
+(``analysis/paper_assets/README.md``), so a panel can be re-tuned in a notebook.  These
 check the two halves really are split (a draw that writes would put an unreviewed figure
 into the manuscript), that ``meta`` carries the provenance record and the axes the
 notebook edits, that the knobs are pinnable (YAML round-trip) and that they actually
@@ -215,7 +215,7 @@ def test_dry_run_declares_every_planned_asset_and_writes_nothing(tmp_path):
     assert rep['status'] == 'dry run'
     figs = {Path(p).stem for p in rep['figures']}
     tabs = {Path(p).stem for p in rep['tables']}
-    # PAPER_PLAN section 5: F4 F5 F6 F8 F10 F14 and T6 T11 T12 T13 T14 T21
+    # analysis/paper_assets/README.md section 5: F4 F5 F6 F8 F10 F14 and T6 T11 T12 T13 T14 T21
     assert {'budget', 'overparam', 'batchsize', 'kappa', 'knobs',
             'divergence'} <= figs
     assert {'budget', 'equal_budget', 'overparam', 'batchsize', 'kappa',

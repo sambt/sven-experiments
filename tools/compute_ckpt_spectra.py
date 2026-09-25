@@ -29,7 +29,7 @@ Examples
         --probe 2000 --epochs-only --seeds 3000 --methods Sven,Adam
 
 Anything heavier than a couple of minutes goes through
-``campaign/run_cpu_tests.sh`` (CPU float64 is fine at these sizes); the 40-minute
+a CPU batch job (CPU float64 is fine at these sizes); the 40-minute
 limit of that lane is why ``--methods`` / ``--seeds`` exist.  As a cost guide, on
 four cores: a 10,000 x 593 toy trajectory is ~28 s per run (34 checkpoints), a
 512-row MNIST one ~45 s, and a 2,000-row MNIST one ~11 min (21 checkpoints) --
