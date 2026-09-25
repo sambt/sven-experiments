@@ -1,6 +1,0 @@
-| n_data | Sven rank, legacy | Sven rank, fresh | change | best method, legacy | best method, fresh | Sven config, legacy | Sven config, fresh |
-|---|---|---|---|---|---|---|---|
-| 170 | 2/12 | 1/12 | -1 | Stochastic L-BFGS | Sven | k=170, lr=0.05, rtol=0.01 | k=170, lr=0.05, rtol=0.01 |
-| 340 | 2/12 | 2/12 | = | Stochastic L-BFGS | Stochastic L-BFGS | k=170, lr=0.05, rtol=0.01 | k=340, lr=0.02, rtol=0.001 |
-| 675 | 2/12 | 2/12 | = | Stochastic L-BFGS | Stochastic L-BFGS | k=675, lr=0.05, rtol=0.001 | k=337, lr=0.02, rtol=0.001 |
-| 1350 | 2/12 | 4/12 | +2 | Stochastic L-BFGS | Stochastic L-BFGS | k=675, lr=0.05, rtol=0.001 | k=675, lr=0.02, rtol=0.001 |
