@@ -1080,11 +1080,13 @@ def _fig5_quality(inp, opts):
     handles = [(Line2D([], [], color='C0', lw=1.2), 'validation'),
                (Line2D([], [], color='C1', lw=1.2), 'test')]
     drawn = _fig5_drawn(inp, opts)
-    for g, (ls, marker) in zip(drawn, styles):
-        # with one configuration its role needs no saying
-        role = f' ({g["role"]})' if len(drawn) > 1 else ''
-        handles.append((Line2D([], [], color='0.35', lw=1.2, ls=ls, marker=marker,
-                               ms=ms), f'{g["cfg"]["label"]}{role}'))
+    # with ONE configuration drawn the caption names it and a legend entry is an
+    # orphan; the per-configuration entries only matter when several are overlaid
+    if len(drawn) > 1 or opts['config_legend']:
+        for g, (ls, marker) in zip(drawn, styles):
+            role = f' ({g["role"]})' if len(drawn) > 1 else ''
+            handles.append((Line2D([], [], color='0.35', lw=1.2, ls=ls, marker=marker,
+                                   ms=ms), f'{g["cfg"]["label"]}{role}'))
     # the hollow-marker entry only when some drawn point IS hollow
     if any((_num(r['finished']) < _num(r['attempted'])) for g in drawn
            for _, r in g['table'].iterrows()):
@@ -1327,8 +1329,9 @@ def _profile_methods(inp, opts):
                              gridspec_kw={'wspace': opts['wspace']})
     fs = _title_fs(opts)
     for ax, (value, title) in zip(np.atleast_1d(axes), panels):
-        ph.plot_heatmap(inp.profiles, ax, value=value, archs=archs,
-                        fmt=opts['fmt'])
+        ph.plot_heatmap(inp.profiles, ax, value=value, archs=archs, fmt=opts['fmt'],
+                        mark_nonfinite=opts['mark_nonfinite'],
+                        status_text=opts['status_text'])
         ax.set_title(title, fontsize=fs)
         for text in ax.get_xticklabels():
             text.set_fontsize(opts['tick_fontsize'])
@@ -1663,6 +1666,7 @@ FIGURE_SPECS = figspec.check_defaults({
         defaults={
             'configurations': 'selected',            # or 'all': every one on disk, dashed
             'styles': [list(p) for p in FIG5_STYLES],
+            'config_legend': False,                  # name a lone configuration in the key
             'chance_line': True,                     # the 10-class chance accuracy
             'seed_note': True, 'note_fontsize': 5.2,
             'xlim_pad_lo': 0.85, 'xlim_pad_hi': 1.5,
@@ -1744,6 +1748,8 @@ FIGURE_SPECS = figspec.check_defaults({
             'panels': [['rel_time', 'Step time / Adam'],
                        ['rel_mem', 'Peak memory / SGD']],
             'fmt': '{:.3g}', 'tick_fontsize': 6.5, 'wspace': 0.04,
+            'mark_nonfinite': False,         # '*' on a timed run whose params diverged
+            'status_text': {'infeasible': '--'},   # what an unmeasured cell prints
             'share_method_labels': True,             # method names on the left panel only
             'fraction': 1.0, 'aspect': 0.82, 'style_fraction': None,
             'title_fontsize': None,

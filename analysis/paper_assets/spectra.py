@@ -1214,7 +1214,7 @@ def _online_mechanism(data, opts):
     keep.set_xlim(0, 1)
     keep.set_xlabel('Training progress')
     keep.set_ylabel('Batch residual kept')
-    keep.set_title('(a) energy in the inverted directions')
+    keep.set_title('(a) residual fraction kept')
     disc.axhline(floor, color='0.6', lw=0.8, ls=':', zorder=0)
     disc.annotate(f'floor $10^{{{int(round(math.log10(floor)))}}}$ '
                   f'(nothing discarded)', xy=(0.02, floor), xytext=(0, 2),
@@ -1223,7 +1223,7 @@ def _online_mechanism(data, opts):
     disc.set_xlim(0, 1)
     disc.set_xlabel('Training progress')
     disc.set_ylabel('Batch residual discarded')
-    disc.set_title('(b) what the cut discards')
+    disc.set_title('(b) residual fraction discarded')
     rank.set_yscale('log')
     rank.set_xlim(0, 1)
     rank.set_xlabel('Training progress')
@@ -2177,15 +2177,10 @@ def table_mechanism(data, name='spectra_mechanism'):
     energy where a probe cache exists, the recorded Gram float32 floor, and the seed basis.
     """
     mech = data.mech.set_index('scan')
-    probe = _probe_at_selected_k(data)
-    spread = _rank_spread(data).set_index('scan')
-    disc = _discard_table(data)
-    disc = disc.set_index('scan') if len(disc) else disc
     rows = []
     for scan in data.scans:
         d = data.diags[scan]
         m = mech.loc[d.title]
-        pe = probe[probe['scan'] == scan] if len(probe) else probe
         rows.append({
             'Scan': SCAN_SHORT.get(scan, d.title),
             c.Raw('$k$ / $B$'): c.Raw(f'${d.k}$ / ${d.B}$'),
@@ -2196,14 +2191,9 @@ def table_mechanism(data, name='spectra_mechanism'):
             c.Raw(r'Kept, first $\to$ final'): c.Raw(
                 f'{c.fmt_pct(m["energy_used_first"], 2)} $\\to$ '
                 f'{c.fmt_pct(m["energy_used_final"], 2)}'),
-            'Discarded, final': (_sci(float(disc.loc[scan, 1.0]))
-                                 if len(disc) and scan in disc.index else c.Raw('--')),
-            'Probe top-$k$': (c.fmt_pct(float(pe['top_k'].iloc[0]), 2) if len(pe)
-                              else c.Raw('--')),
-            'Rank spread': (c.fmt_pct(float(spread.loc[scan, 'rel']), 1)
-                            if scan in spread.index else c.Raw('--')),
-            'Seeds': c.fmt_counts(int(m['n_seeds']), data.seed_target.get(scan, 0)),
         })
+        # retired from the paper's copy: "Discarded, final" (1 - Kept, and the figure's
+        # panel (c)), "Probe top-k" (the probe-energy table), "Rank spread" and "Seeds"
     prov = c.provenance(
         functions=['spectra_figs.mechanism_table', 'spectra_figs.energy_in_top',
                    'spectra_figs.used_rank', 'spectra_figs.probe_energy',
@@ -2211,28 +2201,20 @@ def table_mechanism(data, name='spectra_mechanism'):
         scans=[hl.dir_name(s, 'diag') for s in data.scans], reads=[c.results_root()],
         provisional=data.is_provisional(data.scans))
     path = c.write_table(
-        name, rows, align=['l', 'r', 'r', 'c', 'c', 'c', 'r', 'r', 'r', 'c'], fit=True,
+        name, rows, align=['l', 'r', 'r', 'c', 'c', 'c'], fit=True,
         provenance_record=prov,
         caption=('What the truncation does, per scan. "Used" is the number of directions '
                  'actually inverted, min(k, rtol-rank), at the first and last logged '
-                 'step; "Kept" the fraction of that batch\'s residual they carry and '
-                 '"Discarded" the remainder at the end of training; "Probe top-k" the '
-                 'same fraction measured on the fixed float64 probe set at the same k. '
-                 '"Rank spread" is the relative seed std of the final used rank. Seed '
+                 'step; "Kept" the fraction of that batch\'s residual they carry. Seed '
                  'means over the diag pass.'),
         label='tab:spectra-mechanism',
-        notes=['online per-batch Gram spectra (float32 model); the probe column is the '
-               'offline float64 measurement and is a different object',
+        notes=['online per-batch Gram spectra (float32 model)',
                '"Binds" is read at the LAST logged step; the verdict at the FIRST step '
                f'is the macro num<Scan>SvenBindsFirst and it DIFFERS on {_binds_moved(data)}'
                ', so a sentence about which cut binds must say when',
-               'Seeds = the diag-pass seeds at the selected configuration / the seeds '
-               'the pass intends',
                'the recorded Gram round-off floor is \\numSpectraNoiseFloorRel times '
                'sigma_max on every scan, and \\numSpectraRtolBelowFloor of the selected '
-               'rtol values lies BELOW it -- worth a clause in the caption',
-               'the "Discarded" column is floored at 1e-8, the point below which the cut '
-               'throws away nothing float32 can see'])
+               'rtol values lies BELOW it -- worth a clause in the caption'])
     return path, rows
 
 
@@ -2306,9 +2288,11 @@ def table_probe_energy(data, name='spectra_probe_energy'):
                                                  else '')),
                 # the unit is in the header, once; one decimal is the resolution the
                 # text quotes these at
-                'Top-$k$ energy (\\%)': _pct_bare(r['top_k']),
+                'Top-$k$ fraction (\\%)': _pct_bare(r['top_k']),
                 'Seed std (\\%)': _pct_bare(r['top_k_std']),
-                'Reachable (\\%)': _pct_bare(r['in_span']),
+                # "Reachable" (||P_U r||^2 / ||r||^2, k-independent) is retired from
+                # the paper's copy: it is 99.5-100 % everywhere and, repeated on every
+                # k row, read as a top-k number
             })
     prov = c.provenance(
         functions=['spectra_figs.probe_energy', 'spectra_figs.cumulative_energy',
@@ -2316,13 +2300,10 @@ def table_probe_energy(data, name='spectra_probe_energy'):
         scans=[sf.probe_scan_name(s) for s in data.probe_methods],
         reads=[str(ct.SPECTRA_DIR)])
     return c.write_table(
-        name, rows, align=['l', 'l', 'r', 'r', 'r', 'r'],
+        name, rows, align=['l', 'l', 'r', 'r', 'r'],
         midrules=single, double_midrules=double, provenance_record=prov,
-        caption=('Residual energy inside the top-k PROBE directions (offline, float64), '
-                 'averaged over 5 model seeds. "Reachable" is ||P_U r||^2/||r||^2, the '
-                 'part of the probe residual the Jacobian column space can reach at all '
-                 '-- below 1 only where the probe set has more rows than the model has '
-                 'parameters. An asterisk marks the selected k.'),
+        caption=('Fraction of the residual inside the top-k PROBE directions (offline, float64), '
+                 'averaged over 5 model seeds. An asterisk marks the selected k.'),
         label='tab:spectra-probe-energy',
         notes=['offline float64 Jacobian on a fixed probe set: a different object from '
                'the per-batch online spectra']), rows

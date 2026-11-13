@@ -1120,10 +1120,13 @@ def _rank_heatmap(ctx, opts):
                             fontsize=opts['annot_fontsize'], color='0.45')
                     continue
                 v = grid[i, k]
-                # the label has to stay legible at both ends of the colormap
+                # the label has to stay legible at both ends of the colormap: one
+                # colour that contrasts with both (``annot_color``), or the classic
+                # white-on-dark / black-on-light split when it is None
                 ax.text(k, i, f'{ranks[(m, s)]:d}', ha='center', va='center',
-                        fontsize=opts['annot_fontsize'],
-                        color=('white' if v < opts['dark_below'] else 'black'))
+                        fontsize=opts['annot_fontsize'], fontweight=opts['annot_weight'],
+                        color=(opts['annot_color'] or
+                               ('white' if v < opts['dark_below'] else 'black')))
         ax.set_xticks(range(len(scans)))
         # the field size goes INLINE, not on a second line: rotated two-line ticks
         # overlap their neighbours at this panel width
@@ -1619,6 +1622,9 @@ FIGURE_SPECS = figspec.check_defaults({
             cmap='viridis_r',           # dark = best; reversed so good reads heavy
             missing_color='0.93',       # the dash cells (not run / no finite value)
             dark_below=0.45,            # normalised rank under this gets white text
+                                        # (only when annot_color is None)
+            annot_color='magenta',      # one text colour for every cell; None = split
+            annot_weight='bold',
             annot_fontsize=5.0,
             show_field_size=True,       # "MNIST-LR (14)": the field size of that scan
             xtick_rotation=45,          # seven task names do not fit a 2.2 in panel flat
@@ -1808,7 +1814,6 @@ def _t1_headline(ctx, name='headline_confirm', compact=False):
                 'Test acc.': (C.fmt_pct(c.get('acc_conf'), 1)
                               if C.finite(c.get('acc_conf')) else C.Raw('--')),
                 'fin./att.': _counts_cell(c),
-                'Ep. to tgt.': _epochs_cell(ctx, scan, m),
             }
             if not compact:
                 row['s/ep.'] = C.fmt_sig(e['epoch_s'], 3) if e is not None else C.Raw('--')
@@ -1818,9 +1823,6 @@ def _t1_headline(ctx, name='headline_confirm', compact=False):
     notes = [
         'confirmation seeds (5 fresh model seeds; the two synthetics also carry 3 data '
         'seeds, so 15 runs); mean +/- 1 std over seeds',
-        'the target is the median method\'s confirmation-seed final validation loss '
-        '(headline.TARGET_MULTIPLIERS); a bracket gives reached/attempted when not '
-        'every run got there',
         's/epoch and peak memory come from the standalone timing pass, one run per GPU',
         'dagger on fin./att. = more than half the confirmation runs failed, so the mean '
         'beside it is a mean over the survivors',
@@ -1831,15 +1833,14 @@ def _t1_headline(ctx, name='headline_confirm', compact=False):
     ]
     rec = C.provenance(
         functions=['headline.confirmation_table', 'headline.confirmation_view',
-                   'headline.efficiency_table', 'headline.time_to_target_table',
-                   'headline.epochs_to_target'],
+                   'headline.efficiency_table'],
         scans=[hl.dir_name(s, k) for s in HEADLINE_MAIN
                for k in ('', 'confirm', 'timing')],
         note='T1, the main-text results table',
         methods_per_scan=dict(groups_of),
         provisional=sorted(ctx.provisional.intersection(HEADLINE_MAIN)))
     return C.write_table(name, rows, provenance_record=rec, fit=True,
-                         align=['l', 'p{0.95in}'] + ['r'] * (6 if compact else 8),
+                         align=['l', 'p{0.95in}'] + ['r'] * (5 if compact else 7),
                          midrules=midrules, notes=notes,
                          caption=('Headline results on the confirmation seeds. Sven is '
                                   'second on the polynomial scan, third on MNIST and '
@@ -2016,13 +2017,20 @@ def _t5_confirmation(ctx, scan):
     conf = ctx.conf(scan)
     has_acc = pd.to_numeric(conf.get('acc_conf'), errors='coerce').notna().any()
     has_tre = pd.to_numeric(conf.get('treval_conf'), errors='coerce').notna().any()
-    has_ds = bool(conf.attrs.get('data_seeds')) and len(conf.attrs['data_seeds']) > 1
+    # one notation per table: if any loss in it needs the \times 10^n form (1D runs
+    # from 1e-9 to 1e-3), every loss cell takes it, rather than a column that switches
+    # to decimals halfway down
+    losses = pd.to_numeric(pd.concat([conf.get(k, pd.Series(dtype=float))
+                                      for k in ('val_conf', 'test_conf', 'treval_conf')]),
+                           errors='coerce').dropna()
+    sci = bool(len(losses)) and (losses.abs().min() < 1e-4 or losses.abs().max() >= 1e5)
     rows = []
     for _, r in conf.iterrows():
         row = {'Method': hl.display_name(r['method']),
                'Selected configuration': C.latex_escape(r['config']),
-               'Val. loss': C.fmt_pm(r['val_conf'], r['val_conf_std'], 4),
-               'Test loss': C.fmt_pm(r.get('test_conf'), r.get('test_conf_std'), 4)}
+               'Val. loss': C.fmt_pm(r['val_conf'], r['val_conf_std'], 4, sci=sci),
+               'Test loss': C.fmt_pm(r.get('test_conf'), r.get('test_conf_std'), 4,
+                                     sci=sci)}
         # a wrapping p-column carries the configuration; the numeric columns stay right
         # aligned, so the table is as wide as its NUMBERS and not as its longest string
         if has_acc:
@@ -2030,33 +2038,24 @@ def _t5_confirmation(ctx, scan):
                                 if C.finite(r.get('acc_conf')) else C.Raw('--'))
         if has_tre:
             row['Train (eval)'] = C.fmt_pm(r.get('treval_conf'),
-                                           r.get('treval_conf_std'), 4)
-        row['fin./att.'] = _counts_cell(r)
-        row['Val. (tune)'] = C.fmt_pm(r['val_tune'], r['val_tune_std'], 4)
-        row['tune fin./att.'] = C.fmt_counts(r['fin_tune'], r['att_tune'])
-        if has_ds:
-            row['Betw. inst.'] = C.fmt_sig(r.get('val_conf_dsspread'), 3)
-            row['Optimism'] = C.fmt_pct(r.get('gap_val_same_instance_rel'), 1,
-                                        signed=True)
-        else:
-            row['Optimism'] = C.fmt_pct(r.get('gap_val_rel'), 1, signed=True)
+                                           r.get('treval_conf_std'), 4, sci=sci)
+        # the tuning-seed value, the two finished/attempted counts, the selection
+        # optimism and the between-instance spread are retired from the paper's copy:
+        # the paired figure and the data-seed table (T20) carry what they said, and
+        # the row order carries the ranking
         rows.append(row)
     notes = [
         f'{hl.scan_title(scan)}: confirmation seeds, mean +/- 1 std over seeds, '
         f'sorted by validation loss -- the row order is the ranking',
-        '"Optimism" is (confirmation - tuning)/tuning on the problem instance the '
-        'tuning ran on; positive means the tuning seeds flattered the configuration',
     ]
-    if has_ds:
-        notes.append('"Between-instance" is the std of the three per-data-seed means: '
-                     'variation of the random problem, not the seed band')
     rec = C.provenance(
         functions=['headline.confirmation_table', 'headline.confirmation_view'],
         scans=[hl.dir_name(scan, k) for k in ('', 'confirm')],
         note=f'T5 confirmation table for {scan}',
         provisional=sorted(ctx.provisional.intersection({scan})))
     return C.write_table(f'confirmation_{scan}', rows, provenance_record=rec, fit=True,
-                         align=['l', 'p{1.15in}'] + ['r'] * 10, notes=notes,
+                         align=['l', 'p{1.15in}'] + ['r'] * (len(rows[0]) - 2),
+                         notes=notes,
                          caption=f'{hl.scan_title(scan)}: every method\'s selected '
                                  f'configuration on the confirmation seeds.',
                          label=f'tab:confirm{SCAN_KEY.get(scan, scan)}')

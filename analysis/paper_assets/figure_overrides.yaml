@@ -10,6 +10,15 @@ headline_curves_all:
   exclude:
     mnist_scan_labelRegression:
     - SOAP
+  xlabel:
+    4: Training time (s), standalone run
+  ylim:
+    1:
+    - null
+    - 0.2
+    4:
+    - null
+    - 0.2
 headline_curves:
   ylim:
     1:
@@ -20,3 +29,23 @@ headline_curves:
     - 0.2
   xlabel:
     4: Training time (s), standalone run
+allseed_curves:
+  exclude:
+    mnist_scan_labelRegression:
+    - SOAP
+  ylim:
+    4:
+    - null
+    - 0.2
+    5:
+    - null
+    - 0.2
+  xlabel:
+    5: Training time (s), standalone run
+cifar_curves_time:
+  xlabel: Training time (s)
+fig5_cost:
+  xlabel: Parameter fraction $f$
+nanogpt:
+  xlabel:
+    1: Training time (s)
