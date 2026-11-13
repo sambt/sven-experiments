@@ -620,9 +620,13 @@ def plot_method_bars(df, arch, ax, value='step_ms', study='methods', log=True):
     ax.set_title(ARCH_TITLES.get(arch, arch)); ax.grid(axis='x', ls='--', alpha=0.5)
 
 
-def plot_heatmap(df, ax, value='rel_time', study='methods', archs=None, methods=None, fmt='{:.1f}'):
-    """methods x architectures grid of a relative cost; OOM / infeasible / n/a cells are
-    labelled, and a measured cell whose parameters went non-finite carries a ``*``."""
+def plot_heatmap(df, ax, value='rel_time', study='methods', archs=None, methods=None, fmt='{:.1f}',
+                 mark_nonfinite=True, status_text=None):
+    """methods x architectures grid of a relative cost.  A cell with no measurement prints
+    its status (``status_text`` overrides :data:`STATUS_NOTE` per status, e.g.
+    ``{'infeasible': '--'}``); with ``mark_nonfinite`` a measured cell whose parameters
+    went non-finite carries a ``*``."""
+    notes = {**STATUS_NOTE, 'infeasible': 'inf.', **(status_text or {})}
     d = df[df.study == study]
     archs = archs or [a for a in ARCH_ORDER if a in set(d.arch)]
     methods = methods or (SVEN + [m for m in COLORS if m not in SVEN])
@@ -634,8 +638,9 @@ def plot_heatmap(df, ax, value='rel_time', study='methods', archs=None, methods=
             if r.empty: txt[i][j] = '--'; continue
             r = r.iloc[0]
             if r.status in TIMED and r[value] == r[value]:
-                M[i, j] = r[value]; txt[i][j] = fmt.format(r[value]) + ('' if r.status == 'ok' else '*')
-            else: txt[i][j] = {'infeasible': 'inf.'}.get(r.status) or STATUS_NOTE.get(r.status, r.status)
+                M[i, j] = r[value]
+                txt[i][j] = fmt.format(r[value]) + ('*' if mark_nonfinite and r.status != 'ok' else '')
+            else: txt[i][j] = notes.get(r.status, r.status)
     im = ax.imshow(np.log10(M), cmap='viridis_r', aspect='auto')
     for i in range(len(methods)):
         for j in range(len(archs)):

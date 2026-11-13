@@ -42,3 +42,8 @@ experiment_results_legacy_2026-09-18
 
 # the ICLR manuscript is its own (Overleaf-synced) git repo
 iclr_manuscript/
+
+# local-only material: other venues, talks, explainers
+neurips/
+slides/
+expository_material/

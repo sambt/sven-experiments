@@ -367,20 +367,15 @@ def test_every_table_is_compile_safe_and_has_one_row_per_record(builder, data,
     assert body.count(r'\\') >= len(rows)
 
 
-def test_the_mechanism_table_keeps_the_two_measurements_apart(data, paper_dirs):
+def test_the_mechanism_table_carries_only_the_online_columns(data, paper_dirs):
+    """The probe-set energy, the between-seed rank spread, the discarded complement and
+    the seed counts are retired from T8 (the probe-energy table, panel (c) of F2 and
+    the protocol table carry them); what is left is the online measurement only."""
     path, rows = S.table_mechanism(data)
+    assert set(rows[0]) == {'Scan', '$k$ / $B$', 'rtol', 'Binds',
+                            r'Used, first $\to$ final', r'Kept, first $\to$ final'}
     by_scan = {r['Scan']: r for r in rows}
-    # CIFAR-CE has no probe cache: the probe column must be a dash, never the online value
-    assert str(by_scan[S.SCAN_SHORT[SCAN_B]]['Probe top-$k$']) == '--'
-    assert '61.82' in str(by_scan[S.SCAN_SHORT[SCAN_A]]['Probe top-$k$'])   # 0.5882+0.03
-
-
-def test_the_mechanism_table_prints_finished_over_attempted(data, paper_dirs):
-    _path, rows = S.table_mechanism(data)
-    counts = {r['Scan']: str(r['Seeds']) for r in rows}
-    assert counts[S.SCAN_SHORT[SCAN_A]] == '3/3'
-    # the re-selected scan rests on fewer seeds than the pass intends, and says so
-    assert counts[S.SCAN_SHORT[SCAN_B]] == '2/3'
+    assert '$\\to$' in str(by_scan[S.SCAN_SHORT[SCAN_A]][r'Kept, first $\to$ final'])
 
 
 def test_the_low4_table_reports_a_tie_as_a_tie(data, paper_dirs):

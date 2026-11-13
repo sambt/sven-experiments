@@ -209,11 +209,12 @@ def check_raw(text, where=''):
 # ---------------------------------------------------------------------------
 # Number formatting (the only place a number becomes a string)
 # ---------------------------------------------------------------------------
-def fmt_sig(value, sig=3, dashes='--'):
+def fmt_sig(value, sig=3, dashes='--', sci=False):
     """``value`` at ``sig`` significant figures, with ``1.23e-07`` rendered as LaTeX math.
 
     Every printed loss goes through here, so 4.8e-07 and 0.1388 are formatted by one rule
-    instead of per table.  Non-finite -> ``dashes``.
+    instead of per table.  Non-finite -> ``dashes``.  ``sci`` forces the ``\\times 10^n``
+    form whatever the magnitude, for a table whose column would otherwise mix the two.
     """
     if not finite(value):
         return Raw(dashes) if dashes == '--' else dashes
@@ -221,7 +222,7 @@ def fmt_sig(value, sig=3, dashes='--'):
     if v == 0:
         return '0'
     exp = math.floor(math.log10(abs(v)))
-    if -4 <= exp < 5:
+    if -4 <= exp < 5 and not sci:
         digits = max(sig - 1 - exp, 0)
         s = f'{v:.{digits}f}'
         # only a FRACTIONAL part may lose trailing zeros: `'2500'.rstrip('0')` is 25
@@ -232,14 +233,28 @@ def fmt_sig(value, sig=3, dashes='--'):
     return Raw(f'${mant:.{max(sig - 1, 0)}f}\\times 10^{{{exp}}}$')
 
 
-def fmt_pm(mean, std, sig=3, dashes='--'):
+def fmt_pm(mean, std, sig=3, dashes='--', sci=False):
     """``mean $\\pm$ std`` at ``sig`` significant figures -- the seed band
-    (:data:`paired.SEED_SPREAD_LABEL`), the one spelling used in every table."""
+    (:data:`paired.SEED_SPREAD_LABEL`), the one spelling used in every table.  ``sci``
+    as in :func:`fmt_sig`."""
     if not finite(mean):
         return Raw(dashes) if dashes == '--' else dashes
-    m = fmt_sig(mean, sig)
+    m = fmt_sig(mean, sig, sci=sci)
     if not finite(std):
         return Raw(str(m))
+    v = float(mean)
+    if v != 0 and (sci or not (-4 <= math.floor(math.log10(abs(v))) < 5)):
+        # scientific notation: one shared exponent, ``(1.78 \\pm 1.0)\\times 10^{-9}``,
+        # rather than two ``\\times 10^{..}`` per cell -- half the width, and the band is
+        # read directly against the mean's mantissa
+        exp = math.floor(math.log10(abs(v)))
+        mant, smant = v / 10 ** exp, float(std) / 10 ** exp
+        digits = max(sig - 1, 0)
+        # the band at two significant figures, never finer than the mean's mantissa
+        smant = round(smant, digits)        # so 0.99999 counts as 1.0, not 0.99
+        sdigits = (min(digits, max(0, 1 - math.floor(math.log10(smant))))
+                   if smant > 0 else 0)
+        return Raw(f'$({mant:.{digits}f} \\pm {smant:.{sdigits}f})\\times 10^{{{exp}}}$')
     # the std is shown at the mean's scale, so 0.1388 +/- 0.0021 does not become
     # "0.1388 +/- 0.00210"
     s = fmt_sig(std, 2)
